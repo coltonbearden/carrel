@@ -9,7 +9,7 @@ authors = [{ name = "Colton Bearden" }]
 dependencies = [
     "click>=8.1",
     "rich>=13.0",
-    "pypdf>=5.0",
+    "pypdf>=6.15.0",
     "pillow>=10.0",
     "reportlab>=4.0",
     "watchdog>=4.0",
