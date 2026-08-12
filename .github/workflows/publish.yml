@@ -1,0 +1,24 @@
+# Publishes carrel to PyPI via Trusted Publishing (OIDC — no API token).
+# Fires only when a GitHub Release is published (release timing is the
+# operator's). Requires the pending-publisher entry on pypi.org:
+#   project: carrel · owner: FirstCastSolutions423 · repo: carrel
+#   workflow: publish.yml · environment: pypi
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build sdist and wheel
+        run: pipx run build
+      - name: Publish to PyPI (Trusted Publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1
