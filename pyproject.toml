@@ -1,6 +1,6 @@
 [project]
 name = "carrel"
-version = "0.1.0"
+version = "0.1.1"
 description = "A library desk for your files — and your agents. Local file toolkit for pdf/md/images/html/json/xml/csv: convert, OCR, inspect, index, search, pack for LLM context, watch, and more — plus a built-in Claude Code plugin marketplace."
 readme = "README.md"
 requires-python = ">=3.12"
