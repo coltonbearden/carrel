@@ -128,3 +128,7 @@ The flagship: a three-pane [Textual](https://textual.textualize.io/) desk. A fil
 ## License
 
 MIT © Colton Bearden
+
+## Related projects
+
+- [brainrot](https://github.com/coltonbearden/brainrot) — Self-audit toolkit for Claude: mine your own chat history for corrections and wins, arbitrate findings into a lean rule set, keep memory tidy
