@@ -63,7 +63,7 @@ carrel wraps the masters — pandoc, poppler, qpdf, tesseract/ocrmypdf, ImageMag
 Requires Python ≥ 3.12 and [uv](https://docs.astral.sh/uv/). No checkout needed:
 
 ```sh
-uv tool install git+https://github.com/FirstCastSolutions423/carrel   # puts `carrel` on your PATH
+uv tool install carrel   # or: pipx install carrel — puts `carrel` on your PATH
 carrel doctor         # what can your desk do today? (+ apt hints for the rest)
 ```
 
