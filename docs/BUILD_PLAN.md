@@ -63,9 +63,9 @@ Same mechanism: waves of ≤3 parallel `module-builder` subagents on a feature b
 
 ## Wave 2 — agent surface (needs wave 1)
 
-- [ ] V2.1 mcp v2: 10 tools on impl functions, resources, stdio test — **module-builder** — specs/15 — size L
-- [ ] V2.2 pack v2: `--query`, `--since/--changed`, negation, dedupe, exact tokens, outline — **module-builder** — specs/16 — size L
-- [ ] V2.3 catalog: schema migrations, export/import, status — **module-builder** — specs/17 — size M
+- [x] V2.1 mcp v2: 10 tools on impl functions, resources, stdio test — **module-builder** — specs/15 — size L
+- [x] V2.2 pack v2: `--query`, `--since/--changed`, negation, dedupe, exact tokens, outline — **module-builder** — specs/16 — size L
+- [x] V2.3 catalog: schema migrations, export/import, status — **module-builder** — specs/17 — size M
 
 ## Wave 3 — surface completion & release
 
