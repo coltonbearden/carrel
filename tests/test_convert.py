@@ -446,7 +446,7 @@ def test_convert_file_library_api(tmp_copy, tmp_path: Path):
 def test_subprocess_real_cli(tmp_copy, tmp_path: Path):
     src = tmp_copy("text+image.pdf")
     dest = tmp_path / "out.txt"
-    proc = subprocess.run(  # noqa: PLW1510 — tests inspect returncode
+    proc = subprocess.run(
         [
             sys.executable,
             "-m",

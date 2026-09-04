@@ -408,7 +408,7 @@ def gpg_home(tmp_path: Path, monkeypatch) -> Path:
         "Expire-Date: 0\n"
         "%commit\n"
     )
-    proc = subprocess.run(  # noqa: PLW1510 — tests inspect returncode
+    proc = subprocess.run(
         [adapters.require("gpg"), "--batch", "--gen-key", str(batch)],
         capture_output=True,
         text=True,

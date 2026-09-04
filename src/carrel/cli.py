@@ -71,6 +71,9 @@ def _with_json_flag(command: click.Command) -> click.Command:
     Commands that declare their own `--json` keep it; everyone else gets a
     flag that flips the shared ctx.obj["json"] switch `emit()` reads.
     """
+    if isinstance(command, click.Group):
+        for sub in command.commands.values():
+            _with_json_flag(sub)
     if any("--json" in getattr(p, "opts", ()) for p in command.params):
         return command
     command.params.append(

@@ -25,11 +25,16 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def _sub_line(text: str, key: str, value: str) -> str:
-    """Replace the first `key = "..."` line at column 0 (TOML) with a new value."""
+    """Replace the first `key = "..."` line at column 0 (TOML) with a new value.
+
+    The value is emitted as a JSON string literal, which is a valid TOML basic
+    string: backslashes, quotes and control characters are escaped correctly.
+    """
     pattern = rf'(?m)^{re.escape(key)} = ".*"$'
     if not re.search(pattern, text):
         raise SystemExit(f"pyproject.toml: no top-level line `{key} = ...` to update")
-    return re.sub(pattern, f'{key} = "{value}"', text, count=1)
+    literal = json.dumps(value, ensure_ascii=False)
+    return re.sub(pattern, lambda _m: f"{key} = {literal}", text, count=1)
 
 
 def sync_pyproject(product: dict[str, str]) -> None:
@@ -58,12 +63,28 @@ def sync_pyproject(product: dict[str, str]) -> None:
 
 
 def sync_json_version(path: Path, version: str) -> None:
-    """Rewrite every `"version": "..."` field in a manifest, preserving its formatting."""
+    """Rewrite the plugin version fields in a manifest, preserving its formatting.
+
+    plugin.json: the single top-level "version". marketplace.json: the "version"
+    inside each plugins[] entry only (never metadata.version or anything else).
+    """
     text = path.read_text()
-    pattern = re.compile(r'(?m)^(\s*"version":\s*)"[^"]*"')
-    if not pattern.search(text):
-        raise SystemExit(f"{path}: no version field to update")
-    path.write_text(pattern.sub(lambda m: f'{m.group(1)}"{version}"', text))
+    data = json.loads(text)
+    if "plugins" in data:
+        for entry in data["plugins"]:
+            block = re.compile(
+                r'("name":\s*"' + re.escape(entry["name"]) + r'",\n(?:(?!\n\s*\{)[^\n]*\n)*?'
+                r'\s*"version":\s*)"[^"]*"'
+            )
+            if not block.search(text):
+                raise SystemExit(f"{path}: no version field for plugin {entry['name']}")
+            text = block.sub(lambda m: f'{m.group(1)}"{version}"', text, count=1)
+    else:
+        top = re.compile(r'(?m)^( {2}"version":\s*)"[^"]*"')
+        if not top.search(text):
+            raise SystemExit(f"{path}: no top-level version field to update")
+        text = top.sub(lambda m: f'{m.group(1)}"{version}"', text, count=1)
+    path.write_text(text)
 
 
 def sync_citation(product: dict[str, str]) -> None:

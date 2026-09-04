@@ -182,6 +182,7 @@ def run(
             input=input,
             capture_output=True,
             text=text,
+            errors="replace" if text else None,  # tool output is never allowed to crash us
             timeout=timeout,
             check=False,
         )
@@ -195,7 +196,7 @@ def version_of(name: str) -> str | None:
         return None
     try:
         proc = run(name, *adapter.version_args, timeout=15)
-    except (CarrelError, OSError, subprocess.SubprocessError):
+    except (CarrelError, OSError, ValueError, subprocess.SubprocessError):
         return "?"
     out = (proc.stdout or proc.stderr or "").strip().splitlines()
     return out[0][:80] if out else "?"
