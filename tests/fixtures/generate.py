@@ -5,15 +5,24 @@ Run from the repo root:  uv run python tests/fixtures/generate.py
 
 Idempotent: re-running rewrites nothing unless content actually changed
 (existing identical files are left untouched, so git stays clean).
-Deterministic: fixed data, fixed dates, reportlab invariant mode.
-Dependencies: stdlib + Pillow + reportlab only.
+Deterministic: fixed data, fixed dates, reportlab invariant mode; pandoc
+outputs are pinned via SOURCE_DATE_EPOCH and the xlsx zip is re-stamped.
+Dependencies: stdlib + Pillow + reportlab; the office fixtures (spec 18)
+additionally need pandoc (docx/odt/epub/rtf) and openpyxl (xlsx) and are
+skipped with a message when those are absent.
 """
 
 from __future__ import annotations
 
 import io
 import json
+import os
+import shutil
+import subprocess
+import tempfile
 import time
+import zipfile
+from datetime import UTC, datetime
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -24,7 +33,9 @@ from reportlab.pdfgen import canvas
 FIXDIR = Path(__file__).resolve().parent
 
 # Fixed instant for every embedded timestamp (2021-06-15 12:00:00 UTC).
-FIXED_TS = time.gmtime(1623758400)
+FIXED_EPOCH = 1623758400
+FIXED_TS = time.gmtime(FIXED_EPOCH)
+FIXED_DT = datetime.fromtimestamp(FIXED_EPOCH, tz=UTC)
 EXIF_DATETIME = "2021:06:15 12:00:00"
 
 # Sentinels (referenced by tests; see specs/14-fixtures.md)
@@ -32,6 +43,28 @@ TXT_SENTINEL = "quixotic zephyr"
 MD_SENTINEL = "melodious cartography"
 PDF_SENTINEL = "palimpsest harbor"
 OCR_TEXT = "CARREL OCR FIXTURE 42"
+XLSX_SENTINEL = "vellum ledger"
+
+# Office/ebook document metadata (docx core.xml, epub OPF); spec 18
+OFFICE_TITLE = "Carrel Sample Document"
+OFFICE_AUTHOR = "Fixture Generator"
+OFFICE_DATE = "2021-06-15"
+
+# sample.xlsx: 2 sheets, header row + 3 data rows, one numeric column each
+XLSX_SHEETS: dict[str, list[list[object]]] = {
+    "Books": [
+        ["title", "shelf", "year"],
+        ["Palimpsest Harbor", "A2", 1998],
+        ["Zephyr Atlas", "B4", 2011],
+        [XLSX_SENTINEL.title(), "C1", 2020],
+    ],
+    "Loans": [
+        ["member", "title", "days_out"],
+        ["Ada", "Zephyr Atlas", 14],
+        ["Basil", "Palimpsest Harbor", 3],
+        ["Clara", XLSX_SENTINEL.title(), 21],
+    ],
+}
 
 
 def write(name: str, data: bytes) -> None:
@@ -389,6 +422,90 @@ def gen_b_pdf() -> None:
 
 
 # --------------------------------------------------------------------------
+# office & ebook documents (spec 18) — pandoc from sample.md; openpyxl for xlsx
+# --------------------------------------------------------------------------
+
+
+def _pandoc_bytes(pandoc: str, to_fmt: str, suffix: str, *extra: str) -> bytes:
+    """Render sample.md with pandoc into `to_fmt`, deterministically (SOURCE_DATE_EPOCH)."""
+    env = {**os.environ, "SOURCE_DATE_EPOCH": str(FIXED_EPOCH)}
+    with tempfile.TemporaryDirectory(prefix="carrel-fixtures-") as td:
+        out = Path(td) / f"sample{suffix}"
+        subprocess.run(
+            [
+                pandoc,
+                "-f",
+                "markdown",
+                "-t",
+                to_fmt,
+                "-M",
+                f"title={OFFICE_TITLE}",
+                "-M",
+                f"author={OFFICE_AUTHOR}",
+                "-M",
+                f"date={OFFICE_DATE}",
+                *extra,
+                str(FIXDIR / "sample.md"),
+                "-o",
+                str(out),
+            ],
+            check=True,
+            env=env,
+            capture_output=True,
+        )
+        return out.read_bytes()
+
+
+def gen_office_docs() -> None:
+    pandoc = shutil.which("pandoc")
+    if pandoc is None:
+        print("skip: pandoc missing (sample.docx/.odt/.epub/.rtf not generated)")
+        return
+    write("sample.docx", _pandoc_bytes(pandoc, "docx", ".docx"))
+    write("sample.odt", _pandoc_bytes(pandoc, "odt", ".odt"))
+    write(
+        "sample.epub",
+        _pandoc_bytes(
+            pandoc, "epub", ".epub", "-M", "lang=en", "-M", "identifier=urn:carrel:sample-epub"
+        ),
+    )
+    write("sample.rtf", _pandoc_bytes(pandoc, "rtf", ".rtf", "-s"))
+
+
+def _restamp_zip(data: bytes) -> bytes:
+    """Rewrite a zip with fixed entry timestamps (openpyxl stamps them with now())."""
+    out = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(data)) as src, zipfile.ZipFile(out, "w") as dst:
+        for info in src.infolist():
+            stamped = zipfile.ZipInfo(info.filename, date_time=FIXED_DT.timetuple()[:6])
+            stamped.compress_type = info.compress_type
+            stamped.external_attr = info.external_attr
+            dst.writestr(stamped, src.read(info.filename))
+    return out.getvalue()
+
+
+def gen_xlsx() -> None:
+    try:
+        from openpyxl import Workbook
+    except ImportError:
+        print("skip: openpyxl missing (sample.xlsx not generated; uv sync --extra office)")
+        return
+    wb = Workbook()
+    wb.remove(wb.active)
+    for name, rows in XLSX_SHEETS.items():
+        ws = wb.create_sheet(name)
+        for row in rows:
+            ws.append(row)
+    wb.properties.title = OFFICE_TITLE
+    wb.properties.creator = OFFICE_AUTHOR
+    wb.properties.created = FIXED_DT.replace(tzinfo=None)
+    wb.properties.modified = FIXED_DT.replace(tzinfo=None)
+    buf = io.BytesIO()
+    wb.save(buf)
+    write("sample.xlsx", _restamp_zip(buf.getvalue()))
+
+
+# --------------------------------------------------------------------------
 
 
 def main() -> None:
@@ -405,6 +522,8 @@ def main() -> None:
     gen_form_pdf()
     gen_scanned_pdf(scanned)
     gen_b_pdf()
+    gen_office_docs()
+    gen_xlsx()
     print("done.")
 
 
