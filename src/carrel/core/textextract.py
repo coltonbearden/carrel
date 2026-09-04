@@ -171,9 +171,11 @@ def xlsx_rows(path: Path) -> dict[str, list[list[Any]]]:
         import openpyxl
     except ImportError as e:
         raise adapters.MissingDependencyError(OPENPYXL) from e
+    fh = path.open("rb")  # a handle, not a name: openpyxl would reject a mis-named .zip
     try:
-        wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+        wb = openpyxl.load_workbook(fh, read_only=True, data_only=True)
     except Exception as e:  # openpyxl raises a zoo of zip/xml errors on bad input; re-raised typed
+        fh.close()
         raise CarrelInputError(f"cannot read workbook {path.name}: {e}") from e
     sheets: dict[str, list[list[Any]]] = {}
     try:
@@ -184,6 +186,7 @@ def xlsx_rows(path: Path) -> dict[str, list[list[Any]]]:
             sheets[str(ws.title)] = rows
     finally:
         wb.close()
+        fh.close()
     return sheets
 
 

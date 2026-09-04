@@ -78,6 +78,8 @@ class DeskDB:
 
     # -- lifecycle ---------------------------------------------------------
     def __enter__(self) -> DeskDB:
+        if not self.root.is_dir():
+            raise CarrelInputError(f"desk root is not a directory: {self.root}")
         self.dir.mkdir(exist_ok=True)
         self._conn = sqlite3.connect(self.path)
         self._conn.row_factory = sqlite3.Row
@@ -358,6 +360,7 @@ class DeskDB:
             "skipped_missing": 0,
             "tags_removed": 0,
             "notes_removed": 0,
+            "skipped_outside": 0,
         }
         if replace:
             result["tags_removed"] = int(
@@ -370,6 +373,9 @@ class DeskDB:
             self.conn.execute("DELETE FROM notes")
         for entry in files:
             path = (self.root / entry["path"]).resolve()
+            if not path.is_relative_to(self.root):
+                result["skipped_outside"] += 1
+                continue
             if not path.is_file():
                 result["skipped_missing"] += 1
                 continue

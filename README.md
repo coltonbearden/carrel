@@ -35,7 +35,7 @@ A *carrel* is a private study desk in a library: your materials close at hand, o
 | | `carrel ocr` | Images and scanned PDFs → text, markdown, or a searchable PDF |
 | | `carrel edit` | PDF merge/split/rotate/extract-pages, image resize/rotate/crop, text find-replace, json set/del |
 | | `carrel extract-images` | Pull embedded images out of pdf, ico, and html |
-| | `carrel audiobook` | Narrate txt/md/pdf into mp3/ogg, chapters from markdown headings |
+| | `carrel audiobook` | Narrate txt/md/pdf and docx/odt/epub/rtf into mp3/ogg, chapters from markdown headings |
 | **Inspect & prove** | `carrel inspect` | Metadata + per-type structure summary: sha256, pages, EXIF, json shape, csv dialect, docx paragraphs, xlsx sheets… |
 | | `carrel diff` | Unified text diffs, structural json/csv diffs, pdf text diffs, image pixel diffs |
 | | `carrel thumb` | Thumbnails for pdfs, images, and html |

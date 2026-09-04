@@ -108,7 +108,7 @@ def _with_json_flag(command: click.Command) -> click.Command:
 @click.option("--debug", is_flag=True, help="Show tracebacks on error.")
 @click.option(
     "--root",
-    type=click.Path(file_okay=False),
+    type=click.Path(file_okay=False, exists=True),
     default=".",
     help="Desk root for db-backed commands (default: cwd).",
 )

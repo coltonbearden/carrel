@@ -58,12 +58,17 @@ def _resolve_mode(ta: FileType, tb: FileType) -> str:
         return "pdf"
     if ta is tb and ta in _STRUCT_TYPES:
         return "struct"
-    if ta.is_text and tb.is_text:  # mismatched text-ish pairs fall back to text
+    if _textlike(ta) and _textlike(tb):  # mismatched text-ish pairs fall back to text
         return "text"
     raise CarrelInputError(
         f"cannot auto-diff {ta.value} vs {tb.value}: need two images, two PDFs, "
-        f"or two text-like files (force one with --mode)"
+        f"or two text-like files (text formats, documents, workbooks; force one with --mode)"
     )
+
+
+def _textlike(t: FileType) -> bool:
+    """Anything `--mode text` can read: text formats plus extractable documents."""
+    return t.is_text or t.is_document or t is FileType.XLSX
 
 
 # ---------------------------------------------------------------------------
@@ -72,7 +77,7 @@ def _resolve_mode(ta: FileType, tb: FileType) -> str:
 
 
 def _read_text(path: Path, ftype: FileType) -> str:
-    if ftype is FileType.PDF:
+    if ftype is FileType.PDF or ftype.is_document or ftype is FileType.XLSX:
         return extract_text(path)
     if ftype.is_image:
         raise CarrelInputError(f"--mode text cannot read an image: {path}")

@@ -82,7 +82,7 @@ def search_index(
     if limit < 1:
         raise CarrelInputError("limit must be a positive integer")
     if not DeskDB.exists(root):
-        raise CarrelError(f"no index under {root} — run `{PRODUCT['cli']} index` there first")
+        raise CarrelInputError(f"no index under {root} — run `{PRODUCT['cli']} index` there first")
 
     wanted_types = {t.strip().lower() for t in types if t.strip()} if types else set()
     unknown = wanted_types - _valid_types()
@@ -160,6 +160,8 @@ def cmd(
         raise click.UsageError("--limit must be a positive integer")
     root = _root_of(ctx)
     wanted_types = _parse_types(types_csv)  # --type validation stays a usage error (exit 2)
+    if not DeskDB.exists(root):  # missing input, not a usage error: exit 4 like pack --query
+        raise CarrelInputError(f"no index under {root} — run `{PRODUCT['cli']} index` there first")
     try:
         hits = search_index(root, query, limit=limit, types=wanted_types, tags=list(tags))
     except CarrelInputError as e:  # bad FTS5 syntax is a usage error at the CLI (exit 2)

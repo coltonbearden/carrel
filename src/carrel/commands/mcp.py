@@ -522,11 +522,6 @@ def _tool_redact(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
     patterns = tuple(_str_list(args, "pattern"))
     replacement = args.get("replacement")
     replacement = "█" if replacement is None else str(replacement)
-    try:
-        rules = _compile_rules(patterns, ",".join(builtin) if builtin else None)
-    except click.UsageError as e:
-        raise CarrelInputError(e.message) from e
-
     ftype = detect_or_die(src)
     if ftype is FileType.PDF:
         raise CarrelInputError(
@@ -536,6 +531,10 @@ def _tool_redact(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
         )
     if not ftype.is_text:
         raise CarrelInputError(f"redact supports text files and PDFs, got {ftype.value}: {src}")
+    try:
+        rules = _compile_rules(patterns, ",".join(builtin) if builtin else None)
+    except click.UsageError as e:
+        raise CarrelInputError(e.message) from e
     try:
         content = src.read_text(encoding="utf-8")
     except UnicodeDecodeError as e:

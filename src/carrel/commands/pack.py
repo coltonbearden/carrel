@@ -405,7 +405,7 @@ def _tree_note(e: PackEntry) -> str:
     if e.outline is not None and not e.outline:
         parts.append(f"({_human_size(e.size)})")
     if e.score is not None:
-        parts.append(f"[score {e.score:.3f}]")
+        parts.append(f"[score {e.score:.3g}]")
     return ("  " + " ".join(parts)) if parts else ""
 
 
@@ -733,6 +733,10 @@ def _git_changed(root: Path, *, since: str | None, changed: bool) -> set[Path]:
 # query-driven selection (--query) — desk FTS index under the desk root
 
 
+class BadQueryError(CarrelInputError):
+    """Malformed FTS5 syntax in --query (the CLI reports it as a usage error, exit 2)."""
+
+
 def _query_hits(desk_root: Path, query: str, top: int) -> dict[Path, float]:
     """Absolute path → bm25 score for the top FTS hits (lower is better)."""
     if not DeskDB.exists(desk_root):
@@ -745,7 +749,7 @@ def _query_hits(desk_root: Path, query: str, top: int) -> dict[Path, float]:
         try:
             rows = db.fts_search(query, limit=top)
         except sqlite3.OperationalError as e:
-            raise CarrelInputError(f"bad search query {query!r}: {e}") from e
+            raise BadQueryError(f"bad search query {query!r}: {e}") from e
         for row in rows:
             p = (db.root / row["path"]).resolve()
             hits.setdefault(p, float(row["score"]))
@@ -1021,7 +1025,7 @@ def _print_stats_table(data: dict[str, Any]) -> None:
     for row in data["files"]:
         cells = [row["path"], row["type"], _human_size(row["bytes"]), str(row[key])]
         if with_score:
-            cells.append("" if row.get("score") is None else f"{row['score']:.3f}")
+            cells.append("" if row.get("score") is None else f"{row['score']:.3g}")
         cells.append(row["skipped"] or "")
         table.add_row(*cells)
     table.add_section()
@@ -1185,8 +1189,10 @@ def cmd(
     Selection: --query ranks files through the desk index under --root (build
     it with the `index` command) and emits hits in relevance order;
     --since REF / --changed narrow to what git reports as changed (deleted
-    files are listed in the header as removed). Both may be combined with
-    each other and with the usual --include/--exclude filters (intersection).
+    files are listed in the header as removed; --since REF compares REF with
+    the working tree). --query combines with either git selector and with the
+    usual --include/--exclude filters (intersection); --since and --changed
+    exclude each other.
 
     .gitignore handling is a deliberately simple per-directory matcher:
     plain names and `*` globs match anywhere below their .gitignore; a
@@ -1212,26 +1218,29 @@ def cmd(
         fmt = "json"  # global --json: stdout must be one JSON document
     desk_root = Path((ctx.obj or {}).get("root", ".")).resolve()
 
-    result = pack_paths(
-        list(paths),
-        fmt=fmt,
-        include=include,
-        exclude=exclude,
-        no_gitignore=no_gitignore,
-        max_bytes=max_bytes,
-        max_file_bytes=max_file_bytes,
-        chunk=chunk,
-        tree_only=tree_only,
-        ocr=ocr,
-        query=query,
-        top=top,
-        desk_root=desk_root,
-        since=since,
-        changed=changed,
-        dedupe_content=dedupe_content,
-        tokenizer=tokenizer,
-        outline=outline,
-    )
+    try:
+        result = pack_paths(
+            list(paths),
+            fmt=fmt,
+            include=include,
+            exclude=exclude,
+            no_gitignore=no_gitignore,
+            max_bytes=max_bytes,
+            max_file_bytes=max_file_bytes,
+            chunk=chunk,
+            tree_only=tree_only,
+            ocr=ocr,
+            query=query,
+            top=top,
+            desk_root=desk_root,
+            since=since,
+            changed=changed,
+            dedupe_content=dedupe_content,
+            tokenizer=tokenizer,
+            outline=outline,
+        )
+    except BadQueryError as e:
+        raise click.UsageError(str(e)) from e
     if fail_empty and result.meta["files_included"] == 0:
         what = f"no files matched --query {query!r}" if query is not None else "no files to pack"
         fail(what, ExitCode.EMPTY)

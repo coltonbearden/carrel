@@ -1,5 +1,47 @@
 # Changelog
 
+## v0.2.0 — unreleased
+
+The desk grows up for agents: the whole CLI is reachable over MCP, `pack` can
+select by relevance or by git history, the index is versioned and portable,
+and Office/ebook documents join the supported types.
+
+- **Added:** docx, odt, epub, rtf (via pandoc) and xlsx (via `carrel[office]`)
+  across `convert`, `inspect`, `index`/`search`, `pack`, `diff`; `convert --sheet`
+  for workbooks; md/html/txt → docx/odt.
+- **Added:** `carrel pack --query TEXT [--top N]` (index-ranked packing),
+  `--since REF` / `--changed` (git-aware), `--dedupe-content`,
+  `--tokenizer exact` (tiktoken via `carrel[tokens]`), `--outline`;
+  `.gitignore` negation (`!pattern`) is honored.
+- **Added:** `carrel catalog export|import|status` and `carrel index --status`;
+  the desk database carries `PRAGMA user_version` and migrations (D-009), so
+  tags and notes can move between machines and schemas can evolve safely.
+- **Added:** MCP server v2 — 10 tools (`carrel_search`, `carrel_pack`,
+  `carrel_inspect`, `carrel_tag`, `carrel_note`, `carrel_index`,
+  `carrel_convert`, `carrel_diff`, `carrel_redact`, `carrel_doctor`) built on
+  the same implementation functions as the CLI, plus `carrel://file/{path}`
+  and `carrel://search/{query}` resources.
+- **Added:** `carrel completion bash|zsh|fish`; `CARREL_BIN_<NAME>=/path` pins a
+  specific binary for an adapter (D-008, the one exception to config-free).
+- **Added:** plugins `carrel-documents` (redact/sign/form/proof/color) and
+  `carrel-guard` (a `PreToolUse` hook that hands Claude the text of PDFs,
+  Office files and images instead of the binary; a `SessionStart` capability
+  summary); every CLI command now has a slash command, with usage blocks
+  generated from `--help` by `scripts/sync_plugins.py --check`.
+- **Changed (breaking):** Textual is an optional extra — install
+  `carrel[tui]` or `carrel[all]` for `carrel desk` (D-007). A plain install
+  exits 3 with that hint.
+- **Changed:** nine adapter entries that no command used (`gs`, `pngquant`,
+  `jq`, `mlr`, `rg`, `fd`, `sqlite3`, `inotifywait`, `claude`) were removed
+  from `doctor`; `git` was added.
+- **Changed:** `docs/REFERENCE.md` is generated from `--help`
+  (`scripts/sync_reference.py --check` gates drift); cookbook and snippets
+  have a docs page; CI adds macOS (required after this release) and Windows
+  (advisory) `test-minimal` jobs and an 80% coverage floor.
+- **Known limitation:** `pack --query` ranks only files the index knows;
+  `carrel index` skips unknown types such as `.py`, so query-driven packing
+  fits document trees, not source trees yet.
+
 ## v0.1.2 — 2026-09-04
 
 Housekeeping release after the repository moved to `coltonbearden/carrel`.

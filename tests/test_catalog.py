@@ -295,6 +295,7 @@ def test_round_trip_export_wipe_index_import(catalogued: Path, tmp_path: Path):
         "skipped_missing": 0,
         "tags_removed": 0,
         "notes_removed": 0,
+        "skipped_outside": 0,
     }
     assert snapshot(catalogued) == before
 

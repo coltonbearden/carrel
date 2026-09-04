@@ -220,6 +220,7 @@ _STATUS_STYLE = {"ok": "green", "degraded": "yellow", "unavailable": "red"}
 
 def _render(report: dict[str, Any]) -> None:
     from rich.console import Console
+    from rich.markup import escape
     from rich.table import Table
 
     console = Console()
@@ -237,7 +238,9 @@ def _render(report: dict[str, Any]) -> None:
         if row["found"]:
             tools.add_row(row["name"], f"[green]found[/green]{via}", row["version"] or "?")
         else:
-            tools.add_row(row["name"], f"[red]MISSING[/red]{via}", row["install_hint"] or "")
+            tools.add_row(
+                row["name"], f"[red]MISSING[/red]{via}", escape(row["install_hint"] or "")
+            )
     console.print(tools)
 
     caps = Table(title="command capabilities")
@@ -246,7 +249,7 @@ def _render(report: dict[str, Any]) -> None:
     caps.add_column("gated by", overflow="fold")
     for row in report["commands"]:
         style = _STATUS_STYLE[row["status"]]
-        gate = ", ".join(row["missing"]) if row["missing"] else row["note"]
+        gate = escape(", ".join(row["missing"]) if row["missing"] else row["note"])
         caps.add_row(row["command"], f"[{style}]{row['status']}[/{style}]", gate)
     console.print(caps)
 

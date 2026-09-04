@@ -768,8 +768,9 @@ Usage: carrel pack [OPTIONS] PATHS...
 
   Selection: --query ranks files through the desk index under --root (build it with the `index`
   command) and emits hits in relevance order; --since REF / --changed narrow to what git reports as
-  changed (deleted files are listed in the header as removed). Both may be combined with each other
-  and with the usual --include/--exclude filters (intersection).
+  changed (deleted files are listed in the header as removed; --since REF compares REF with the
+  working tree). --query combines with either git selector and with the usual --include/--exclude
+  filters (intersection); --since and --changed exclude each other.
 
   .gitignore handling is a deliberately simple per-directory matcher: plain names and `*` globs
   match anywhere below their .gitignore; a trailing `/` restricts a pattern to directories; patterns

@@ -22,7 +22,7 @@ File types: pdf md jpg jpeg png ico txt html json xml csv docx odt epub rtf xlsx
 | Install ergonomics | `carrel completion bash/zsh/fish`; extras `tui/office/tokens/all`; `CARREL_BIN_<NAME>` override; `git` adapter | lib:click completions (in-process); pyproject extras (D-007); env-var override (D-008) | — | v0.2.0 |
 | Dedupe | `carrel dedupe` | custom (BLAKE2 content hash groups; `--near` perceptual dHash for images, custom impl, no numpy) | all | v1 |
 | File/folder organization | `carrel organize` | custom (rules: by type/date/exif-date; dry-run default) | all | v1 |
-| Audiobook (TTS) | `carrel audiobook` | wrap:espeak-ng → wrap:ffmpeg (mp3/ogg, chapters from md headings); adapter prefers piper/edge-tts if present | txt md pdf | v1 |
+| Audiobook (TTS) | `carrel audiobook` | wrap:espeak-ng → wrap:ffmpeg (mp3/ogg, chapters from md headings); adapter prefers piper/edge-tts if present; documents narrate via `textextract` (pandoc) | txt md pdf docx odt epub rtf | v1 (+ documents in v0.2.0) |
 | Redaction | `carrel redact` | custom (pattern/regex redaction for txt/md/html/json/csv/xml with built-in PII patterns); pdf: true redaction by rasterize→blackbox→rebuild (text layer destroyed by design; documented) | text types + pdf | v1 |
 | Signatures | `carrel sign` | lib:pypdf+lib:reportlab (visible PDF stamp), custom (sha256 MANIFEST + wrap:gpg detached sig, verify mode) | pdf + any (manifest) | v1 |
 | Notes/comments (annotations) | `carrel note` | lib:pypdf (PDF text annotations, list/add), custom (sidecar notes in index DB for any file) | pdf + all (sidecar) | v1 |
