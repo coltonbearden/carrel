@@ -34,6 +34,7 @@ COMMANDS: dict[str, str] = {
     "form": "form",
     "proof": "proof",
     "color": "color",
+    "completion": "completion",
     "doctor": "doctor",
     "mcp": "mcp",
     "desk": "desk",

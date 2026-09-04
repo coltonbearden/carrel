@@ -1,9 +1,10 @@
 # Installing Carrel
 
 Carrel is a Python CLI managed with [uv](https://docs.astral.sh/uv/). The core
-always works with nothing but Python; external binaries unlock extra
-capability and are detected at runtime — nothing breaks when one is missing
-(you get a one-line message with the install hint and exit code 3).
+always works with nothing but Python; [optional extras](#optional-extras)
+(pip-installable) and external binaries unlock extra capability and are
+detected at runtime — nothing breaks when one is missing (you get a one-line
+message with the install hint and exit code 3).
 
 Related docs: [Quickstart](QUICKSTART.md) · [Reference](REFERENCE.md) ·
 [Configuration](CONFIGURATION.md) · [Troubleshooting](TROUBLESHOOTING.md) ·
@@ -48,13 +49,49 @@ Upgrade after pulling changes with `uv tool install . --force` (or
 `uv tool upgrade carrel` when installed from an index); remove with
 `uv tool uninstall carrel`.
 
+## Optional extras
+
+A plain install pulls only what the file toolkit needs (click, rich, pypdf,
+Pillow, reportlab, watchdog, markdown-it-py). Heavier Python dependencies are
+**extras** you opt into (decision D-007 in [DECISIONS.md](DECISIONS.md)):
+
+| Extra | Installs | Enables |
+|---|---|---|
+| `tui` | `textual` | `carrel desk`, the interactive three-pane TUI |
+| `office` | `openpyxl` | `.xlsx` text extraction for `convert`/`pack`/`index`/`inspect` (the other office formats — `.docx`, `.odt`, `.epub`, `.rtf` — need no extra) |
+| `tokens` | `tiktoken` | exact token counts in `carrel pack` (without it, counts are estimated) |
+| `all` | the union of the above | everything |
+
+Install with the extras you want in square brackets (quote them — most shells
+treat `[` specially):
+
+```bash
+uv tool install 'carrel[all]'           # everything
+uv tool install 'carrel[tui,tokens]'    # pick and choose
+pipx install 'carrel[all]'              # pipx works the same way
+uv tool install --force 'carrel[tui]'   # add an extra to an existing install
+```
+
+From a checkout:
+
+```bash
+uv sync --extra tui                     # one extra
+uv sync --all-extras                    # all of them (what CI's full test job uses)
+```
+
+A command whose extra is missing exits 3 and names it, exactly like a missing
+binary — for example `carrel desk` on a plain install prints
+`textual is not installed (optional extra 'tui') — run: uv tool install 'carrel[tui]'  (from a checkout: uv sync --extra tui)`.
+`carrel doctor` lists `desk` as `unavailable` with the same hint until the
+extra is present.
+
 ## Development mode
 
 To hack on carrel itself, skip the install and run from the repo:
 
 ```bash
 cd ~/projects/carrel
-uv sync            # create .venv and install dependencies from uv.lock
+uv sync --all-extras   # create .venv and install dependencies (+ every extra) from uv.lock
 uv run carrel doctor
 uv run pytest      # the test suite; binary-dependent tests skip when a tool is absent
 ```
@@ -97,7 +134,6 @@ The groups below mirror the doctor's install hints exactly.
 ```bash
 sudo apt install poppler-utils   # pdftotext, pdftoppm, pdfimages — text extraction, thumbnails, embedded images
 sudo apt install qpdf            # PDF surgery (edit pdf: linearize/decrypt)
-sudo apt install ghostscript     # PDF render/compress, ICC profiles
 ```
 
 ### Document conversion
@@ -126,7 +162,6 @@ languages; see [Troubleshooting](TROUBLESHOOTING.md#ocr-in-languages-other-than-
 
 ```bash
 sudo apt install imagemagick               # image operations (magick, or legacy convert)
-sudo apt install pngquant                  # PNG optimization
 sudo apt install icoutils                  # .ico build/extract (icotool)
 sudo apt install libimage-exiftool-perl    # deep metadata (inspect --deep)
 ```
@@ -144,21 +179,15 @@ pipx install edge-tts            # optional: cloud voice, preferred over espeak
 engine upgrades the voice with no flag changes
 ([Configuration](CONFIGURATION.md#tts-engine-preference)).
 
-### Search, find, watch
+### Git-aware packing
 
 ```bash
-sudo apt install ripgrep         # rg — fast content search
-sudo apt install fd-find         # fd/fdfind — fast file finding
-sudo apt install sqlite3         # SQLite CLI (the index db itself uses Python's stdlib)
-sudo apt install inotify-tools   # inotifywait — filesystem event tap (watch fallback)
+sudo apt install git             # changed-file lists for pack --since / --changed
 ```
 
-### Data processing
-
-```bash
-sudo apt install jq              # JSON processing
-sudo apt install miller          # mlr — CSV/TSV/JSON transforms
-```
+`index`, `search`, and `watch` need no external tools: the index db is
+Python's stdlib SQLite (FTS5), and folder watching uses the bundled
+`watchdog` library.
 
 ### Signing
 
@@ -169,14 +198,49 @@ sudo apt install gnupg           # gpg — detached signatures for manifests
 ### Everything at once
 
 ```bash
-sudo apt install poppler-utils qpdf ghostscript pandoc weasyprint \
-  tesseract-ocr ocrmypdf imagemagick pngquant icoutils \
-  libimage-exiftool-perl espeak-ng ffmpeg ripgrep fd-find sqlite3 \
-  inotify-tools jq miller gnupg
+sudo apt install poppler-utils qpdf pandoc weasyprint \
+  tesseract-ocr ocrmypdf imagemagick icoutils \
+  libimage-exiftool-perl espeak-ng ffmpeg gnupg git
 ```
 
 Then re-run `carrel doctor` — every row in the *command capabilities* table
 should read `ok`.
+
+If `PATH` finds the wrong copy of a tool (several versions installed, or a
+Windows `.exe` reached through WSL interop), pin the one carrel should use
+with `CARREL_BIN_<NAME>` — see
+[Configuration](CONFIGURATION.md#pinning-a-binary-carrel_bin_name).
+
+## Shell completions
+
+`carrel completion <shell>` prints a tab-completion script for bash, zsh, or
+fish (generated in-process from the real command tree, so it always matches
+the installed version). Add `--install-hint` to have the same instructions
+appended as a comment block; `--json` gives `{"shell": …, "script": …}`.
+
+**bash** — append to `~/.bashrc` (needs bash ≥ 4.4 with `bash-completion`):
+
+```bash
+eval "$(carrel completion bash)"
+```
+
+**zsh** — append to `~/.zshrc`, *after* the line that runs `compinit`
+(`autoload -Uz compinit && compinit`):
+
+```zsh
+eval "$(carrel completion zsh)"
+```
+
+**fish** — fish autoloads from `~/.config/fish/completions/`:
+
+```fish
+carrel completion fish > ~/.config/fish/completions/carrel.fish
+```
+
+`eval "$(…)"` regenerates the script on every shell start (a few
+milliseconds); to skip that, redirect once into a file and `source` it
+instead — `carrel completion bash --install-hint` shows the exact lines. Any
+other shell name exits 2.
 
 ## WSL2 notes
 
