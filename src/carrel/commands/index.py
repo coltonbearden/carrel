@@ -7,6 +7,10 @@ core.db.DeskDB. Unchanged files (same size+mtime) are skipped.
 `--update FILE... [--if-indexed]` is the hook-facing mode: reindex just the
 named files, no walking; with --if-indexed it exits 0 silently when no desk
 db exists yet (so a PostToolUse hook is a no-op outside an indexed desk).
+
+`index_paths(...)` is the public implementation shared by the click command
+and the MCP `carrel_index` tool (spec 15). `--status` is an alias of
+`carrel catalog status` (spec 17).
 """
 
 from __future__ import annotations
@@ -72,7 +76,7 @@ def _index_file(
     ocr: bool,
     counts: dict[str, int],
     errors: list[dict[str, str]],
-    ctx: click.Context,
+    ctx: click.Context | None,
 ) -> None:
     if db.is_fresh(path):
         counts["skipped"] += 1
@@ -93,6 +97,49 @@ def _index_file(
     fid = db.upsert_file(path, ftype=detect(path).value)
     db.set_content(fid, path, text)
     counts["indexed"] += 1
+
+
+def index_paths(
+    root: Path,
+    paths: list[Path] | None = None,
+    *,
+    update: bool = False,
+    prune: bool = False,
+    ocr: bool = False,
+) -> dict[str, Any]:
+    """Index `paths` (default: `root`) into the desk db under `root`.
+
+    Shared by `carrel index` and the MCP `carrel_index` tool. Walk mode
+    descends directories (hidden entries skipped) and raises CarrelInputError
+    for a path that does not exist; `update` treats each path as one file and
+    silently skips missing/unsupported ones (hook semantics). Returns
+    `{"indexed", "skipped", "pruned", "errors": [{path, error, kind}]}`.
+    Progress lines go to stderr when a click context with human output is active.
+    """
+    root = Path(root).resolve()
+    ctx = click.get_current_context(silent=True)
+    targets = [Path(p).resolve() for p in paths] if paths else [root]
+    counts = {"indexed": 0, "skipped": 0, "pruned": 0}
+    errors: list[dict[str, str]] = []
+
+    with DeskDB(root) as db:
+        if update:
+            for f in targets:
+                if not f.is_file() or detect(f) is FileType.UNKNOWN:
+                    counts["skipped"] += 1  # hook mode: never fail on odd files
+                    continue
+                _index_file(db, f, ocr=ocr, counts=counts, errors=errors, ctx=ctx)
+        else:
+            for top in targets:
+                if not top.exists():
+                    raise CarrelInputError(f"no such path: {top}")
+                for f in _walk(top):
+                    if detect(f) is FileType.UNKNOWN:
+                        continue  # not a supported type — not a candidate
+                    _index_file(db, f, ocr=ocr, counts=counts, errors=errors, ctx=ctx)
+        if prune:
+            counts["pruned"] = db.prune()
+    return {**counts, "errors": errors}
 
 
 def _human_summary(data: dict[str, Any]) -> None:
@@ -131,6 +178,12 @@ def _human_summary(data: dict[str, Any]) -> None:
     help="Exit 0 silently when no desk db exists yet under --root "
     "(for hooks: only refresh an index someone already created).",
 )
+@click.option(
+    "--status",
+    is_flag=True,
+    help="Report index health instead of indexing (alias of `carrel catalog status`); "
+    "other options are ignored. Exit 4 when no desk db exists under --root.",
+)
 @click.pass_context
 @_handled
 def cmd(
@@ -140,6 +193,7 @@ def cmd(
     prune: bool,
     update_mode: bool,
     if_indexed: bool,
+    status: bool,
 ) -> None:
     """Index PATH... (default: the desk root) into .carrel/carrel.db.
 
@@ -148,36 +202,22 @@ def cmd(
     size + mtime) are skipped. Text comes from core.textextract; images are
     registered but only get searchable text with --ocr. Progress goes to
     stderr; the JSON summary is {"indexed", "skipped", "pruned", "errors"}.
+    `--status` prints the `carrel catalog status` report instead.
     """
     root = _root_of(ctx)
+    if status:
+        from carrel.commands.catalog import emit_status
+
+        emit_status(ctx, root)
+        return
     if if_indexed and not DeskDB.exists(root):
         return
     if update_mode and not paths:
         raise click.UsageError("--update requires at least one FILE argument")
 
-    targets = [Path(p).resolve() for p in paths] if paths else [root]
-    counts = {"indexed": 0, "skipped": 0, "pruned": 0}
-    errors: list[dict[str, str]] = []
-
-    with DeskDB(root) as db:
-        if update_mode:
-            for f in targets:
-                if not f.is_file() or detect(f) is FileType.UNKNOWN:
-                    counts["skipped"] += 1  # hook mode: never fail on odd files
-                    continue
-                _index_file(db, f, ocr=ocr, counts=counts, errors=errors, ctx=ctx)
-        else:
-            for top in targets:
-                if not top.exists():
-                    raise CarrelInputError(f"no such path: {top}")
-                for f in _walk(top):
-                    if detect(f) is FileType.UNKNOWN:
-                        continue  # not a supported type — not a candidate
-                    _index_file(db, f, ocr=ocr, counts=counts, errors=errors, ctx=ctx)
-        if prune:
-            counts["pruned"] = db.prune()
-
-    emit(ctx, {**counts, "errors": errors}, human=_human_summary)
+    data = index_paths(root, list(paths), update=update_mode, prune=prune, ocr=ocr)
+    counts, errors = data, data["errors"]
+    emit(ctx, data, human=_human_summary)
     missing = [e for e in errors if e.get("kind") == "missing_dependency"]
     nothing_else_happened = counts["indexed"] == 0 and counts["skipped"] == 0
     if missing and nothing_else_happened and len(missing) == len(errors) and not update_mode:
