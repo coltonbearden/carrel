@@ -2,13 +2,13 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 type: software
 title: "carrel"
-version: "0.1.0"
-date-released: "2026-07-16"
+version: "0.1.2"
+date-released: "2026-09-04"
 authors:
   - family-names: "Bearden"
     given-names: "Colton"
-repository-code: "https://github.com/FirstCastSolutions423/carrel"
-url: "https://github.com/FirstCastSolutions423/carrel"
+repository-code: "https://github.com/coltonbearden/carrel"
+url: "https://github.com/coltonbearden/carrel"
 license: "MIT"
 keywords:
   - "claude-code"

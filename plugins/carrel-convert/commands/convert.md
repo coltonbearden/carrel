@@ -24,4 +24,4 @@ Supported conversions (SRC type → targets): csv → html/json/md · html → m
 
 Always use `carrel --json convert ...` and interpret the result for the user: report each `{src, dest, via, ok}` record, celebrate what worked, and explain any failures. Exit code 3 means an optional binary is missing — relay the install hint from stderr. Exit code 4 means an unsupported input/conversion pair — suggest a supported target from the table above.
 
-**Requires the carrel CLI on PATH.** If `carrel` is not found, tell the user to install it with `uv tool install <path-to-carrel-repo>` (see the repo's INSTALL notes), or run it as `uv run carrel ...` from the carrel repo root.
+**Requires the carrel CLI on PATH.** If `carrel` is not found, tell the user to install it with `uv tool install carrel` (see the repo's INSTALL notes), or run it as `uv run carrel ...` from the carrel repo root.

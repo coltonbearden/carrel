@@ -5,7 +5,7 @@ Generated from the real `--help` output of carrel 0.1.0 (`uv run carrel <cmd> --
 
 Related docs: [Install](INSTALL.md) · [Quickstart](QUICKSTART.md) ·
 [Configuration](CONFIGURATION.md) · [Troubleshooting](TROUBLESHOOTING.md) ·
-[README](https://github.com/FirstCastSolutions423/carrel/blob/main/README.md)
+[README](https://github.com/coltonbearden/carrel/blob/main/README.md)
 
 ## Global flags
 
@@ -915,4 +915,4 @@ Options:
 
 ---
 
-Back to [README](https://github.com/FirstCastSolutions423/carrel/blob/main/README.md) · problems? see [Troubleshooting](TROUBLESHOOTING.md)
+Back to [README](https://github.com/coltonbearden/carrel/blob/main/README.md) · problems? see [Troubleshooting](TROUBLESHOOTING.md)

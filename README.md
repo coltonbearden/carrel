@@ -6,8 +6,8 @@
 
 <img src="https://img.shields.io/badge/python-3.12%2B-6E9EBF?labelColor=211A11" alt="Python 3.12+">
 <img src="https://img.shields.io/badge/license-MIT-B07C24?labelColor=211A11" alt="License: MIT">
-<a href="https://github.com/FirstCastSolutions423/carrel/actions"><img src="https://img.shields.io/github/actions/workflow/status/FirstCastSolutions423/carrel/test.yml?branch=main&label=tests&labelColor=211A11" alt="tests"></a>
-<a href="https://github.com/FirstCastSolutions423/carrel/releases"><img src="https://img.shields.io/github/v/release/FirstCastSolutions423/carrel?labelColor=211A11&color=F2A93C" alt="release"></a>
+<a href="https://github.com/coltonbearden/carrel/actions"><img src="https://img.shields.io/github/actions/workflow/status/coltonbearden/carrel/test.yml?branch=main&label=tests&labelColor=211A11" alt="tests"></a>
+<a href="https://github.com/coltonbearden/carrel/releases"><img src="https://img.shields.io/github/v/release/coltonbearden/carrel?labelColor=211A11&color=F2A93C" alt="release"></a>
 
 <br><br>
 
@@ -84,7 +84,7 @@ Add `--json` to any of these and you get machine-readable output on stable exit 
 This repo is also a Claude Code plugin marketplace: five plugins whose slash commands, agents, skills, and hooks all delegate to the CLI above.
 
 ```sh
-claude plugin marketplace add FirstCastSolutions423/carrel
+claude plugin marketplace add coltonbearden/carrel
 claude plugin install carrel-inspect@carrel
 ```
 
@@ -116,7 +116,7 @@ The flagship: a three-pane [Textual](https://textual.textualize.io/) desk. A fil
 
 ## Learn more
 
-- **[The docs site](https://firstcastsolutions423.github.io/carrel/)** — everything below, browsable
+- **[The docs site](https://coltonbearden.github.io/carrel/)** — everything below, browsable
 - [docs/HOW_THIS_WAS_BUILT.md](docs/HOW_THIS_WAS_BUILT.md) — the autonomous single-day build, from the primary sources
 - [docs/VISION.md](docs/VISION.md) — why a library desk, and the product principles
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — the adapter layer, the index, the plugin design

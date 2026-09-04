@@ -15,7 +15,7 @@ Use explicit `"./plugins/<name>"` sources (belt over pluginRoot cleverness).
 5. **carrel-agent** — agent `file-librarian.md` (indexes, searches, answers questions about a doc collection with citations to paths); skill `agent-workflows/SKILL.md` (looping patterns: watch+claude -p pipelines); hook `hooks/hooks.json`: PostToolUse on Write|Edit → `carrel index --update "$FILE" --if-indexed` via `${CLAUDE_PLUGIN_ROOT}/scripts/reindex.sh` (script guards: carrel on PATH + .carrel exists, always exit 0, <1s); `.mcp.json`: `{"mcpServers":{"carrel":{"command":"carrel","args":["mcp"]}}}`.
 
 ## Command markdown conventions
-Frontmatter: `description`, `allowed-tools: ["Bash(carrel *)"]`(verify field names against docs excerpt in tool-results before writing), body: what it does, then instruct Claude to run `carrel <cmd> ... --json` with user's request mapped to flags, interpret results for user. Every command notes: requires carrel CLI (`uv tool install` path per INSTALL).
+Frontmatter: `description`, `allowed-tools: ["Bash(carrel *)"]`(verify field names against docs excerpt in tool-results before writing), body: what it does, then instruct Claude to run `carrel <cmd> ... --json` with user's request mapped to flags, interpret results for user. Every command notes: requires carrel CLI (`uv tool install carrel` — see INSTALL).
 
 ## Acceptance
 `claude plugin validate .` passes (run in tests via subprocess, skip if claude absent). JSON files all parse; every commands/*.md has frontmatter description; hook script is executable and exits 0 without carrel index present.

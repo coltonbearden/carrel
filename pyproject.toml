@@ -1,6 +1,6 @@
 [project]
 name = "carrel"
-version = "0.1.1"
+version = "0.1.2"
 description = "A library desk for your files — and your agents. Local file toolkit for pdf/md/images/html/json/xml/csv: convert, OCR, inspect, index, search, pack for LLM context, watch, and more — plus a built-in Claude Code plugin marketplace."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -16,6 +16,13 @@ dependencies = [
     "markdown-it-py>=3.0",
     "textual>=1.0",
 ]
+
+[project.urls]
+Homepage = "https://coltonbearden.github.io/carrel/"
+Documentation = "https://coltonbearden.github.io/carrel/"
+Repository = "https://github.com/coltonbearden/carrel"
+Changelog = "https://github.com/coltonbearden/carrel/blob/main/CHANGELOG.md"
+Issues = "https://github.com/coltonbearden/carrel/issues"
 
 [project.scripts]
 carrel = "carrel.cli:main"

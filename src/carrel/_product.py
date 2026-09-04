@@ -5,11 +5,11 @@ PRODUCT = {
     "displayName": "Carrel",
     "tagline": "A library desk for your files — and your agents.",
     "description": "Local file toolkit for pdf/md/images/html/json/xml/csv: convert, OCR, inspect, index, search, pack for LLM context, watch, and more — plus a built-in Claude Code plugin marketplace.",
-    "version": "0.1.0",
+    "version": "0.1.2",
     "cli": "carrel",
     "package": "carrel",
     "marketplace": "carrel",
-    "repository": "https://github.com/FirstCastSolutions423/carrel",
+    "repository": "https://github.com/coltonbearden/carrel",
     "license": "MIT",
     "author": "Colton Bearden"
 }

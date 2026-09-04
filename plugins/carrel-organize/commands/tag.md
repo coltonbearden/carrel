@@ -21,4 +21,4 @@ carrel [--root DIR] tag find TAGS...        # files carrying ALL of the given ta
 
 Report what changed (or list the results) conversationally. Tags combine well with `/carrel-inspect:search --tag` for filtered full-text search — mention that when relevant.
 
-**Requires the carrel CLI on PATH.** If `carrel` is not found, tell the user to install it with `uv tool install <path-to-carrel-repo>` (see the repo's INSTALL notes), or run it as `uv run carrel ...` from the carrel repo root.
+**Requires the carrel CLI on PATH.** If `carrel` is not found, tell the user to install it with `uv tool install carrel` (see the repo's INSTALL notes), or run it as `uv run carrel ...` from the carrel repo root.

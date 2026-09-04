@@ -15,4 +15,4 @@ Method:
 5. **Answer with citations.** Every claim must name the file path (and page/heading when you know it). Format: the answer, then a "Sources:" list of paths. If the collection doesn't contain the answer, say so explicitly — never fill gaps from general knowledge without flagging it.
 6. **Leave breadcrumbs when asked.** If the user wants findings persisted, use `carrel --root DIR tag add PATH TAG` and `carrel --root DIR note add PATH "TEXT"`.
 
-Requires the carrel CLI on PATH. If `carrel` is missing, stop and report that it must be installed (`uv tool install <path-to-carrel-repo>` or `uv run carrel ...` from the carrel repo).
+Requires the carrel CLI on PATH. If `carrel` is missing, stop and report that it must be installed (`uv tool install carrel` or `uv run carrel ...` from the carrel repo).

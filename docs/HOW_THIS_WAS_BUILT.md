@@ -4,10 +4,10 @@ carrel v0.1.0 — the core library, 24 CLI commands, the desk TUI, 501 tests, fi
 
 This page is the factual account, from the primary sources committed in this repo:
 
-- [STATE.md](https://github.com/FirstCastSolutions423/carrel/blob/main/STATE.md) — the running state file the build resumed from
+- [STATE.md](https://github.com/coltonbearden/carrel/blob/main/STATE.md) — the running state file the build resumed from
 - [BUILD_PLAN.md](BUILD_PLAN.md) — the wave plan and acceptance criteria
 - [DECISIONS.md](DECISIONS.md) — the decision log
-- [specs/](https://github.com/FirstCastSolutions423/carrel/tree/main/specs) — the 15 module specs
+- [specs/](https://github.com/coltonbearden/carrel/tree/main/specs) — the 15 module specs
 - [AGENTS.md](AGENTS.md) — the builder agents and the agents carrel ships
 - [TEST_REPORT.md](TEST_REPORT.md) — the executed proof
 
@@ -48,7 +48,7 @@ Two structural details did a lot of work:
 
 ## The subagents: narrow roles, hard boundaries
 
-Five builder agents live in [`.claude/agents/`](https://github.com/FirstCastSolutions423/carrel/tree/main/.claude/agents), each with a role and an honesty rule ([AGENTS.md](AGENTS.md) has the full table):
+Five builder agents live in [`.claude/agents/`](https://github.com/coltonbearden/carrel/tree/main/.claude/agents), each with a role and an honesty rule ([AGENTS.md](AGENTS.md) has the full table):
 
 | Agent | Role | The rule that kept it honest |
 |---|---|---|
@@ -58,7 +58,7 @@ Five builder agents live in [`.claude/agents/`](https://github.com/FirstCastSolu
 | `doc-smith` | Reference docs, guides, cookbook recipes | Never documents a flag it didn't see in real `--help` output; runs every recipe before writing it down |
 | `design-artist` | SVG logo/banner, palette, README/TUI theming | Original hand-authored SVG only; palette defined once in [BRAND.md](BRAND.md) |
 
-Work was divided by **specs**: 15 of them in [specs/](https://github.com/FirstCastSolutions423/carrel/tree/main/specs) (`00-core.md` through `14-fixtures.md`). Each spec carries an **Owns:** line — the exact file paths that agent may write — and an **Acceptance** section of concrete, testable assertions. The core spec's interfaces were declared *binding as written*, so four agents could build against them simultaneously without drift.
+Work was divided by **specs**: 15 of them in [specs/](https://github.com/coltonbearden/carrel/tree/main/specs) (`00-core.md` through `14-fixtures.md`). Each spec carries an **Owns:** line — the exact file paths that agent may write — and an **Acceptance** section of concrete, testable assertions. The core spec's interfaces were declared *binding as written*, so four agents could build against them simultaneously without drift.
 
 ## The discipline: claims are verified by execution
 

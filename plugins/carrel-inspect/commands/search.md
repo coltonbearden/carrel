@@ -24,4 +24,4 @@ The index must exist first: if the search errors because there is no index under
 
 Always use the global `--json` and interpret the `{path, score, snippet}` hits (lower bm25 score = better): present the top hits with their snippets, matched terms are bracketed. No hits → suggest a broader query, a different `--type`, or re-indexing.
 
-**Requires the carrel CLI on PATH.** If `carrel` is not found, tell the user to install it with `uv tool install <path-to-carrel-repo>` (see the repo's INSTALL notes), or run it as `uv run carrel ...` from the carrel repo root.
+**Requires the carrel CLI on PATH.** If `carrel` is not found, tell the user to install it with `uv tool install carrel` (see the repo's INSTALL notes), or run it as `uv run carrel ...` from the carrel repo root.

@@ -7,7 +7,7 @@ capability and are detected at runtime — nothing breaks when one is missing
 
 Related docs: [Quickstart](QUICKSTART.md) · [Reference](REFERENCE.md) ·
 [Configuration](CONFIGURATION.md) · [Troubleshooting](TROUBLESHOOTING.md) ·
-[README](https://github.com/FirstCastSolutions423/carrel/blob/main/README.md)
+[README](https://github.com/coltonbearden/carrel/blob/main/README.md)
 
 ## Prerequisites
 
@@ -17,10 +17,16 @@ Related docs: [Quickstart](QUICKSTART.md) · [Reference](REFERENCE.md) ·
 
 ## Install the CLI (recommended)
 
-From a clone of this repository:
+From PyPI (recommended):
 
 ```bash
-git clone <repo-url> ~/projects/carrel
+uv tool install carrel      # or: pipx install carrel
+```
+
+Or from a clone of this repository (to hack on it):
+
+```bash
+git clone https://github.com/coltonbearden/carrel.git ~/projects/carrel
 cd ~/projects/carrel
 uv tool install .
 ```
@@ -31,7 +37,7 @@ tool update-shell` fixes it if not). Verify:
 
 ```console
 $ carrel --version
-carrel 0.1.0 — A library desk for your files — and your agents.
+carrel 0.1.2 — A library desk for your files — and your agents.
 ```
 
 Having `carrel` on `PATH` matters beyond convenience: the Claude Code plugins
@@ -66,7 +72,7 @@ their versions, and the exact install hint for each missing one. Run it first:
 
 ```console
 $ carrel doctor
-carrel 0.1.0 · python 3.12.13
+carrel 0.1.2 · python 3.12.13
                 external tools
 ┃ adapter     ┃ status  ┃ version / install hint ┃
 │ pandoc      │ found   │ pandoc 3.7.0.2         │

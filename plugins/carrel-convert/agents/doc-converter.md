@@ -14,4 +14,4 @@ Working rules:
 4. **Degrade gracefully.** Exit code 3 means a missing optional binary: report which binary, the install hint from stderr, and which files were skipped because of it. Do not retry in a loop.
 5. **Report a scoreboard.** Finish with: converted OK (n), failed (n, with reasons), skipped (n, why), and the output directory. List every failed file explicitly.
 
-Requires the carrel CLI on PATH. If `carrel` is missing, stop and report that it must be installed (`uv tool install <path-to-carrel-repo>` or `uv run carrel ...` from the carrel repo).
+Requires the carrel CLI on PATH. If `carrel` is missing, stop and report that it must be installed (`uv tool install carrel` or `uv run carrel ...` from the carrel repo).

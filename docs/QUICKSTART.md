@@ -8,7 +8,7 @@ Prerequisite: carrel installed and on `PATH` ([INSTALL.md](INSTALL.md)).
 Working from the repo instead? Substitute `uv run carrel` everywhere.
 
 Related docs: [Reference](REFERENCE.md) · [Configuration](CONFIGURATION.md) ·
-[Troubleshooting](TROUBLESHOOTING.md) · [README](https://github.com/FirstCastSolutions423/carrel/blob/main/README.md)
+[Troubleshooting](TROUBLESHOOTING.md) · [README](https://github.com/coltonbearden/carrel/blob/main/README.md)
 
 ## 0. Check the room — `doctor`
 
@@ -17,7 +17,7 @@ carrel doctor
 ```
 
 ```text
-carrel 0.1.0 · python 3.12.13
+carrel 0.1.2 · python 3.12.13
                 external tools
 │ pandoc      │ found   │ pandoc 3.7.0.2            │
 │ tesseract   │ found   │ tesseract 5.5.0           │
@@ -217,4 +217,4 @@ Action outputs land in `./carrel-out/`. Keys: `q` quit, `/` search, `t` tag,
 - Runnable recipes: `examples/cookbook/` and `snippets/` in the repo.
 - Claude Code integration: the repo doubles as a plugin marketplace
   (`/inspect`, `/pack`, `/watch-folder`, …) — see the repo
-  [README](https://github.com/FirstCastSolutions423/carrel/blob/main/README.md).
+  [README](https://github.com/coltonbearden/carrel/blob/main/README.md).
