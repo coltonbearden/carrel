@@ -19,6 +19,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 import zipfile
@@ -65,6 +66,22 @@ XLSX_SHEETS: dict[str, list[list[object]]] = {
         ["Clara", XLSX_SENTINEL.title(), 21],
     ],
 }
+
+
+# docx/odt/epub/rtf/xlsx come out of pandoc and openpyxl, whose bytes differ
+# between tool versions (CI's pandoc is not the dev box's). They are committed
+# once and kept; `--force` regenerates them deliberately. Everything else is
+# pure-Python and must stay byte-identical, which CI checks.
+FORCE = "--force" in sys.argv
+
+
+def write_once(name: str, data: bytes) -> None:
+    """Write a tool-generated fixture only when absent (or under --force)."""
+    path = FIXDIR / name
+    if path.exists() and not FORCE:
+        print(f"  kept       {name}  (tool-generated; --force to regenerate)")
+        return
+    write(name, data)
 
 
 def write(name: str, data: bytes) -> None:
@@ -456,20 +473,29 @@ def _pandoc_bytes(pandoc: str, to_fmt: str, suffix: str, *extra: str) -> bytes:
         return out.read_bytes()
 
 
+def _all_present(*names: str) -> bool:
+    return not FORCE and all((FIXDIR / n).exists() for n in names)
+
+
 def gen_office_docs() -> None:
+    names = ("sample.docx", "sample.odt", "sample.epub", "sample.rtf")
+    if _all_present(*names):
+        for n in names:
+            print(f"  kept       {n}  (tool-generated; --force to regenerate)")
+        return
     pandoc = shutil.which("pandoc")
     if pandoc is None:
         print("skip: pandoc missing (sample.docx/.odt/.epub/.rtf not generated)")
         return
-    write("sample.docx", _pandoc_bytes(pandoc, "docx", ".docx"))
-    write("sample.odt", _pandoc_bytes(pandoc, "odt", ".odt"))
-    write(
+    write_once("sample.docx", _pandoc_bytes(pandoc, "docx", ".docx"))
+    write_once("sample.odt", _pandoc_bytes(pandoc, "odt", ".odt"))
+    write_once(
         "sample.epub",
         _pandoc_bytes(
             pandoc, "epub", ".epub", "-M", "lang=en", "-M", "identifier=urn:carrel:sample-epub"
         ),
     )
-    write("sample.rtf", _pandoc_bytes(pandoc, "rtf", ".rtf", "-s"))
+    write_once("sample.rtf", _pandoc_bytes(pandoc, "rtf", ".rtf", "-s"))
 
 
 def _restamp_zip(data: bytes) -> bytes:
@@ -485,6 +511,9 @@ def _restamp_zip(data: bytes) -> bytes:
 
 
 def gen_xlsx() -> None:
+    if _all_present("sample.xlsx"):
+        print("  kept       sample.xlsx  (tool-generated; --force to regenerate)")
+        return
     try:
         from openpyxl import Workbook
     except ImportError:
@@ -502,7 +531,7 @@ def gen_xlsx() -> None:
     wb.properties.modified = FIXED_DT.replace(tzinfo=None)
     buf = io.BytesIO()
     wb.save(buf)
-    write("sample.xlsx", _restamp_zip(buf.getvalue()))
+    write_once("sample.xlsx", _restamp_zip(buf.getvalue()))
 
 
 # --------------------------------------------------------------------------

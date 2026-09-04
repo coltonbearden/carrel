@@ -2,7 +2,8 @@
 
 The script comes from click's own shell-completion classes, generated
 in-process (the equivalent of `_CARREL_COMPLETE=bash_source carrel`) — no
-subprocess, no dependency on carrel being on PATH at generation time.
+subprocess at all, and no dependency on carrel being on PATH at generation
+time or on which shell version happens to run this command.
 """
 
 from __future__ import annotations
@@ -48,7 +49,7 @@ def install_hint(shell: str) -> str:
 
 def completion_script(shell: str) -> str:
     """Generate the completion script for SHELL in-process via click."""
-    from click.shell_completion import get_completion_class
+    from click.shell_completion import ShellComplete, get_completion_class
 
     from carrel.cli import cli  # the root group: completion needs the real command tree
 
@@ -58,9 +59,13 @@ def completion_script(shell: str) -> str:
             f"unsupported shell {shell!r} (choose from {', '.join(SHELLS)})",
             param_hint="SHELL",
         )
-    # Note: for bash, click's own source() probes `bash --version` to warn about
-    # bash < 4.4; that is click's check, not carrel re-invoking itself.
-    return completion_cls(cli, {}, _PROG, COMPLETE_VAR).source()
+    completer = completion_cls(cli, {}, _PROG, COMPLETE_VAR)
+    # Render through the base implementation on purpose. BashComplete.source()
+    # first spawns the *local* bash to warn about versions < 4.4 (macOS ships
+    # 3.2), and that warning lands in our output — corrupting `--json` and any
+    # redirect. The script is data about the target shell, not this machine, so
+    # the bash >= 4.4 caveat lives in --install-hint instead.
+    return ShellComplete.source(completer)
 
 
 def _as_comment(text: str) -> str:

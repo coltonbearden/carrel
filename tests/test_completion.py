@@ -176,3 +176,31 @@ def test_completion_is_registered_and_doctor_knows_it():
 
     assert COMMANDS["completion"] == "completion"
     assert CAPABILITIES["completion"]["required"] == ()
+
+
+# --- regression: the script describes the target shell, not this machine -----
+
+
+def test_bash_script_never_probes_the_local_shell(monkeypatch):
+    """click's BashComplete.source() spawns bash to warn about versions < 4.4.
+
+    macOS ships bash 3.2, so that warning used to land in our output and corrupt
+    `--json` (CI: test-minimal (macos), run 33880114130). carrel renders from the
+    base class instead, so no subprocess runs and the output stays pure data.
+    """
+    import subprocess
+
+    def explode(*args: object, **kwargs: object) -> None:
+        raise AssertionError(f"completion spawned a subprocess: {args!r}")
+
+    monkeypatch.setattr(subprocess, "run", explode)
+    monkeypatch.setattr(subprocess, "Popen", explode)
+
+    for shell in SHELLS:
+        script = completion_script(shell)
+        assert "not supported" not in script
+        assert "Couldn't detect" not in script
+
+    result = CliRunner().invoke(cli, ["completion", "bash", "--json"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output)["shell"] == "bash"
