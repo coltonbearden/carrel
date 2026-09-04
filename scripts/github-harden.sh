@@ -179,7 +179,7 @@ for name in "main" "release tags"; do
     bad "ruleset '$name' missing"
   fi
 done
-pol="$(api "repos/$REPO/environments/pypi/deployment-branch-policies" --jq '[.branch_policies[] | .type + ":" + .name] | join(",")' 2>/dev/null || echo "")"
+pol="$(api "repos/$REPO/environments/pypi/deployment-branch-policies" 2>/dev/null | jq -r 'try ([.branch_policies[] | .type + ":" + .name] | join(",")) catch ""' || true)"
 [ "$pol" = "tag:v*" ] && ok "pypi environment deploys only from tag v*" || bad "pypi deployment policy = '$pol'"
 
 if [ "$FAILED" -ne 0 ]; then echo "some checks failed" >&2; exit 1; fi
