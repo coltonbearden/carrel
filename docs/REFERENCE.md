@@ -906,6 +906,8 @@ Options:
                   x>=0]
   --once          Exit after the first triggered action batch.
   --timeout SECS  Hard stop after SECS seconds.  [x>0]
+  --action-timeout SECS  Kill an action that runs longer than SECS (logged as
+                  rc=124; default 300).
   --json-lines    Log one JSON object per action to stdout instead of human
                   lines.
   --help          Show this message and exit.

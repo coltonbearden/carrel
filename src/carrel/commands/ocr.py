@@ -11,17 +11,19 @@ from __future__ import annotations
 
 import functools
 import shutil
-import subprocess
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import click
 
 from carrel.core import adapters
 from carrel.core.filetypes import FileType, detect_or_die
 from carrel.core.output import CarrelError, CarrelInputError, ExitCode, emit, fail, progress
+
+if TYPE_CHECKING:
+    import subprocess
 
 TARGETS = ("txt", "pdf", "md")
 

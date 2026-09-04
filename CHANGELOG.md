@@ -21,6 +21,14 @@ Housekeeping release after the repository moved to `coltonbearden/carrel`.
   point at `coltonbearden/carrel`; install hints use `uv tool install carrel`.
 - **Changed:** dependencies bumped for security advisories (pypdf ≥ 6.16.1,
   mkdocs-material ≥ 9.7.7).
+- **Fixed (review follow-ups):** `--json` also works after nested subcommands
+  (`carrel tag ls … --json`); an unchanged `index` re-run stays exit 0 and
+  `--update` hook mode never fails; per-file tool timeouts are recorded instead
+  of aborting the walk; a timed-out `watch` action is killed as a whole process
+  group; undecodable tool output can no longer crash `doctor`;
+  `sync_product.py` escapes TOML strings and touches only plugin versions;
+  the publish workflow requires the release commit to be on `main` and diffs
+  every generated file.
 - **Internal:** ruff + mypy gate in CI, SHA-pinned actions, split build/publish
   release workflow with tag↔version check and attestations, Dependabot config,
   `SECURITY.md`, `CODEOWNERS`, `py.typed`, pre-commit.

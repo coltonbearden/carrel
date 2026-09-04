@@ -341,7 +341,7 @@ class TestMcpSubprocess:
             },
             {"jsonrpc": "2.0", "id": 4, "method": "no/such/method"},
         ]
-        proc = subprocess.run(  # noqa: PLW1510 — tests inspect returncode
+        proc = subprocess.run(
             [
                 sys.executable,
                 "-c",

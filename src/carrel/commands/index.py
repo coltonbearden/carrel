@@ -87,6 +87,9 @@ def _index_file(
     except CarrelInputError as e:
         errors.append({"path": rel, "error": str(e), "kind": "bad_input"})
         return
+    except CarrelError as e:  # e.g. ToolTimeoutError: one slow file must not abort the walk
+        errors.append({"path": rel, "error": str(e), "kind": "error"})
+        return
     fid = db.upsert_file(path, ftype=detect(path).value)
     db.set_content(fid, path, text)
     counts["indexed"] += 1
@@ -176,8 +179,10 @@ def cmd(
 
     emit(ctx, {**counts, "errors": errors}, human=_human_summary)
     missing = [e for e in errors if e.get("kind") == "missing_dependency"]
-    if missing and counts["indexed"] == 0 and len(missing) == len(errors):
-        # every candidate needed a binary we don't have: that is exit 3, not success
+    nothing_else_happened = counts["indexed"] == 0 and counts["skipped"] == 0
+    if missing and nothing_else_happened and len(missing) == len(errors) and not update_mode:
+        # every file touched this run needed a binary we don't have: exit 3, not success.
+        # (Fresh files skipped as unchanged count as success; --update hook mode never fails.)
         fail(
             f"nothing indexed — {len(missing)} file(s) need a missing tool:\n{missing[0]['error']}",
             ExitCode.MISSING_DEP,

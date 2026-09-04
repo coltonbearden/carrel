@@ -107,7 +107,7 @@ def _tesseract_langs() -> list[str]:
         return []
     try:
         proc = adapters.run("tesseract", "--list-langs", timeout=15)
-    except (CarrelError, OSError):
+    except (CarrelError, OSError, ValueError):
         return []
     # header line ends with ':'; langs follow, one per line (older builds use stderr)
     out = (proc.stdout or "") + (proc.stderr or "")

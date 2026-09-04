@@ -442,7 +442,7 @@ def test_contrast_bad_hex_is_usage_error():
 def test_subprocess_real_cli_thumb(tmp_copy, tmp_path: Path):
     src = tmp_copy("sample.png")
     out = tmp_path / "thumbs"
-    proc = subprocess.run(  # noqa: PLW1510 — tests inspect returncode
+    proc = subprocess.run(
         [
             sys.executable,
             "-m",

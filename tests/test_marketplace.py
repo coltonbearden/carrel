@@ -53,7 +53,7 @@ def read_frontmatter(md: Path) -> dict[str, str]:
 
 
 def run_hook(payload: str, cwd: Path, env: dict[str, str] | None = None):
-    return subprocess.run(  # noqa: PLW1510 — tests inspect returncode
+    return subprocess.run(
         [str(HOOK_SCRIPT)],
         input=payload,
         capture_output=True,
@@ -273,7 +273,7 @@ def test_claude_plugin_validate():
     targets = [REPO, *sorted(p for p in PLUGINS_DIR.iterdir() if p.is_dir())]
     for target in targets:
         try:
-            proc = subprocess.run(  # noqa: PLW1510 — tests inspect returncode
+            proc = subprocess.run(
                 ["claude", "plugin", "validate", str(target)],
                 capture_output=True,
                 text=True,

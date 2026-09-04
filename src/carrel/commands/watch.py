@@ -18,10 +18,13 @@ re-trigger the watcher — point outputs at another directory or narrow --glob.
 
 from __future__ import annotations
 
+import contextlib
 import fnmatch
 import functools
 import json
+import os
 import shlex
+import signal
 import subprocess
 import threading
 import time
@@ -123,23 +126,7 @@ class _Watcher:
         try:
             for template in self.runs:
                 rendered = _render(template, path)
-                try:
-                    proc = subprocess.run(
-                        rendered,
-                        shell=True,
-                        capture_output=True,
-                        text=True,
-                        timeout=self.action_timeout,
-                        check=False,
-                    )
-                except subprocess.TimeoutExpired as e:
-                    proc = subprocess.CompletedProcess(
-                        rendered,
-                        returncode=124,
-                        stdout=_as_text(e.stdout),
-                        stderr=_as_text(e.stderr)
-                        + f"\naction timed out after {self.action_timeout:g}s (rc=124)",
-                    )
+                proc = _run_action(rendered, self.action_timeout)
                 self._log(event_type, path, rendered, proc)
         finally:
             with self.lock:
@@ -167,6 +154,36 @@ class _Watcher:
                 click.echo(proc.stdout.rstrip())
         if proc.stderr.strip():
             click.echo(proc.stderr.rstrip(), err=True)
+
+
+def _run_action(rendered: str, timeout: float | None) -> subprocess.CompletedProcess[str]:
+    """Run one shell action in its own process group; on timeout kill the whole group.
+
+    `subprocess.run(timeout=…)` only kills /bin/sh and orphans the real worker,
+    which keeps writing into the watched directory. start_new_session + killpg
+    takes the worker down with it, so a timed-out action leaves no stragglers.
+    """
+    with subprocess.Popen(
+        rendered,
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    ) as child:
+        try:
+            out, err = child.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(child.pid, signal.SIGKILL)
+            out, err = child.communicate()
+            return subprocess.CompletedProcess(
+                rendered,
+                returncode=124,
+                stdout=out or "",
+                stderr=(err or "") + f"\naction timed out after {timeout:g}s (rc=124)",
+            )
+        return subprocess.CompletedProcess(rendered, child.returncode, out or "", err or "")
 
 
 def _as_text(data: bytes | str | None) -> str:
