@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.2.0 — unreleased
+## v0.2.0 — 2026-09-04
 
 The desk grows up for agents: the whole CLI is reachable over MCP, `pack` can
 select by relevance or by git history, the index is versioned and portable,
