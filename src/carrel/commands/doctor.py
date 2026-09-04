@@ -95,6 +95,11 @@ CAPABILITIES: dict[str, dict[str, Any]] = {
         "optional": (),
         "note": "shell completion scripts (click, in-process)",
     },
+    "catalog": {
+        "required": (),
+        "optional": (),
+        "note": "desk db export/import/status (stdlib sqlite)",
+    },
     "doctor": {"required": (), "optional": (), "note": "this report"},
     "mcp": {"required": (), "optional": (), "note": "stdio JSON-RPC (stdlib)"},
     "desk": {
