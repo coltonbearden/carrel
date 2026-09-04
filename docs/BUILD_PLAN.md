@@ -46,3 +46,37 @@ Waves of ≤4 parallel subagents. Owner types from `.claude/agents/`. Every task
 - If a Wave 3 task slips badly: cut `proof`/`color` first, then `form build --pdf` (keep fill), then near-dupe. Log in FEATURES.md.
 - If W4.2 TUI slips: reduce to two panes (tree + inspector w/ actions) before cutting.
 - `recipes` runner and PAdES already cut (FEATURES.md).
+
+---
+
+# v0.2.0 — planned 2026-09-04
+
+Same mechanism: waves of ≤3 parallel `module-builder` subagents on a feature branch `feat/v0.2.0`, one sub-branch per spec, merged into the feature branch only after the orchestrator has run that spec's Acceptance section by hand. Per-wave gates: `uv run pytest` · `uv run ruff check src tests scripts && uv run ruff format --check src tests scripts && uv run mypy` · `uv run mkdocs build --strict` · `claude plugin validate .`. The release PR from `feat/v0.2.0` to `main` needs green `lint`/`test`/`test-minimal`; tagging and PyPI stay the user's step (docs/RELEASING.md).
+
+**Ownership rule:** no file is owned by two specs in the same wave. Shared files are sequenced: `src/carrel/cli.py` (19 → 17), `src/carrel/commands/inspect.py` (18 → 15), `pyproject.toml` / `core/adapters.py` (19 only), `.github/workflows/test.yml` (21 only; orchestrator adds the spec-20 drift step in wave 3).
+
+## Wave 1 — foundations (no cross-deps)
+
+- [ ] V1.1 office + ebook formats (docx/odt/epub/rtf/xlsx) — **module-builder** — specs/18 — size L
+- [ ] V1.2 install ergonomics: extras, `completion`, `git` adapter, `CARREL_BIN_*`, dead-adapter removal — **module-builder** — specs/19 — size M
+- [ ] V1.3 drift + gates: generated REFERENCE, COOKBOOK nav, CI matrix, coverage floor — **module-builder** — specs/21 — size M
+
+## Wave 2 — agent surface (needs wave 1)
+
+- [ ] V2.1 mcp v2: 10 tools on impl functions, resources, stdio test — **module-builder** — specs/15 — size L
+- [ ] V2.2 pack v2: `--query`, `--since/--changed`, negation, dedupe, exact tokens, outline — **module-builder** — specs/16 — size L
+- [ ] V2.3 catalog: schema migrations, export/import, status — **module-builder** — specs/17 — size M
+
+## Wave 3 — surface completion & release
+
+- [ ] V3.1 plugins v2: `sync_plugins.py`, every command as a slash command, `carrel-documents`, `carrel-guard` — **module-builder** — specs/20 — size L
+- [ ] V3.2 integration review sweep of all commands (`--help`, fixture run, `--json`, missing-file/binary paths, adapter-layer grep) — **integration-reviewer** — all v0.2.0 specs — size M
+- [ ] V3.3 docs pass from real output (README type list + extras, MARKETPLACE, QUICKSTART, TEST_REPORT with the wave-3 proofs) — **doc-smith** — size M
+- [ ] V3.4 orchestrator: `sync_reference.py`, `sync_plugins.py`, bump `product.json` → 0.2.0, `sync_product.py`, CHANGELOG entry, release PR
+
+## Scope guards (v0.2.0)
+
+- If wave 2 slips: cut `pack --outline` and `--tokenizer exact` first (both isolated flags), then MCP resources (keep the 10 tools). Log in FEATURES.md.
+- If `carrel-guard` cannot rewrite `Read` input reliably on the installed Claude Code, ship it as `deny` + reason naming the `carrel convert` command, and document.
+- The Windows CI job is advisory (`continue-on-error`) for v0.2.0; promote to required in the first release where it has been green on `main` for two consecutive weeks.
+- Textual moves to the `tui` extra (D-007); if user feedback during the release cycle objects, revert to a core dependency in a patch release — the guard in `commands/desk.py` makes either choice safe.

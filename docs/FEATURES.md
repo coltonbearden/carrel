@@ -32,6 +32,18 @@ File types: pdf md jpg jpeg png ico txt html json xml csv.
 | **Invented:** recipes | `carrel run <recipe.yaml>` | custom mini-pipeline runner | — | stretch |
 | Cryptographic PDF signing (PAdES) | — | stretch (needs pyHanko + key mgmt) | pdf | stretch |
 
+## v0.2.0 — planned rows (specs/15–21; status tracked in docs/BUILD_PLAN.md)
+
+| Capability | Command | Strategy | Types | Spec |
+|---|---|---|---|---|
+| Office & ebook input/output | `carrel convert` / `inspect` / `index` / `search` / `pack` / `diff` / `audiobook` via `core.textextract` | wrap:pandoc (docx/odt/epub/rtf read + write), lib:openpyxl via `carrel[office]` (xlsx→csv/json) | docx odt epub rtf xlsx | 18 |
+| Query-driven & git-aware packing | `carrel pack --query / --since / --changed / --dedupe-content / --outline` | custom over FTS5 ranking; wrap:git; lib:tiktoken via `carrel[tokens]` for `--tokenizer exact`; `.gitignore` negation | all | 16 |
+| Whole desk over MCP | `carrel mcp` (10 tools + 2 resource templates) | custom stdlib JSON-RPC, delegating to command impl functions | all | 15 |
+| Catalog: schema migrations, export/import, status | `carrel catalog export/import/status`, `carrel index --status` | custom (`PRAGMA user_version`, JSON sidecar of tags+notes) | — | 17 |
+| Install ergonomics | `carrel completion bash/zsh/fish`; extras `tui/office/tokens/all`; `CARREL_BIN_<NAME>` override | lib:click completions; pyproject extras | — | 19 |
+| Plugin surface generated from `--help` | 7 plugins (adds `carrel-documents`, `carrel-guard`); `scripts/sync_plugins.py --check` gate | custom; hooks `PreToolUse(Read)` → text conversion, `SessionStart` → capability summary | — | 20 |
+| Drift gates & CI matrix | `scripts/sync_reference.py`; COOKBOOK nav page; macOS required, Windows advisory; coverage floor | custom | — | 21 |
+
 ## Explicit scope notes
 
 - **PDF redaction** is true redaction (rasterization destroys the text layer) — documented tradeoff; searchability restorable via `carrel ocr` afterwards.
