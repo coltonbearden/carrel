@@ -30,6 +30,7 @@ Options:
 Commands:
   audiobook       Narrate SRC (txt, md, pdf) into an audiobook.
   color           Color tools: dominant palette, ICC profile conversion, WCAG contrast.
+  completion      Print a completion script for SHELL (bash, zsh, or fish).
   convert         Convert SRC...
   dedupe          Report duplicate files under DIRS (recursively; hidden entries skipped).
   desk            Open the interactive desk TUI on ROOT (default: --root, then cwd).
@@ -63,10 +64,11 @@ Commands:
 
 ## Commands
 
-24 commands:
+25 commands:
 
 [audiobook](#carrel-audiobook) ·
 [color](#carrel-color) ·
+[completion](#carrel-completion) ·
 [convert](#carrel-convert) ·
 [dedupe](#carrel-dedupe) ·
 [desk](#carrel-desk) ·
@@ -177,6 +179,26 @@ Options:
   --help             Show this message and exit.
 ```
 
+## carrel completion
+
+```text
+Usage: carrel completion [OPTIONS] {bash|zsh|fish}
+
+  Print a completion script for SHELL (bash, zsh, or fish).
+
+    eval "$(carrel completion bash)"      # ~/.bashrc
+    eval "$(carrel completion zsh)"       # ~/.zshrc, after compinit
+    carrel completion fish > ~/.config/fish/completions/carrel.fish
+
+  The script is produced in-process by click; an unknown shell exits 2. With --json, emits {"shell":
+  ..., "script": ...}.
+
+Options:
+  --install-hint  Append, as a comment block, how to enable the script in that shell.
+  --json          Machine-readable JSON output.
+  --help          Show this message and exit.
+```
+
 ## carrel convert
 
 ```text
@@ -188,26 +210,39 @@ Usage: carrel convert [OPTIONS] SRC...
   overwritten without --force. With --json, prints one JSON array of {"src", "dest", "via", "ok"}
   records.
 
+  Office and ebook sources (docx, odt, epub, rtf) are read by pandoc and can go to md/html/txt/pdf
+  (pdf also needs weasyprint); md/html/txt can be written as docx or odt, and docx <-> epub round-
+  trips. xlsx reads need the `office` extra (openpyxl) and go to csv or json only.
+
 Options:
-  --to EXT             Target type: pdf, md, txt, html, json, xml, csv, png, jpg, ico.  [required]
+  --to EXT             Target type: pdf, md, txt, html, json, xml, csv, png, jpg, ico, docx, odt,
+                       epub.  [required]
   -o, --output FILE    Explicit output path (single SRC only).
   --out-dir DIRECTORY  Write outputs into this directory (required for multiple SRC).
   --force              Overwrite existing outputs.
   --pages [first|all]  pdf → png/jpg only: rasterize the first page, or every page as DEST-1..N.
                        [default: first]
+  --sheet NAME|N|all   xlsx → csv/json only: pick a sheet by name or 1-based number (default: first;
+                       json defaults to every sheet). 'all' with csv writes DEST-<sheet>.csv per
+                       sheet.
   --json               Machine-readable JSON output.
   --help               Show this message and exit.
 
   Supported conversions (SRC type → --to targets):
     csv   → html, json, md
-    html  → md, pdf, txt
+    docx  → epub, html, md, pdf, txt
+    epub  → docx, html, md, pdf, txt
+    html  → docx, md, odt, pdf, txt
     ico   → jpg, pdf, png
     jpg   → ico, pdf, png
     json  → csv, html, xml
-    md    → html, pdf, txt
+    md    → docx, html, odt, pdf, txt
+    odt   → html, md, pdf, txt
     pdf   → html, jpg, md, png, txt
     png   → ico, jpg, pdf
-    txt   → html, md, pdf
+    rtf   → html, md, pdf, txt
+    txt   → docx, html, md, odt, pdf
+    xlsx  → csv, json
     xml   → json
 ```
 
@@ -499,7 +534,10 @@ Usage: carrel inspect [OPTIONS] PATH
   type detail: pdf (pages, title/author/producer, encryption, form fields, annotations), images
   (dimensions, mode, EXIF summary), json (shape, key count, depth), csv (dialect, columns, rows),
   xml (root tag, element count, depth), html (title, headings outline, link/img counts), md
-  (headings outline, word count), txt (lines/words/chars).
+  (headings outline, word count), txt (lines/words/chars), docx (paragraphs, words,
+  title/author/created), epub (title, creator, language, spine items, words), odt/rtf (words), xlsx
+  (sheets with row/column counts; needs the `office` extra). Word counts for office/ebook files use
+  pandoc and are null without it.
 
 Options:
   --json  Machine-readable JSON output.

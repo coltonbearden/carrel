@@ -111,7 +111,8 @@ class TestDoctor:
                 assert not row["missing"]
         # commands with no external requirements are always ok
         by_cmd = {r["command"]: r for r in report["commands"]}
-        for always_ok in ("pack", "index", "search", "tag", "note", "mcp", "desk"):
+        # desk is gated on the `tui` extra since D-007, so it is not in this list
+        for always_ok in ("pack", "index", "search", "tag", "note", "mcp"):
             assert by_cmd[always_ok]["status"] == "ok"
 
 

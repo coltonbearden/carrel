@@ -187,7 +187,7 @@ def test_search_type_filter(two_docs: Path):
 
 
 def test_search_bad_type_is_usage_error(two_docs: Path):
-    run("--root", str(two_docs), "search", "bumfuzzle", "--type", "docx", expect=2)
+    run("--root", str(two_docs), "search", "bumfuzzle", "--type", "wav", expect=2)
 
 
 def test_search_tag_filter(two_docs: Path):

@@ -57,9 +57,9 @@ Same mechanism: waves of ≤3 parallel `module-builder` subagents on a feature b
 
 ## Wave 1 — foundations (no cross-deps)
 
-- [ ] V1.1 office + ebook formats (docx/odt/epub/rtf/xlsx) — **module-builder** — specs/18 — size L
-- [ ] V1.2 install ergonomics: extras, `completion`, `git` adapter, `CARREL_BIN_*`, dead-adapter removal — **module-builder** — specs/19 — size M
-- [ ] V1.3 drift + gates: generated REFERENCE, COOKBOOK nav, CI matrix, coverage floor — **module-builder** — specs/21 — size M
+- [x] V1.1 office + ebook formats (docx/odt/epub/rtf/xlsx) — **module-builder** — specs/18 — size L
+- [x] V1.2 install ergonomics: extras, `completion`, `git` adapter, `CARREL_BIN_*`, dead-adapter removal — **module-builder** — specs/19 — size M
+- [x] V1.3 drift + gates: generated REFERENCE, COOKBOOK nav, CI matrix, coverage floor — **module-builder** — specs/21 — size M
 
 ## Wave 2 — agent surface (needs wave 1)
 

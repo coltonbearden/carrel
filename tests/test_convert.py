@@ -363,9 +363,9 @@ def test_missing_source_exits_4(tmp_path: Path):
 
 def test_unknown_target_type_is_usage_error(tmp_copy):
     src = tmp_copy("sample.txt")
-    res = run("convert", str(src), "--to", "docx")
+    res = run("convert", str(src), "--to", "wav")
     assert res.exit_code == 2
-    assert "docx" in all_output(res)
+    assert "wav" in all_output(res)
 
 
 # ------------------------------------------------------- multi-src / -o

@@ -32,6 +32,11 @@ FIXTURE_TYPES = [
     ("form.pdf", FileType.PDF),
     ("scanned.pdf", FileType.PDF),
     ("b.pdf", FileType.PDF),
+    ("sample.docx", FileType.DOCX),
+    ("sample.odt", FileType.ODT),
+    ("sample.epub", FileType.EPUB),
+    ("sample.rtf", FileType.RTF),
+    ("sample.xlsx", FileType.XLSX),
 ]
 
 

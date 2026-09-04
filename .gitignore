@@ -11,4 +11,5 @@ node_modules/
 .carrel/
 carrel-out/
 site/
+.claude/worktrees/
 HANDOFF.md

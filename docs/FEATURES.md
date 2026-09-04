@@ -68,3 +68,4 @@ Detection is by bytes (`{\rtf` prefix; zip containers probed for `mimetype` / `[
 
 - `recipes` runner: stretch, cut if time is short (cookbook shell scripts cover the use cases).
 - PAdES cryptographic PDF signing: cut to stretch; visible stamp + gpg manifest signing ship instead (rationale: key management UX exceeds session scope).
+- v0.2.0: unwired adapter entries removed (`gs`, `pngquant`, `jq`, `mlr`, `rg`, `fd`, `sqlite3`, `inotifywait`, `claude`) — none was referenced by any command, yet `doctor` advertised them. Re-add each together with the command that uses it (spec 19).
