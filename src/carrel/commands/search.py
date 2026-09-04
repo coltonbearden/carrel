@@ -19,7 +19,7 @@ import click
 from carrel._product import PRODUCT
 from carrel.core.db import DeskDB
 from carrel.core.filetypes import FileType
-from carrel.core.output import CarrelError, ExitCode, emit, fail
+from carrel.core.output import CarrelError, CarrelInputError, ExitCode, emit, fail
 
 _FILTER_FETCH_MIN = 500  # over-fetch floor when post-filtering
 
@@ -56,6 +56,60 @@ def _parse_types(csv: str | None) -> set[str] | None:
             f"(choose from {', '.join(sorted(valid))})"
         )
     return wanted
+
+
+def _valid_types() -> set[str]:
+    return {ft.value for ft in FileType if ft is not FileType.UNKNOWN}
+
+
+def search_index(
+    root: Path,
+    query: str,
+    *,
+    limit: int = 20,
+    types: set[str] | None = None,
+    tags: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Ranked hits [{"path", "score", "snippet"}] for QUERY over the desk index at `root`.
+
+    Library entry point (reused by the MCP server); the click command wraps
+    it. Filters combine with AND: `types` are FileType values, `tags` must
+    all be present on a file. Raises CarrelError when no index exists under
+    `root` and CarrelInputError for an invalid type name or an FTS5 query
+    that SQLite rejects.
+    """
+    root = Path(root).resolve()
+    if limit < 1:
+        raise CarrelInputError("limit must be a positive integer")
+    if not DeskDB.exists(root):
+        raise CarrelError(f"no index under {root} — run `{PRODUCT['cli']} index` there first")
+
+    wanted_types = {t.strip().lower() for t in types if t.strip()} if types else set()
+    unknown = wanted_types - _valid_types()
+    if unknown:
+        raise CarrelInputError(
+            f"unknown type value(s): {', '.join(sorted(unknown))} "
+            f"(choose from {', '.join(sorted(_valid_types()))})"
+        )
+    wanted_tags = {t.strip().lower() for t in (tags or []) if t.strip()}
+    filtered = bool(wanted_types or wanted_tags)
+    fetch = max(limit * 25, _FILTER_FETCH_MIN) if filtered else limit
+
+    hits: list[dict[str, Any]] = []
+    with DeskDB(root) as db:
+        try:
+            rows = db.fts_search(query, limit=fetch)
+        except sqlite3.OperationalError as e:
+            raise CarrelInputError(f"bad search query {query!r}: {e}") from e
+        for row in rows:
+            if wanted_types and row["type"] not in wanted_types:
+                continue
+            if wanted_tags and not wanted_tags <= set(db.tags_of(db.root / row["path"])):
+                continue
+            hits.append({"path": row["path"], "score": row["score"], "snippet": row["snip"]})
+            if len(hits) >= limit:
+                break
+    return hits
 
 
 def _human_hits(hits: list[dict[str, Any]]) -> None:
@@ -105,28 +159,11 @@ def cmd(
     if limit < 1:
         raise click.UsageError("--limit must be a positive integer")
     root = _root_of(ctx)
-    if not DeskDB.exists(root):
-        raise CarrelError(f"no index under {root} — run `{PRODUCT['cli']} index` there first")
-
-    wanted_types = _parse_types(types_csv)
-    wanted_tags = {t.strip().lower() for t in tags if t.strip()}
-    filtered = bool(wanted_types or wanted_tags)
-    fetch = max(limit * 25, _FILTER_FETCH_MIN) if filtered else limit
-
-    hits: list[dict[str, Any]] = []
-    with DeskDB(root) as db:
-        try:
-            rows = db.fts_search(query, limit=fetch)
-        except sqlite3.OperationalError as e:
-            raise click.UsageError(f"bad search query {query!r}: {e}") from e
-        for row in rows:
-            if wanted_types and row["type"] not in wanted_types:
-                continue
-            if wanted_tags and not wanted_tags <= set(db.tags_of(db.root / row["path"])):
-                continue
-            hits.append({"path": row["path"], "score": row["score"], "snippet": row["snip"]})
-            if len(hits) >= limit:
-                break
+    wanted_types = _parse_types(types_csv)  # --type validation stays a usage error (exit 2)
+    try:
+        hits = search_index(root, query, limit=limit, types=wanted_types, tags=list(tags))
+    except CarrelInputError as e:  # bad FTS5 syntax is a usage error at the CLI (exit 2)
+        raise click.UsageError(str(e)) from e
 
     if not hits and fail_empty:
         fail("no results", ExitCode.EMPTY)

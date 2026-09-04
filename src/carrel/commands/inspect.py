@@ -423,6 +423,15 @@ def inspect_file(path: Path | str, deep: bool = False) -> dict[str, Any]:
     return info
 
 
+def inspect_path(path: Path, *, deep: bool = False) -> dict[str, Any]:
+    """Keyword-only alias of `inspect_file` for library callers (MCP server, desk).
+
+    Same payload and the same exceptions: CarrelInputError for a missing or
+    unsupported file, never MissingDependencyError.
+    """
+    return inspect_file(path, deep=deep)
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
