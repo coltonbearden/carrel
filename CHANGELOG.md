@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.1.2 — unreleased
+## v0.1.2 — 2026-09-04
 
 Housekeeping release after the repository moved to `coltonbearden/carrel`.
 
