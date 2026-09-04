@@ -5,17 +5,17 @@
 
 ## Now
 
-- **Status:** v0.1.2 released 2026-09-04 (PyPI + GitHub release). Repo `coltonbearden/carrel`,
-  docs at https://coltonbearden.github.io/carrel/, PyPI package `carrel`.
-- **In flight:** v0.2.0 is complete on branch `feat/v0.2.0` (all three waves of
-  `docs/BUILD_PLAN.md` ticked: office formats, install ergonomics, drift + gates, mcp v2,
-  pack v2, catalog, plugins v2, review sweep, docs pass). `product.json` is 0.2.0; the
-  CHANGELOG entry is dated `unreleased`. Specs live in `specs/15`–`specs/21`.
-- **Next:** merge the release PR (`feat/v0.2.0` → `main`, squash) once `lint`, `test`,
-  `test-minimal`, and `test-minimal (macos)` are green; stamp the CHANGELOG date; then the
-  user tags `v0.2.0` per `docs/RELEASING.md` (publish workflow → PyPI) and adds
-  `test-minimal (macos)` to the ruleset's required checks (`scripts/github-harden.sh`
-  `REQUIRED_CHECKS` must be updated to match).
+- **Status:** v0.2.0 released 2026-09-04 (GitHub Release + PyPI via Trusted Publishing,
+  with PEP 740 attestations). Repo `coltonbearden/carrel`, docs at
+  https://coltonbearden.github.io/carrel/, PyPI package `carrel`.
+  Verified from PyPI: `carrel 0.2.0`, `catalog`/`completion` present, the six new
+  `pack` flags, 10 MCP tools, `desk` exits 3 with the `carrel[tui]` hint.
+- **In flight:** nothing.
+- **Next:** two repo-settings steps that only the owner can apply — add
+  `test-minimal (macos)` to the `main` ruleset's required checks and to
+  `REQUIRED_CHECKS` in `scripts/github-harden.sh` (see docs/REPO_SETTINGS.md).
+  `test-minimal (windows)` stays advisory until the Windows suite gap is closed
+  (54 failures across 13 modules, scoped in docs/BUILD_PLAN.md).
 
 ## Done
 
