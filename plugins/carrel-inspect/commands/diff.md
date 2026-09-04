@@ -2,15 +2,40 @@
 description: Compare two local files — text diff, structural json/csv/xml diff, PDF text diff, or image pixel diff — using the carrel CLI
 argument-hint: <file A> <file B> [mode]
 allowed-tools: Bash(carrel:*), Bash(uv run carrel:*), Bash(command -v carrel)
+carrel-command: diff
 ---
 
 Compare the two files the user asked about: $ARGUMENTS
 
-Run the carrel CLI via Bash. Map the user's request onto these real flags of `carrel diff` (verify with `carrel diff --help` if unsure — never invent flags):
+Run the carrel CLI via Bash. Map the user's request onto the real flags in the `--help` block below (regenerated from the CLI by `scripts/sync_plugins.py`; if the installed `carrel diff --help` differs, trust the installed version — never invent flags):
 
+<!-- usage:start -->
+```text
+Usage: carrel diff [OPTIONS] A B
+
+  Compare two files A and B.
+
+  Modes: text (unified diff), struct (json: dotted-path added/removed/changed; csv: per-row/column
+  cell changes; xml: element-path changes), pdf (extracted text diff + page counts), image (Pillow
+  pixel diff: dimensions, changed-pixel percentage, mean channel delta; sizes are padded to a common
+  canvas and the mismatch reported). auto picks by type pair and falls back to a text diff when both
+  files are text-like.
+
+  Exit status:
+    0  files are identical
+    1  files differ
+    2  bad usage
+    3  missing optional dependency (pdf mode needs pdftotext)
+    4  missing/unsupported input, or no mode fits the type pair
+
+Options:
+  --json                          Machine-readable JSON output.
+  --mode [auto|text|struct|image|pdf]
+                                  Comparison strategy; auto picks by type pair.  [default: auto]
+  --out FILE                      Image mode: write a per-pixel delta heatmap PNG here.
+  --help                          Show this message and exit.
 ```
-carrel diff A B [--mode auto|text|struct|image|pdf] [--out FILE] --json
-```
+<!-- usage:end -->
 
 - `--mode auto` (default) picks by type pair; only override when the user asks for a specific comparison:
   - `text`: unified diff.

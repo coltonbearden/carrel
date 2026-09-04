@@ -1,8 +1,8 @@
 {
   "name": "carrel-convert",
-  "description": "Convert, OCR, thumbnail, and narrate local files with the carrel CLI: /convert, /ocr, /thumb, /audiobook, plus a doc-converter batch agent.",
+  "description": "Convert, OCR, thumbnail, edit, extract images from, and narrate local files with the carrel CLI: /convert, /ocr, /thumb, /edit, /extract-images, /audiobook, plus a doc-converter batch agent.",
   "version": "0.1.2",
   "author": { "name": "Colton Bearden" },
   "license": "MIT",
-  "keywords": ["files", "convert", "pdf", "ocr", "thumbnails", "audiobook", "tts"]
+  "keywords": ["files", "convert", "pdf", "ocr", "thumbnails", "edit", "images", "audiobook", "tts"]
 }
