@@ -7,6 +7,7 @@ unavailable given the binaries present. Always exits 0 — it is a report.
 
 from __future__ import annotations
 
+import importlib.util
 import platform
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,7 @@ from typing import Any
 import click
 
 from carrel._product import PRODUCT
+from carrel.commands.desk import TUI_INSTALL_HINT
 from carrel.core import adapters
 from carrel.core.output import CarrelError, emit
 
@@ -22,6 +24,8 @@ from carrel.core.output import CarrelError, emit
 #   required : any missing  -> "unavailable"
 #   optional : any missing  -> "degraded" (command still works, reduced power)
 #   neither missing         -> "ok"
+#   extra    : (extra_name, import_name) — a Python optional extra (D-007);
+#              import failure -> "unavailable", reported as "<module> (carrel[extra])"
 # Must cover every entry in carrel.cli.COMMANDS (a test enforces this).
 # ---------------------------------------------------------------------------
 CAPABILITIES: dict[str, dict[str, Any]] = {
@@ -86,9 +90,19 @@ CAPABILITIES: dict[str, dict[str, Any]] = {
         "optional": (),
         "note": "Pillow (bundled); ICC profile dirs improve accuracy",
     },
+    "completion": {
+        "required": (),
+        "optional": (),
+        "note": "shell completion scripts (click, in-process)",
+    },
     "doctor": {"required": (), "optional": (), "note": "this report"},
     "mcp": {"required": (), "optional": (), "note": "stdio JSON-RPC (stdlib)"},
-    "desk": {"required": (), "optional": (), "note": "textual TUI (bundled)"},
+    "desk": {
+        "required": (),
+        "optional": (),
+        "extra": ("tui", "textual"),
+        "note": f"textual TUI — optional extra: {TUI_INSTALL_HINT}",
+    },
 }
 
 # Conventional ICC profile locations (Linux + WSL's Windows mount).
@@ -128,6 +142,17 @@ def _icc_dirs() -> list[dict[str, Any]]:
     return found
 
 
+def _extra_missing(spec: dict[str, Any]) -> list[str]:
+    """['<module> (carrel[extra])'] when the command's optional extra is not importable."""
+    extra = spec.get("extra")
+    if not extra:
+        return []
+    extra_name, module = extra
+    if importlib.util.find_spec(module) is not None:
+        return []
+    return [f"{module} ({PRODUCT['cli']}[{extra_name}])"]
+
+
 def build_report() -> dict[str, Any]:
     """Full doctor report as one JSON-serializable structure."""
     resolved: dict[str, str | None] = {name: a.resolve() for name, a in adapters.ADAPTERS.items()}
@@ -135,6 +160,11 @@ def build_report() -> dict[str, Any]:
     adapter_rows = []
     for name, adapter in adapters.ADAPTERS.items():
         path = resolved[name]
+        override = adapter.override()
+        install_hint = None if path else adapter.install_hint
+        if path is None and override is not None:
+            # D-008: a stale override is reported, never silently bypassed
+            install_hint = f"override {adapter.env_var}={override} not found; {install_hint}"
         adapter_rows.append(
             {
                 "name": name,
@@ -142,7 +172,8 @@ def build_report() -> dict[str, Any]:
                 "found": path is not None,
                 "path": path,
                 "version": adapters.version_of(name) if path else None,
-                "install_hint": None if path else adapter.install_hint,
+                "install_hint": install_hint,
+                "override": {"var": adapter.env_var, "path": override} if override else None,
             }
         )
 
@@ -150,6 +181,7 @@ def build_report() -> dict[str, Any]:
     for command in sorted(CAPABILITIES):
         spec = CAPABILITIES[command]
         req_missing = [a for a in spec["required"] if resolved[a] is None]
+        req_missing += _extra_missing(spec)
         opt_missing = [a for a in spec["optional"] if resolved[a] is None]
         if req_missing:
             status = "unavailable"
@@ -196,10 +228,11 @@ def _render(report: dict[str, Any]) -> None:
     tools.add_column("status")
     tools.add_column("version / install hint", overflow="fold")
     for row in report["adapters"]:
+        via = f" via {row['override']['var']}" if row.get("override") else ""
         if row["found"]:
-            tools.add_row(row["name"], "[green]found[/green]", row["version"] or "?")
+            tools.add_row(row["name"], f"[green]found[/green]{via}", row["version"] or "?")
         else:
-            tools.add_row(row["name"], "[red]MISSING[/red]", row["install_hint"] or "")
+            tools.add_row(row["name"], f"[red]MISSING[/red]{via}", row["install_hint"] or "")
     console.print(tools)
 
     caps = Table(title="command capabilities")

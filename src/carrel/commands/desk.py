@@ -1,7 +1,8 @@
 """carrel desk — launch the flagship Textual TUI.
 
 The TUI itself lives in `carrel.desk.app`; this module is only the click
-shell (and a guard for a missing textual, even though it is a core dep).
+shell plus the guard for a missing textual — an optional extra since v0.2.0
+(D-007): `carrel[tui]`.
 """
 
 from __future__ import annotations
@@ -10,7 +11,13 @@ from pathlib import Path
 
 import click
 
+from carrel._product import PRODUCT
 from carrel.core.output import ExitCode, fail
+
+# Shared with `carrel doctor`, whose capability row for desk reads the same hint.
+TUI_INSTALL_HINT = (
+    f"uv tool install '{PRODUCT['cli']}[tui]'  (from a checkout: uv sync --extra tui)"
+)
 
 
 @click.command(name="desk")
@@ -28,10 +35,10 @@ def cmd(ctx: click.Context, root: Path | None) -> None:
     """
     try:
         from carrel.desk.app import DeskApp
-    except ModuleNotFoundError as e:  # guard: textual is a core dep, but be kind
+    except ModuleNotFoundError as e:  # textual is the optional `tui` extra (D-007)
         if e.name and e.name.split(".")[0] == "textual":
             fail(
-                "textual is not installed — run: uv sync  (or: pip install textual)",
+                f"textual is not installed (optional extra 'tui') — run: {TUI_INSTALL_HINT}",
                 ExitCode.MISSING_DEP,
             )
         raise

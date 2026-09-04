@@ -14,8 +14,15 @@ dependencies = [
     "reportlab>=4.0",
     "watchdog>=4.0",
     "markdown-it-py>=3.0",
-    "textual>=1.0",
 ]
+
+# Optional extras (D-007). Each gated feature exits 3 with the extra's name
+# when its package is absent — exactly like a missing binary.
+[project.optional-dependencies]
+tui = ["textual>=1.0"]          # carrel desk
+office = ["openpyxl>=3.1"]      # xlsx text extraction (spec 18)
+tokens = ["tiktoken>=0.8"]      # exact token counts for pack
+all = ["textual>=1.0", "openpyxl>=3.1", "tiktoken>=0.8"]
 
 [project.urls]
 Homepage = "https://coltonbearden.github.io/carrel/"
@@ -42,7 +49,10 @@ packages = ["src/carrel"]
 # Keep the sdist to what `pip install` and the test suite need — not the docs
 # site, demo tapes, brand assets, specs, or the plugin marketplace.
 only-include = ["src", "tests", "product.json", "pyproject.toml", "README.md", "LICENSE", "CHANGELOG.md"]
-exclude = ["tests/fixtures/*.pdf", "tests/fixtures/*.png", "tests/fixtures/*.jpg", "tests/fixtures/*.ico"]
+exclude = [
+    "tests/fixtures/*.pdf", "tests/fixtures/*.png", "tests/fixtures/*.jpg", "tests/fixtures/*.ico",
+    "tests/fixtures/*.docx", "tests/fixtures/*.odt", "tests/fixtures/*.epub", "tests/fixtures/*.xlsx",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
