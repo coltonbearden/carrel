@@ -104,6 +104,15 @@ exits 1). Needs gpg.
 --8<-- "examples/cookbook/09-provenance-chain.sh"
 ```
 
+### 10 — Pack what matters
+
+Index a docs tree, then `pack --query` to pack only the files the desk ranks
+relevant, with `--stats` for the token table. No optional binaries needed.
+
+```bash
+--8<-- "examples/cookbook/10-pack-what-matters.sh"
+```
+
 ## Snippets
 
 Each file's header comment states what it does, what it needs, and how to run it.

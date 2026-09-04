@@ -1,6 +1,6 @@
 # Carrel command reference
 
-Generated from `--help` of carrel 0.1.2 by `scripts/sync_reference.py` — do not edit.
+Generated from `--help` of carrel 0.2.0 by `scripts/sync_reference.py` — do not edit.
 Regenerate with `uv run python scripts/sync_reference.py`; CI fails when this file drifts.
 
 Related docs: [Install](INSTALL.md) · [Quickstart](QUICKSTART.md) ·

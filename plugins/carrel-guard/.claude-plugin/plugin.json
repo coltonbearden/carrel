@@ -1,7 +1,7 @@
 {
   "name": "carrel-guard",
   "description": "Hooks that let Claude read what it otherwise cannot: a PreToolUse guard converts PDFs, Office/ebook files and images to text via carrel before Read sees them, and a SessionStart hook reports what carrel can do in this environment.",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "author": { "name": "Colton Bearden" },
   "license": "MIT",
   "keywords": ["hooks", "read", "pdf", "docx", "ocr", "guard", "capabilities"]

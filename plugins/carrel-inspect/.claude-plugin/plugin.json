@@ -1,7 +1,7 @@
 {
   "name": "carrel-inspect",
   "description": "Inspect, diff, search, and pack local files for LLM context with the carrel CLI: /inspect, /diff, /search, /pack, plus a context-packing skill.",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "author": { "name": "Colton Bearden" },
   "license": "MIT",
   "keywords": ["files", "inspect", "diff", "search", "fts5", "pack", "llm-context"]

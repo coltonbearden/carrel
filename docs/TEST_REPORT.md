@@ -78,7 +78,7 @@ Tested in Phase 7 — see the "finalize.sh test runs" section appended below.
 
 # v0.2.0 — 2026-09-04
 
-Executed on the dev machine (Ubuntu 26.04 / WSL2, Python 3.12.13) against `feat/v0.2.0` at commit `7ee57f3` (waves 1–2 merged: specs 15–19 and 21; spec 20 plugins v2 still in flight). Commands are copy-pasteable from the repo root with `uv run` in front. The wave-3 plugin proofs (`/carrel-documents:redact`, the `carrel-guard` Read hook) belong to spec 20 and will be appended when it lands.
+Executed on the dev machine (Ubuntu 26.04 / WSL2, Python 3.12.13) against `feat/v0.2.0` at commit `7ee57f3` (waves 1–2 merged: specs 15–19 and 21). Commands are copy-pasteable from the repo root with `uv run` in front. The wave-3 results (spec 20 plugins, the integration review fixes, and the final suite) are appended below.
 
 ## Suite
 
@@ -195,9 +195,55 @@ Live stdio round trip (`initialize → notifications/initialized → tools/list 
 
 Recipe 10 (`examples/cookbook/10-pack-what-matters.sh`) executed with `CARREL="uv run carrel"`: index summary of 6, `--stats` with the `score` column, `wrote …/ctx.md (5 files, ~186 tokens_est)` with `- query: 'release' (top 5, 5 hit(s))` in the header, `--json` `hits: 3` for `--top 3`, exit 5 on `--fail-empty`, then `RECIPE OK`. Note: without the `CARREL` override the recipe picks up whatever `carrel` is on `PATH` — on this machine the released v0.1.2, which predates `--query` (`Error: No such option '--query'`, exit 2). That is the convention working as intended.
 
-## Observed but not fixed (reported to the orchestrator)
+## Observed by the docs pass (status after the review fixes)
 
-- `carrel doctor`'s **human** table drops the `[tui]`/`[office]` bracket text from hints (rich interprets `[tui]` as markup): the `desk` row prints `uv tool install 'carrel'` / `textual (carrel)`. The `--json` payload is correct (`'carrel[tui]'`), and `carrel desk` itself prints the right hint.
-- `pack --query` human `score` column formats bm25 scores to three decimals; on small documents every row reads `-0.000`. `--json` keeps the full value.
+- ~~`carrel doctor`'s **human** table drops the `[tui]`/`[office]` bracket text~~ — **fixed** in the review-fix commit (rich markup escaped; `tests/test_review_v020.py::test_doctor_human_output_keeps_extra_brackets`).
+- ~~`pack --query` human `score` column reads `-0.000`~~ — **fixed**: scores print with three significant digits.
 - `tag`/`note` resolve relative paths against the cwd rather than `--root` (exit 4 `no such file: <cwd>/guides/…` when run from elsewhere with `--root DOCS`); `index`, `search`, `catalog` and `pack --query` use `--root`. Documented in Quickstart §7 and the FAQ.
 - `pack --tree-only --json` returns `"files": []` (the listing is under `tree`), so scripts asserting on `files` must drop `--tree-only`.
+
+## Wave 3 — plugins v2 (spec 20), executed 2026-09-04
+
+Run at commit `7686ca9` + the review-fix commit, with a throwaway local marketplace (`claude plugin marketplace add <checkout>`) and a PATH shim that resolves `carrel` to `uv run --project <checkout> carrel`, so the plugins drove the v0.2.0 code under test rather than the released 0.1.2 on PATH. Both plugins and the marketplace were removed afterwards (`claude plugin marketplace list` shows no `carrel`).
+
+**`claude plugin validate .`** → `✔ Validation passed` (7 plugins). **`scripts/sync_plugins.py --check`** → `24 command files: up to date`.
+
+**Proof 1 — `/carrel-documents:redact`** (headless):
+
+```text
+$ claude -p "/carrel-documents:redact $S/pii.txt --builtin email,phone -o $S/pii.redacted.txt" \
+    --allowedTools "Bash(carrel:*)" "Bash(grep:*)"
+Redaction complete and verified. The output is at …/pii.redacted.txt, and the original was not modified.
+| Pattern | Count |   email | 3   phone | 2
+Verification of the output file found zero email patterns and zero phone patterns.
+One thing to flag: the file still contains an SSN-style string … rerun with `--builtin email,phone,ssn` …
+$ tail -1 $S/pii.redacted.txt
+Contact: █ or █
+```
+
+**Proof 2 — `carrel-guard` PreToolUse hook on a PDF read** (headless, `--allowedTools Read`):
+
+```text
+$ claude -p "Read the file tests/fixtures/b.pdf and quote its first line verbatim. Also say whether a hook told you the file was converted."
+The first line of the file is:  Fixture B
+Yes, a hook reported the conversion. A PreToolUse hook from carrel-guard said the PDF was converted to text at a
+cached path …, with the original left untouched. The extracted text is short, at 135 characters, and its
+distinguishing phrase is "second fiddle harbor."
+$ ls $XDG_CACHE_HOME/carrel-guard   → one sha256-named directory holding b.txt
+```
+
+## Integration review (V3.2) — 12 findings, 9 fixed
+
+The `integration-reviewer` sweep (26 commands × `--help` / fixture run / `--json` / exit 4 / exit 3 via `CARREL_BIN_*=/nonexistent`, MCP over real stdio with 68 requests, an extras-free venv, adapter-layer grep, docs-vs-`--help` scan) confirmed zero blockers and 12 findings. Fixed in `fix(review): address v0.2.0 integration review findings` with regression tests in `tests/test_review_v020.py`: nonexistent `--root` (exit 2, and exit 4 from DeskDB/MCP instead of a traceback); `diff`/`audiobook` accept documents; `search` without index exits 4 and `pack --query` bad FTS syntax exits 2 (aligned); `catalog import` skips out-of-root paths; mis-named xlsx converts; `ocr` type check precedes overwrite check; MCP `carrel_redact` type check precedes rule compilation; doctor markup escaping; `pack --since` help wording. Left as documented behavior: MCP tools are not confined to the desk root (a local stdio server with the caller's privileges; the per-call `root` argument already points anywhere), `tag`/`note` resolve relative paths against the cwd, `convert --sheet` is ignored for non-workbooks, `inspect` on a docx without pandoc reports `words: null` without a hint.
+
+## Final suite on the release branch
+
+```text
+$ uv run pytest -p no:cacheprovider -o addopts="" -q
+935 passed, 3 skipped in 96.93s (0:01:36)
+$ uv run ruff check src tests scripts && uv run ruff format --check src tests scripts && uv run mypy
+All checks passed! · 71 files already formatted · Success: no issues found in 38 source files
+$ uv run python scripts/sync_reference.py --check && uv run python scripts/sync_plugins.py --check
+docs/REFERENCE.md: up to date · 24 command files: up to date
+$ uv run --group docs mkdocs build --strict → Documentation built · claude plugin validate . → ✔ Validation passed
+```

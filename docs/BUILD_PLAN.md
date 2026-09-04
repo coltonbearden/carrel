@@ -69,10 +69,10 @@ Same mechanism: waves of ≤3 parallel `module-builder` subagents on a feature b
 
 ## Wave 3 — surface completion & release
 
-- [ ] V3.1 plugins v2: `sync_plugins.py`, every command as a slash command, `carrel-documents`, `carrel-guard` — **module-builder** — specs/20 — size L
-- [ ] V3.2 integration review sweep of all commands (`--help`, fixture run, `--json`, missing-file/binary paths, adapter-layer grep) — **integration-reviewer** — all v0.2.0 specs — size M
-- [ ] V3.3 docs pass from real output (README type list + extras, MARKETPLACE, QUICKSTART, TEST_REPORT with the wave-3 proofs) — **doc-smith** — size M
-- [ ] V3.4 orchestrator: `sync_reference.py`, `sync_plugins.py`, bump `product.json` → 0.2.0, `sync_product.py`, CHANGELOG entry, release PR
+- [x] V3.1 plugins v2: `sync_plugins.py`, every command as a slash command, `carrel-documents`, `carrel-guard` — **module-builder** — specs/20 — size L
+- [x] V3.2 integration review sweep of all commands (`--help`, fixture run, `--json`, missing-file/binary paths, adapter-layer grep) — **integration-reviewer** — all v0.2.0 specs — size M
+- [x] V3.3 docs pass from real output (README type list + extras, MARKETPLACE, QUICKSTART, TEST_REPORT with the wave-3 proofs) — **doc-smith** — size M
+- [x] V3.4 orchestrator: `sync_reference.py`, `sync_plugins.py`, bump `product.json` → 0.2.0, `sync_product.py`, CHANGELOG entry, release PR
 
 ## Scope guards (v0.2.0)
 

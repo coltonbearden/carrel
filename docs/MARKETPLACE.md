@@ -43,7 +43,7 @@ claude -p "/carrel-documents:redact tests/fixtures/sample.txt" --allowedTools "B
 
 ## The seven plugins
 
-Every carrel CLI command has a slash command (24 commands across five plugins); `carrel mcp`
+Every carrel CLI command has a slash command (24 slash commands across seven plugins; `desk` is interactive and `mcp` is served via `.mcp.json`); `carrel mcp`
 is reached through the MCP server instead and `carrel desk` is an interactive TUI.
 
 | Plugin | Slash commands | Also ships | What it gives Claude |

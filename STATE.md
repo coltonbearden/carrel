@@ -7,13 +7,15 @@
 
 - **Status:** v0.1.2 released 2026-09-04 (PyPI + GitHub release). Repo `coltonbearden/carrel`,
   docs at https://coltonbearden.github.io/carrel/, PyPI package `carrel`.
-- **In flight:** v0.2.0 on branch `feat/v0.2.0`, built in three waves per
-  `docs/BUILD_PLAN.md` (wave 1: office formats, install ergonomics, drift + gates;
-  wave 2: mcp v2, pack v2, catalog; wave 3: plugins v2, review sweep, docs, release).
-  Specs live in `specs/15`–`specs/21`.
-- **Next:** finish the wave checklists in `docs/BUILD_PLAN.md`; the orchestrator re-runs
-  `scripts/sync_reference.py` after wave 3, bumps `product.json` to 0.2.0, runs
-  `scripts/sync_product.py`, adds the CHANGELOG entry, and opens the release PR.
+- **In flight:** v0.2.0 is complete on branch `feat/v0.2.0` (all three waves of
+  `docs/BUILD_PLAN.md` ticked: office formats, install ergonomics, drift + gates, mcp v2,
+  pack v2, catalog, plugins v2, review sweep, docs pass). `product.json` is 0.2.0; the
+  CHANGELOG entry is dated `unreleased`. Specs live in `specs/15`–`specs/21`.
+- **Next:** merge the release PR (`feat/v0.2.0` → `main`, squash) once `lint`, `test`,
+  `test-minimal`, and `test-minimal (macos)` are green; stamp the CHANGELOG date; then the
+  user tags `v0.2.0` per `docs/RELEASING.md` (publish workflow → PyPI) and adds
+  `test-minimal (macos)` to the ruleset's required checks (`scripts/github-harden.sh`
+  `REQUIRED_CHECKS` must be updated to match).
 
 ## Done
 
