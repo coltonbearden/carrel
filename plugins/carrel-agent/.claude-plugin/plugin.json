@@ -1,8 +1,8 @@
 {
   "name": "carrel-agent",
-  "description": "Agentic file librarian for carrel desks: file-librarian agent, agent-workflows skill, carrel MCP server (search/pack/inspect), and a PostToolUse hook that re-indexes files Claude writes.",
-  "version": "0.1.2",
+  "description": "Agentic file librarian for carrel desks: /index, /doctor, /catalog, /completion, a file-librarian agent, an agent-workflows skill, the carrel MCP server (10 tools + carrel:// resources), and a PostToolUse hook that re-indexes files Claude writes.",
+  "version": "0.2.0",
   "author": { "name": "Colton Bearden" },
   "license": "MIT",
-  "keywords": ["agent", "mcp", "index", "search", "hooks", "librarian"]
+  "keywords": ["agent", "mcp", "index", "search", "catalog", "doctor", "hooks", "librarian"]
 }

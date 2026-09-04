@@ -1,9 +1,9 @@
 # MARKETPLACE — using the carrel plugins in Claude Code
 
 This repo doubles as a Claude Code plugin marketplace: `.claude-plugin/marketplace.json`
-at the root declares five plugins living under [`plugins/`](https://github.com/coltonbearden/carrel/tree/main/plugins/). Everything
-below was executed on 2026-07-16 (see [TEST_REPORT.md](TEST_REPORT.md) for the original
-proof runs).
+at the root declares seven plugins living under [`plugins/`](https://github.com/coltonbearden/carrel/tree/main/plugins/). The install flow
+below was executed on 2026-07-16 and re-validated with the seven-plugin catalog on
+2026-09-04 (see [TEST_REPORT.md](TEST_REPORT.md) for the proof runs).
 
 ## Prerequisite: the carrel CLI on PATH
 
@@ -16,7 +16,7 @@ carrel doctor                          # shows which optional binaries you have
 
 (`uv tool install` — like `pipx` — installs the package into its own venv and links the
 `carrel` binary into `~/.local/bin`.) Without it, every command falls back to telling you
-to install it or run `uv run carrel ...` from this repo.
+to install it or run `uv run carrel ...` from this repo, and the hooks stay silent.
 
 ## Install flow
 
@@ -29,36 +29,93 @@ claude plugin install carrel-inspect@carrel
 # ✔ Successfully installed plugin: carrel-inspect@carrel (scope: user)
 
 claude plugin list
-# ❯ carrel-inspect@carrel · Version 0.1.0 · Scope user · Status ✔ enabled
+# ❯ carrel-inspect@carrel · Version 0.1.2 · Scope user · Status ✔ enabled
 ```
 
-Install any subset — the five plugins are independent. In an interactive session the
-commands autocomplete by their short name (`/inspect`, `/pack`, ...). **In headless
-`claude -p` mode you must use the plugin-namespaced name:**
+Install any subset — the seven plugins are independent. In an interactive session the
+commands autocomplete by their short name (`/inspect`, `/pack`, `/redact` ...). **In
+headless `claude -p` mode you must use the plugin-namespaced name:**
 
 ```bash
 claude -p "/carrel-inspect:inspect report.pdf" --allowedTools "Bash(carrel:*)"
+claude -p "/carrel-documents:redact tests/fixtures/sample.txt" --allowedTools "Bash(carrel:*)"
 ```
 
-## The five plugins
+## The seven plugins
 
-| Plugin | Slash commands | Also ships |
-|---|---|---|
-| **carrel-convert** | `/convert`, `/ocr`, `/thumb`, `/audiobook` | `doc-converter` agent — batch conversions with per-file verification via `carrel inspect` |
-| **carrel-inspect** | `/inspect`, `/diff`, `/search`, `/pack` | `context-packing` skill — format choice, token budgeting, chunking strategy for `carrel pack` |
-| **carrel-organize** | `/organize`, `/dedupe`, `/tag`, `/note-file` | — |
-| **carrel-watch** | `/watch-folder` | `watch-automation` skill — auto-thumb / auto-index / auto-convert drop-folder recipes |
-| **carrel-agent** | — | `file-librarian` agent, `agent-workflows` skill, the carrel MCP server, and the reindex hook (both below) |
+Every carrel CLI command has a slash command (24 slash commands across seven plugins; `desk` is interactive and `mcp` is served via `.mcp.json`); `carrel mcp`
+is reached through the MCP server instead and `carrel desk` is an interactive TUI.
 
-What the commands actually do: each command's markdown maps your request onto the real
-CLI flags (verified against `--help`, never invented) and runs `carrel ... --json`,
-then interprets the result conversationally. Safety conventions baked in:
+| Plugin | Slash commands | Also ships | What it gives Claude |
+|---|---|---|---|
+| **carrel-convert** | `/convert`, `/ocr`, `/thumb`, `/edit`, `/extract-images`, `/audiobook` | `doc-converter` agent — batch conversions with per-file verification via `carrel inspect` | Turn any supported file into another (pdf/md/html/txt/office/ebook/images), OCR scans, merge/split/rotate PDFs, resize/crop images, pull embedded images, narrate documents |
+| **carrel-inspect** | `/inspect`, `/diff`, `/search`, `/pack` | `context-packing` skill — `--query`-first selection, `--since` for PRs, `--outline` orientation, `--tokenizer exact` budgeting | Know what a file is, compare two files (text/struct/pdf/image), full-text search the desk, build LLM context packs that fit |
+| **carrel-organize** | `/organize`, `/dedupe`, `/tag`, `/note-file` | — | Sort a folder by type/date (dry-run first), find exact/near duplicates (report-only by default), tag and annotate files in the desk db |
+| **carrel-documents** | `/redact`, `/sign`, `/form`, `/proof`, `/color` | `document-clerk` agent (redact → verify → sign manifest → report; never overwrites without `--force`), `redaction-and-provenance` skill | Remove PII with true-raster PDF redaction, stamp/sign/verify, list and fill PDF forms or build HTML ones, soft-proof and color-manage images |
+| **carrel-watch** | `/watch-folder` | `watch-automation` skill — auto-thumb / auto-index / auto-convert drop-folder recipes | React to files landing in a folder |
+| **carrel-agent** | `/index`, `/doctor`, `/catalog`, `/completion` | `file-librarian` agent, `agent-workflows` skill, the carrel MCP server (10 tools + `carrel://` resources), the PostToolUse reindex hook (below) | Keep a desk index current and healthy, know what the environment can do, export/import tags and notes, answer questions about a collection with citations |
+| **carrel-guard** | — | `PreToolUse` Read guard + `SessionStart` capabilities hook (below) | Read PDFs, docx/odt/epub/rtf, xlsx and (with OCR) images as plain text, and start every session knowing carrel's capabilities |
+
+What the commands actually do: each command's markdown carries the **generated** `--help`
+of the command it wraps (regenerated by `scripts/sync_plugins.py`, drift fails CI) plus
+hand-written guidance, and tells Claude to run `carrel ... --json`, then interpret the
+result conversationally. Safety conventions baked in:
 
 - `/organize` and `/dedupe` **always dry-run/report first** — nothing moves or is
   deleted until you confirm (`--apply`, and for dedupe additionally `--delete <policy>`).
-- Overwrites require an explicit ask (`--force` is never passed by default).
+  `/catalog import --replace` is treated the same way.
+- Overwrites require an explicit ask (`--force` is never passed by default); `/edit text`
+  refuses to rewrite a file without `-i` or `-o`.
 - Exit code 3 (missing optional binary) is relayed with its install hint; exit 4 means
   a missing/unsupported input.
+
+## The Read guard (carrel-guard)
+
+Claude Code's `Read` tool understands text, images and PDFs (PDFs page by page, at most 20
+pages per call) — and nothing else. `carrel-guard` registers a `PreToolUse` hook on `Read`
+that, for `.pdf .docx .odt .epub .rtf .xlsx` (and `.png .jpg .ico` when tesseract is
+installed), converts the file to text with carrel into a cache directory and rewrites the
+Read to the text file. Claude reads the whole document as text in one call; the source is
+never modified.
+
+**Before** (no guard): `Read tests/fixtures/sample.docx` fails — the tool only handles
+text, images and PDFs, so Claude has to shell out and guess a conversion.
+
+**After** (guard installed) — the hook-level transcript, executed 2026-09-04. Claude Code
+feeds the pending Read to the hook on stdin:
+
+```json
+{"hook_event_name":"PreToolUse","tool_name":"Read",
+ "tool_input":{"file_path":".../tests/fixtures/b.pdf","limit":40}}
+```
+
+and the hook answers (one line, shown wrapped):
+
+```json
+{"hookSpecificOutput":{
+  "hookEventName":"PreToolUse",
+  "permissionDecision":"allow",
+  "updatedInput":{"file_path":"~/.cache/carrel-guard/9cf65504…3683ca/b.txt","limit":40},
+  "additionalContext":"carrel-guard: .../tests/fixtures/b.pdf was converted to text at ~/.cache/carrel-guard/9cf65504…3683ca/b.txt (135 chars). Original left untouched."}}
+```
+
+The Read then proceeds on `b.txt` — `offset`/`limit` pass through untouched — and Claude
+sees the `additionalContext` line explaining where the text came from. For anything else
+(a `.md` file, a file over 64 MiB, `carrel` missing, conversion failed or timed out, OCR
+not installed) the hook prints nothing and the normal Read happens.
+
+The cache lives at `${XDG_CACHE_HOME:-$HOME/.cache}/carrel-guard/<sha256 of the absolute
+path>/<stem>.txt`, is reused while newer than its source, and can be deleted at any time
+(`rm -rf ~/.cache/carrel-guard`). Details and tunables:
+[`plugins/carrel-guard/README.md`](https://github.com/coltonbearden/carrel/blob/main/plugins/carrel-guard/README.md).
+
+The same plugin's `SessionStart` hook runs `carrel doctor --json` once and adds one
+paragraph of context, e.g.
+
+> carrel 0.1.2 is on PATH: 25 of 26 commands ok, 1 degraded, 0 unavailable. Run `carrel doctor --json` for the full table and `carrel <cmd> --help` before composing flags. Most useful missing binaries: weasyprint (sudo apt install weasyprint), edge-tts (pipx install edge-tts), piper (pipx install piper-tts).
+
+Both hooks exit 0 on every path and are silent without `carrel`. Disable them with
+`claude plugin disable carrel-guard`.
 
 ## The PostToolUse reindex hook (carrel-agent)
 
@@ -96,19 +153,31 @@ There is no per-hook toggle — hooks load with their plugin.
 {"mcpServers": {"carrel": {"command": "carrel", "args": ["mcp"]}}}
 ```
 
-Verified by a live JSON-RPC round trip (`initialize` → `tools/list` against
-`carrel mcp`, 2026-07-16): the server identifies as `carrel 0.1.0` (protocol
-`2025-06-18`) and exposes exactly three tools —
+The server (pure stdlib JSON-RPC over stdio, protocol `2025-06-18`) exposes ten tools and
+two resource templates:
 
-| Tool | Inputs | Does |
-|---|---|---|
-| `carrel_search` | `query`, `root`, `limit` | Full-text search of the desk index (`.carrel/carrel.db`) under `root`. Requires a prior `carrel index` run. |
-| `carrel_pack` | `path`, `max_bytes`, `tree_only` | Pack a file/directory into LLM-ready context (tree + extracted text). |
-| `carrel_inspect` | `path` | Metadata for one file: detected type, size, mtime, sha256, mime guess. |
+| Tool | Does |
+|---|---|
+| `carrel_search` | Full-text search of the desk index (`.carrel/carrel.db`) under `root`; needs a prior `carrel index` |
+| `carrel_pack` | Pack a file/directory into LLM-ready context (tree + extracted text, budgets, `tree_only`) |
+| `carrel_inspect` | Metadata for one file: detected type, size, mtime, sha256, per-type detail |
+| `carrel_tag` | Add / remove / list tags on desk files |
+| `carrel_note` | Add / list sidecar notes on desk files |
+| `carrel_index` | Build or refresh the desk index (incremental) |
+| `carrel_convert` | Convert a file to another supported type |
+| `carrel_diff` | Compare two files (text / struct / pdf / image modes) |
+| `carrel_redact` | Redact builtin or custom patterns from a text file or PDF |
+| `carrel_doctor` | Environment capability report |
+
+| Resource template | Returns |
+|---|---|
+| `carrel://file/{path}` | The extracted text of a file — the same spine `pack` and `index` use |
+| `carrel://search/{query}` | The desk-search hits for an FTS5 query |
 
 When the server is connected, Claude prefers these structured tools over shelling out
-for those three operations. The server searches the desk under the session's working
-directory — run `carrel index` there first.
+for the same operations. The server works on the desk under the session's working
+directory (a `root` argument overrides) — run `carrel index` there first. The
+`agent-workflows` skill documents the same table for Claude.
 
 ## Updating, uninstalling, removing
 
@@ -123,6 +192,7 @@ claude plugin marketplace remove carrel      # alias: rm — drops marketplace +
 
 ## See also
 
-- [PLUGIN_AUTHORING.md](PLUGIN_AUTHORING.md) — add your own plugin to this marketplace.
+- [PLUGIN_AUTHORING.md](PLUGIN_AUTHORING.md) — add your own plugin to this marketplace,
+  including the generated-usage marker convention.
 - [AGENTS.md](AGENTS.md) — the agents and agentic workflows in depth.
 - [TEST_REPORT.md](TEST_REPORT.md) — the executed proof of this whole flow.

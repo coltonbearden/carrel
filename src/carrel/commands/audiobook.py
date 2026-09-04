@@ -408,7 +408,7 @@ def audiobook_file(
     fmt: str | None = None,
     on_progress: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
-    """Narrate one txt/md/pdf file; returns the JSON-shaped result dict.
+    """Narrate one txt/md/pdf/document file; returns the JSON-shaped result dict.
 
     Raises CarrelInputError (exit 4) for unsupported input,
     MissingDependencyError (exit 3) when a needed binary is absent,
@@ -416,9 +416,10 @@ def audiobook_file(
     """
     src = Path(src)
     ftype = detect_or_die(src)
-    if ftype not in (FileType.TXT, FileType.MD, FileType.PDF):
+    if ftype not in (FileType.TXT, FileType.MD, FileType.PDF) and not ftype.is_document:
         raise CarrelInputError(
-            f"cannot narrate {ftype.value} files: {src} (supported: txt, md, pdf)"
+            f"cannot narrate {ftype.value} files: {src} "
+            "(supported: txt, md, pdf, docx, odt, epub, rtf)"
         )
     if engine not in ENGINES:
         raise CarrelInputError(f"unknown engine '{engine}' (choose from: {', '.join(ENGINES)})")

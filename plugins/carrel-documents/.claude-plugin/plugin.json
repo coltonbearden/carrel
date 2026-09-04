@@ -1,0 +1,8 @@
+{
+  "name": "carrel-documents",
+  "description": "Document craft with the carrel CLI: /redact, /sign, /form, /proof, /color, a document-clerk agent (redact → verify → sign manifest) and a redaction-and-provenance skill.",
+  "version": "0.2.0",
+  "author": { "name": "Colton Bearden" },
+  "license": "MIT",
+  "keywords": ["documents", "redact", "pii", "sign", "manifest", "forms", "acroform", "icc", "color", "wcag"]
+}

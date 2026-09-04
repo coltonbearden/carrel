@@ -60,7 +60,10 @@ running user-supplied shell actions.
    top of `src/carrel/cli.py`. Commands are lazy-imported — a broken import must only
    break its own command, so keep import-time work at zero.
 4. **Tests.** `tests/test_<name>.py`, driving the real CLI on fixtures from
-   `tests/fixtures/` (regenerate via `tests/fixtures/generate.py`; never hand-edit
+   `tests/fixtures/` (regenerate via `tests/fixtures/generate.py`; the docx/odt/
+   epub/rtf/xlsx fixtures come from pandoc and openpyxl, whose bytes differ
+   between tool versions, so they are written once and kept unless you pass
+   `--force`; never hand-edit
    binaries). Tests needing an optional binary use the `needs()` skip helper from
    conftest. Run them: `uv run pytest tests/test_<name>.py -q`.
 5. **Verify by hand** before claiming done: `uv run carrel <name> --help`, one real

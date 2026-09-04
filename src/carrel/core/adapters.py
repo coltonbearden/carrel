@@ -2,13 +2,20 @@
 
 Command modules never call subprocess directly — they use have()/require()/run().
 `carrel doctor` renders this registry as the capability report.
+
+Resolution order for an adapter (D-008): the `CARREL_BIN_<NAME>` environment
+variable, when set, names the exact binary to use and PATH is not searched;
+otherwise the first of `Adapter.binaries` found on PATH wins. A set-but-missing
+override counts as missing (never a silent fallback) and the error names it.
 """
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 
 from carrel.core.output import CarrelError, ExitCode
 
@@ -18,8 +25,12 @@ class MissingDependencyError(CarrelError):
 
     def __init__(self, adapter: Adapter) -> None:
         self.adapter = adapter
+        override = adapter.override()
+        where = (
+            f" (override {adapter.env_var}={override} not found)" if override is not None else ""
+        )
         super().__init__(
-            f"'{adapter.name}' is required for this operation but was not found.\n"
+            f"'{adapter.name}' is required for this operation but was not found{where}.\n"
             f"  purpose: {adapter.purpose}\n"
             f"  install: {adapter.install_hint}"
         )
@@ -45,11 +56,28 @@ class Adapter:
     install_hint: str
     purpose: str
 
+    @property
+    def env_var(self) -> str:
+        """`CARREL_BIN_<NAME>` — the override variable for this adapter (D-008)."""
+        return "CARREL_BIN_" + self.name.upper().replace("-", "_")
+
+    def override(self) -> str | None:
+        """The pinned binary path from the environment, or None when unset/empty."""
+        value = os.environ.get(self.env_var, "").strip()
+        return value or None
+
     def resolve(self) -> str | None:
+        override = self.override()
+        if override is not None:
+            # exact path only — a stale override must never fall back to PATH
+            path = Path(override).expanduser()
+            if path.is_file() and os.access(path, os.X_OK):
+                return str(path)
+            return None
         for candidate in self.binaries:
-            path = shutil.which(candidate)
-            if path:
-                return path
+            found = shutil.which(candidate)
+            if found:
+                return found
         return None
 
 
@@ -87,7 +115,6 @@ ADAPTERS: dict[str, Adapter] = {
             version_args=("-v",),
         ),
         _a("qpdf", "PDF surgery (linearize/decrypt)", "sudo apt install qpdf"),
-        _a("gs", "PDF render/compress, ICC profiles", "sudo apt install ghostscript"),
         _a("weasyprint", "HTML/CSS → PDF rendering", "sudo apt install weasyprint"),
         _a("tesseract", "OCR engine", "sudo apt install tesseract-ocr"),
         _a("ocrmypdf", "add OCR text layer to PDFs", "sudo apt install ocrmypdf"),
@@ -115,19 +142,7 @@ ADAPTERS: dict[str, Adapter] = {
             "sudo apt install ffmpeg",
             version_args=("-version",),
         ),
-        _a("pngquant", "PNG optimization", "sudo apt install pngquant"),
         _a("icotool", ".ico build/extract", "sudo apt install icoutils"),
-        _a("jq", "JSON processing", "sudo apt install jq"),
-        _a("mlr", "CSV/TSV/JSON transforms (miller)", "sudo apt install miller"),
-        _a("rg", "fast content search (ripgrep)", "sudo apt install ripgrep"),
-        _a("fd", "fast file finding", "sudo apt install fd-find", binaries=("fd", "fdfind")),
-        _a("sqlite3", "SQLite CLI (index db is stdlib; CLI optional)", "sudo apt install sqlite3"),
-        _a(
-            "inotifywait",
-            "filesystem event tap (watch fallback)",
-            "sudo apt install inotify-tools",
-            version_args=("--help",),
-        ),
         _a("espeak-ng", "text-to-speech (baseline voice)", "sudo apt install espeak-ng"),
         _a(
             "piper",
@@ -136,11 +151,7 @@ ADAPTERS: dict[str, Adapter] = {
         ),
         _a("edge-tts", "text-to-speech (cloud, preferred if present)", "pipx install edge-tts"),
         _a("gpg", "detached signatures for manifests", "sudo apt install gnupg"),
-        _a(
-            "claude",
-            "Claude Code CLI (agent workflows, marketplace)",
-            "see https://code.claude.com/docs",
-        ),
+        _a("git", "changed-file lists for pack --since/--changed", "sudo apt install git"),
     ]
 }
 

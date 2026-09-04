@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -247,6 +249,104 @@ def test_adapter_output_that_is_not_utf8_never_raises(
     assert adapters.version_of("pandoc").startswith("pandoc 3.1")
     proc = adapters.run("pandoc", "--version")
     assert "\ufffd" in proc.stdout
+
+
+# --- spec 19: optional extras (D-007) -------------------------------------------
+
+
+def test_textual_is_an_extra_not_a_core_dependency():
+    import tomllib
+
+    pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
+    core = " ".join(pyproject["project"]["dependencies"])
+    assert "textual" not in core
+    extras = pyproject["project"]["optional-dependencies"]
+    assert set(extras) == {"tui", "office", "tokens", "all"}
+    assert any(d.startswith("textual") for d in extras["tui"])
+    assert any(d.startswith("openpyxl") for d in extras["office"])
+    assert any(d.startswith("tiktoken") for d in extras["tokens"])
+    # `all` is the union of the named extras
+    union = {d for name in ("tui", "office", "tokens") for d in extras[name]}
+    assert set(extras["all"]) == union
+    # sdist leaves the (generated) office fixtures out, like the binary ones
+    excluded = pyproject["tool"]["hatch"]["build"]["targets"]["sdist"]["exclude"]
+    for pattern in ("*.docx", "*.odt", "*.epub", "*.xlsx", "*.pdf"):
+        assert f"tests/fixtures/{pattern}" in excluded
+
+
+def test_desk_without_textual_exits_3_with_extra_hint(monkeypatch: pytest.MonkeyPatch):
+    """Simulate a plain install (no `tui` extra): hide textual from the import system."""
+    for mod in [m for m in sys.modules if m == "carrel.desk.app" or m.startswith("textual")]:
+        monkeypatch.delitem(sys.modules, mod, raising=False)
+    monkeypatch.setitem(sys.modules, "textual", None)  # `import textual` -> ModuleNotFoundError
+    result = CliRunner().invoke(cli, ["desk"])
+    assert result.exit_code == 3, result.output
+    assert "carrel[tui]" in result.output
+    assert "uv sync --extra tui" in result.output
+    assert "core dep" not in result.output
+
+
+def test_desk_help_needs_no_textual(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setitem(sys.modules, "textual", None)
+    result = CliRunner().invoke(cli, ["desk", "--help"])
+    assert result.exit_code == 0, result.output
+
+
+def test_doctor_desk_row_reads_tui_hint(monkeypatch: pytest.MonkeyPatch):
+    from carrel.commands import doctor
+
+    assert "carrel[tui]" in doctor.CAPABILITIES["desk"]["note"]
+    # with textual absent the row is unavailable and names the extra
+    monkeypatch.setattr(doctor.importlib.util, "find_spec", lambda name: None)
+    rows = {r["command"]: r for r in doctor.build_report()["commands"]}
+    assert rows["desk"]["status"] == "unavailable"
+    assert rows["desk"]["missing"] == ["textual (carrel[tui])"]
+    # and the human table shows it
+    result = CliRunner().invoke(cli, ["doctor"])
+    assert result.exit_code == 0
+    assert "unavailable" in result.output
+
+
+@pytest.mark.skipif(shutil.which("uv") is None, reason="uv not installed")
+def test_fresh_install_without_extras(tmp_path: Path):
+    """`uv pip install .` (no extras): CLI + pack work, desk exits 3 with the tui hint."""
+    venv = tmp_path / "venv"
+    env = {**os.environ, "UV_NO_PROGRESS": "1"}
+    subprocess.run(
+        ["uv", "venv", "--python", sys.executable, "--seed", str(venv)],
+        check=True,
+        capture_output=True,
+        env=env,
+        timeout=300,
+    )
+    python = venv / "bin" / "python"
+    install = subprocess.run(
+        ["uv", "pip", "install", "--python", str(python), str(REPO_ROOT)],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=600,
+    )
+    assert install.returncode == 0, install.stderr
+    carrel_bin = venv / "bin" / "carrel"
+    assert carrel_bin.exists()
+
+    def run(*args: str) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            [str(carrel_bin), *args], capture_output=True, text=True, env=env, timeout=120
+        )
+
+    assert run("--help").returncode == 0
+    pack = run("pack", str(REPO_ROOT / "tests" / "fixtures"), "--tree-only")
+    assert pack.returncode == 0, pack.stderr
+    probe = subprocess.run(
+        [str(python), "-c", "import textual"], capture_output=True, text=True, timeout=60
+    )
+    assert probe.returncode != 0, "textual must not be installed without the tui extra"
+    desk = run("desk")
+    assert desk.returncode == 3, desk.stderr
+    assert "carrel[tui]" in desk.stderr
+    assert "Traceback" not in desk.stderr
 
 
 def test_watch_timeout_orphan_check(tmp_path: Path):

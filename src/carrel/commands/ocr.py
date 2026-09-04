@@ -231,7 +231,9 @@ def cmd(
     Images (jpg/png) run through tesseract; PDFs through ocrmypdf, which
     passes born-digital pages through untouched unless --redo is given.
     """
-    detect_or_die(src)  # report bad input before any overwrite complaint
+    ftype = detect_or_die(src)  # report bad input before any overwrite complaint
+    if ftype not in (FileType.PDF, FileType.JPG, FileType.PNG):
+        raise CarrelInputError(f"ocr supports pdf/jpg/png input, got {ftype.value}: {src}")
     dest = out or default_dest(src, to)
     if dest.exists() and not force:
         raise CarrelError(f"refusing to overwrite existing file: {dest} (pass --force)")

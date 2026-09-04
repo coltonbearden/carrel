@@ -99,15 +99,46 @@ so loops can run unconditionally; `carrel dedupe` cannot delete anything without
 `--delete <policy>` and `--apply`, so keep automation on the report side; bound every
 unattended loop with `--timeout`.
 
-### The MCP alternative
+### The MCP server: ten tools, two resources
 
-With the carrel-agent plugin enabled, a `carrel mcp` stdio server exposes
-`carrel_search`, `carrel_pack`, and `carrel_inspect` as structured tools — Claude uses
-those instead of Bash for search/pack/inspect. Details in
+With the carrel-agent plugin enabled (`.mcp.json` → `carrel mcp`), the whole desk is
+available as structured tools, so Claude does not need Bash for any of it. The list
+below is what `tools/list` returned on 2026-09-04 (newline-delimited JSON-RPC 2.0 over
+stdio; `initialize` advertises `capabilities: {"tools": {}, "resources": {}}`):
+
+| Tool | Purpose | Arguments (required in bold) |
+|---|---|---|
+| `carrel_search` | Full-text search of the desk index under a root; needs a prior `carrel index` | **`query`**, `root`, `limit`, `types`, `tags` |
+| `carrel_pack` | Pack a file or directory into LLM-ready context (tree + extracted text of text, pdf, office and ebook files); `query` ranks through the index | **`path`**, `max_bytes`, `tree_only`, `format`, `include`, `exclude`, `root`, `query`, `top` |
+| `carrel_inspect` | Metadata for one file: type, size, mtime, sha256, mime, per-type detail | **`path`**, `deep`, `root` |
+| `carrel_tag` | Add/remove/list tags on a file, or find files by tags | **`action`** (`add`/`rm`/`ls`/`find`), `path`, `tags`, `root` |
+| `carrel_note` | Attach a free-text note to a file, or list its notes | **`action`** (`add`/`ls`), **`path`**, `body`, `root` |
+| `carrel_index` | Build or refresh the index; returns indexed/skipped/pruned counts | `paths`, `update`, `prune`, `ocr`, `root` |
+| `carrel_convert` | Convert a file to another supported type; text targets return the content inline (capped at 1 MiB) | **`path`**, **`to`**, `out_dir`, `force`, `root` |
+| `carrel_diff` | Compare two files (text / struct / pdf / image); `differ` is data, never an error | **`a`**, **`b`**, `mode`, `root` |
+| `carrel_redact` | Redact patterns from a text file's contents and return the result; never writes; PDFs must go through the CLI | **`path`**, `builtin`, `pattern`, `replacement`, `root` |
+| `carrel_doctor` | Environment report: tools found, per-command status, capability table | — |
+
+Relative paths resolve against the server's root (its cwd unless `carrel --root … mcp`);
+every tool accepts `root` per call. Failures arrive as `isError: true` carrying the same
+message the CLI prints — including the install hint for a missing binary — never a crash.
+
+Two resource templates (`resources/templates/list`) let Claude read without calling a tool:
+
+| URI template | MIME | Returns |
+|---|---|---|
+| `carrel://file/{path}` | `text/plain` | Extracted text of one file (URL-encode the path; relative to the root) |
+| `carrel://search/{query}` | `application/json` | The `carrel_search` payload for a URL-encoded FTS5 query |
+
+`resources/list` is intentionally empty (enumerate a desk with `carrel_pack` +
+`tree_only`), and an unknown URI is JSON-RPC error `-32002`. A real
+`resources/read` of `carrel://file/tests/fixtures/sample.txt` returned
+`{"contents": [{"uri": …, "mimeType": "text/plain", "text": "Carrel sample text fixture. …"}]}`.
+Wire details in [ARCHITECTURE.md](ARCHITECTURE.md#mcp-server); plugin setup in
 [MARKETPLACE.md](MARKETPLACE.md#the-mcp-server-carrel-agent).
 
 ## See also
 
 - [PLUGIN_AUTHORING.md](PLUGIN_AUTHORING.md) — ship your own agent/skill in a plugin.
 - [`examples/cookbook/`](https://github.com/coltonbearden/carrel/tree/main/examples/cookbook/) — executable versions of these
-  pipelines (02 = watch loop, 08 = pack-for-Claude).
+  pipelines (02 = watch loop, 08 = pack-for-Claude, 10 = pack what matters with `--query`).

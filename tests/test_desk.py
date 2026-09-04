@@ -13,6 +13,8 @@ from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
+
+pytest.importorskip("textual", reason="requires the tui extra: uv sync --extra tui")
 from textual.widgets import Input, OptionList, Static
 
 from carrel.cli import cli

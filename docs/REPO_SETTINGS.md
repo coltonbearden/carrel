@@ -12,7 +12,7 @@ re-run it any time to re-assert this state).
 | Block force pushes | history on `main` is append-only |
 | Require linear history | squash or rebase merges only, no merge commits |
 | Require a pull request | direct pushes are rejected; 0 approvals required (solo maintainer), stale approvals dismissed, review threads must be resolved |
-| Require status checks | `lint`, `test (py3.12)`, `test (py3.13)`, `test (py3.14)`, `test-minimal` must pass on the PR head, and the branch must be up to date with `main` |
+| Require status checks | `lint`, `test (py3.12)`, `test (py3.13)`, `test (py3.14)`, `test-minimal` must pass on the PR head, and the branch must be up to date with `main`. **Pending (v0.2.0):** add `test-minimal (macos)` once the v0.2.0 release PR shows it green; `test-minimal (windows)` stays advisory (`continue-on-error`) per the BUILD_PLAN scope guard |
 | Bypass | repository **admin** role, always — for emergencies only; every other actor (bots, collaborators, tokens) is blocked |
 
 ## Tag ruleset `release tags` (active, `v*`)

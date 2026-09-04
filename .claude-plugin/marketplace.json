@@ -4,24 +4,24 @@
     "name": "Colton Bearden"
   },
   "metadata": {
-    "description": "Carrel — a library desk for your files, and your agents. Local file toolkit plugins: convert, OCR, inspect, index/search, pack for LLM context, organize, watch, and agent workflows.",
+    "description": "Carrel — a library desk for your files, and your agents. Local file toolkit plugins: convert, OCR, edit, inspect, index/search, pack for LLM context, organize, redact/sign/forms, watch, agent workflows, and a Read guard that turns PDFs and Office files into text for Claude.",
     "pluginRoot": "./plugins"
   },
   "plugins": [
     {
       "name": "carrel-convert",
       "source": "./plugins/carrel-convert",
-      "description": "Convert, OCR, thumbnail, and narrate local files with the carrel CLI: /convert, /ocr, /thumb, /audiobook, plus a doc-converter batch agent.",
-      "version": "0.1.2",
+      "description": "Convert, OCR, thumbnail, edit, extract images from, and narrate local files with the carrel CLI: /convert, /ocr, /thumb, /edit, /extract-images, /audiobook, plus a doc-converter batch agent.",
+      "version": "0.2.0",
       "author": { "name": "Colton Bearden" },
       "license": "MIT",
-      "keywords": ["files", "convert", "pdf", "ocr", "thumbnails", "audiobook", "tts"]
+      "keywords": ["files", "convert", "pdf", "ocr", "thumbnails", "edit", "images", "audiobook", "tts"]
     },
     {
       "name": "carrel-inspect",
       "source": "./plugins/carrel-inspect",
       "description": "Inspect, diff, search, and pack local files for LLM context with the carrel CLI: /inspect, /diff, /search, /pack, plus a context-packing skill.",
-      "version": "0.1.2",
+      "version": "0.2.0",
       "author": { "name": "Colton Bearden" },
       "license": "MIT",
       "keywords": ["files", "inspect", "diff", "search", "fts5", "pack", "llm-context"]
@@ -30,16 +30,25 @@
       "name": "carrel-organize",
       "source": "./plugins/carrel-organize",
       "description": "Organize, dedupe, tag, and annotate local files with the carrel CLI: /organize, /dedupe, /tag, /note-file.",
-      "version": "0.1.2",
+      "version": "0.2.0",
       "author": { "name": "Colton Bearden" },
       "license": "MIT",
       "keywords": ["files", "organize", "dedupe", "tags", "notes"]
     },
     {
+      "name": "carrel-documents",
+      "source": "./plugins/carrel-documents",
+      "description": "Document craft with the carrel CLI: /redact, /sign, /form, /proof, /color, a document-clerk agent (redact → verify → sign manifest) and a redaction-and-provenance skill.",
+      "version": "0.2.0",
+      "author": { "name": "Colton Bearden" },
+      "license": "MIT",
+      "keywords": ["documents", "redact", "pii", "sign", "manifest", "forms", "acroform", "icc", "color", "wcag"]
+    },
+    {
       "name": "carrel-watch",
       "source": "./plugins/carrel-watch",
       "description": "Watch folders and run carrel actions on file events: /watch-folder plus a watch-automation recipe skill.",
-      "version": "0.1.2",
+      "version": "0.2.0",
       "author": { "name": "Colton Bearden" },
       "license": "MIT",
       "keywords": ["files", "watch", "automation", "watchdog", "folder-actions"]
@@ -47,11 +56,20 @@
     {
       "name": "carrel-agent",
       "source": "./plugins/carrel-agent",
-      "description": "Agentic file librarian for carrel desks: file-librarian agent, agent-workflows skill, carrel MCP server (search/pack/inspect), and a PostToolUse hook that re-indexes files Claude writes.",
-      "version": "0.1.2",
+      "description": "Agentic file librarian for carrel desks: /index, /doctor, /catalog, /completion, a file-librarian agent, an agent-workflows skill, the carrel MCP server (10 tools + carrel:// resources), and a PostToolUse hook that re-indexes files Claude writes.",
+      "version": "0.2.0",
       "author": { "name": "Colton Bearden" },
       "license": "MIT",
-      "keywords": ["agent", "mcp", "index", "search", "hooks", "librarian"]
+      "keywords": ["agent", "mcp", "index", "search", "catalog", "doctor", "hooks", "librarian"]
+    },
+    {
+      "name": "carrel-guard",
+      "source": "./plugins/carrel-guard",
+      "description": "Hooks that let Claude read what it otherwise cannot: a PreToolUse guard converts PDFs, Office/ebook files and images to text via carrel before Read sees them, and a SessionStart hook reports what carrel can do in this environment.",
+      "version": "0.2.0",
+      "author": { "name": "Colton Bearden" },
+      "license": "MIT",
+      "keywords": ["hooks", "read", "pdf", "docx", "ocr", "guard", "capabilities"]
     }
   ]
 }

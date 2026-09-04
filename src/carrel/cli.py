@@ -23,6 +23,7 @@ COMMANDS: dict[str, str] = {
     "search": "search",
     "tag": "tag",
     "note": "note",
+    "catalog": "catalog",
     "thumb": "thumb",
     "extract-images": "extract_images",
     "watch": "watch",
@@ -34,6 +35,7 @@ COMMANDS: dict[str, str] = {
     "form": "form",
     "proof": "proof",
     "color": "color",
+    "completion": "completion",
     "doctor": "doctor",
     "mcp": "mcp",
     "desk": "desk",
@@ -106,7 +108,7 @@ def _with_json_flag(command: click.Command) -> click.Command:
 @click.option("--debug", is_flag=True, help="Show tracebacks on error.")
 @click.option(
     "--root",
-    type=click.Path(file_okay=False),
+    type=click.Path(file_okay=False, exists=True),
     default=".",
     help="Desk root for db-backed commands (default: cwd).",
 )

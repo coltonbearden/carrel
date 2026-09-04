@@ -187,7 +187,7 @@ def test_search_type_filter(two_docs: Path):
 
 
 def test_search_bad_type_is_usage_error(two_docs: Path):
-    run("--root", str(two_docs), "search", "bumfuzzle", "--type", "docx", expect=2)
+    run("--root", str(two_docs), "search", "bumfuzzle", "--type", "wav", expect=2)
 
 
 def test_search_tag_filter(two_docs: Path):
@@ -212,7 +212,7 @@ def test_search_fail_empty_exits_5(desk: Path):
 
 
 def test_search_without_index_errors_and_creates_nothing(tmp_path: Path):
-    result = run("--root", str(tmp_path), "search", "anything", expect=1)
+    result = run("--root", str(tmp_path), "search", "anything", expect=4)
     assert "index" in result.stderr
     assert not (tmp_path / ".carrel").exists()
 
