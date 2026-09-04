@@ -13,8 +13,8 @@ Related docs: [Install](INSTALL.md) · [Quickstart](QUICKSTART.md) ·
 
 ## The desk root: `--root` and `.carrel/`
 
-Db-backed commands (`index`, `search`, `tag`, `note`, `desk`) operate on a
-"desk root" — by default the current directory, overridable with the global
+Db-backed commands (`index`, `search`, `tag`, `note`, `catalog`, `desk`, and
+`pack --query`) operate on a "desk root" — by default the current directory, overridable with the global
 flag:
 
 ```bash

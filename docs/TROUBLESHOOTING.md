@@ -26,7 +26,116 @@ $ echo $?
 Fix: run the printed install line (they're all collected in
 [INSTALL.md](INSTALL.md#optional-binaries-by-capability)), then re-run.
 Exit code 3 always means exactly this — scripts can branch on it safely. The
-full exit-code table is in [REFERENCE.md](REFERENCE.md#exit-codes).
+same code and shape cover a missing optional *Python extra* (next three
+entries). The full exit-code table is in [REFERENCE.md](REFERENCE.md#exit-codes).
+
+## `carrel desk` says textual is not installed
+
+Since v0.2.0 the TUI framework is an optional extra, so a plain install has
+every command except `desk`:
+
+```console
+$ carrel desk
+error: textual is not installed (optional extra 'tui') — run: uv tool install 'carrel[tui]'  (from a checkout: uv sync --extra tui)
+$ echo $?
+3
+```
+
+Fix: add the extra to your existing install — `uv tool install --force
+'carrel[tui]'` (or `pipx install --force 'carrel[tui]'`), or take everything
+with `'carrel[all]'`. The quotes matter: most shells treat `[` specially.
+Rationale is decision D-007 in [DECISIONS.md](DECISIONS.md); the extras table
+is in [INSTALL.md](INSTALL.md#optional-extras).
+
+## xlsx exits 3 (`openpyxl` is required)
+
+Word-processor and ebook formats (docx, odt, epub, rtf) go through the
+`pandoc` binary, but spreadsheets are read by a Python package that lives in
+the `office` extra:
+
+```console
+$ carrel convert sample.xlsx --to csv
+error: 'openpyxl' is required for this operation but was not found.
+  purpose: read .xlsx workbooks (xlsx → text/csv/json, inspect)
+  install: uv tool install 'carrel[office]'  (from a checkout: uv sync --extra office)
+$ echo $?
+3
+```
+
+The same message appears from `inspect`, `index`, `pack` and `diff` when they
+meet an `.xlsx`. Fix: `uv tool install --force 'carrel[office]'`. If instead
+you see `'pandoc' is required …` for a `.docx`, that is the binary:
+`sudo apt install pandoc`. `pack --tokenizer exact` behaves the same way for
+`tiktoken` and the `tokens` extra.
+
+## `pack --query` finds nothing (or misses a file you know matches)
+
+`--query` does not grep your files — it asks the desk index under `--root`,
+so three things have to line up:
+
+1. **There is an index.** Without one the command exits 4 and tells you what
+   to run:
+
+   ```console
+   $ carrel --root docs pack docs --query release --tree-only
+   error: --query needs a desk index but none exists under /home/you/docs — run `carrel index --root /home/you/docs` first
+   ```
+
+   Pass the *same* `--root` to `index` and to `pack`.
+2. **The index is fresh.** `carrel index --status` (alias of
+   `carrel catalog status`) lists `changed`, `missing` and `unindexed` files;
+   `carrel index` refreshes them, `--prune` drops the missing ones.
+3. **The file is an indexed type.** `carrel index` walks the supported types —
+   pdf, md, txt, html, json, xml, csv, docx, odt, epub, rtf, xlsx, and images —
+   and silently skips everything else (`.py`, `.toml`, `.yaml`, `.rs`, …).
+   A source file that contains your term can therefore never be a hit. This
+   is a known limitation of v0.2.0, not a bug in your setup: query-driven
+   packing fits document trees; for source trees use `--include`/`--exclude`,
+   `--since REF`/`--changed`, or `--outline` (see the scope note in
+   [FEATURES.md](FEATURES.md#explicit-scope-notes)).
+
+With an index and no hits, the header says so and the pack is empty; add
+`--fail-empty` to turn that into exit 5 for scripts:
+
+```console
+$ carrel --root docs pack docs --query xyzzyplugh --fail-empty --tree-only
+error: no files matched --query 'xyzzyplugh'
+$ echo $?
+5
+```
+
+Also note the `score` column: FTS5 bm25 scores are tiny for small documents,
+so `-0.000` in the human table is normal — `--json` carries the real value.
+
+## Which pandoc (or any tool) is carrel using?
+
+`carrel doctor` prints the version of each tool it resolved; `carrel doctor
+--json` adds the exact `path`. Normally that is the first match on `PATH`
+(`command -v pandoc`). If several copies are installed — on WSL2 a Windows
+`pandoc.exe` can be reached through interop — pin the one you want with the
+`CARREL_BIN_<NAME>` environment variable (adapter name upper-cased, `-` → `_`).
+`doctor` then labels the row:
+
+```console
+$ CARREL_BIN_PANDOC=/usr/bin/pandoc carrel doctor | grep pandoc
+│ pandoc     │ found via CARREL_BIN_PANDOC │ pandoc 3.7.0.2                                        │
+```
+
+A stale override never falls back silently — the tool counts as missing and
+the message names the variable:
+
+```console
+$ CARREL_BIN_PANDOC=/opt/nowhere/pandoc carrel convert sample.docx --to md
+error: 'pandoc' is required for this operation but was not found (override CARREL_BIN_PANDOC=/opt/nowhere/pandoc not found).
+  purpose: document conversion hub (md/html/txt…)
+  install: sudo apt install pandoc
+$ echo $?
+3
+```
+
+So if a tool you *know* is installed shows as `MISSING via CARREL_BIN_…`,
+check your shell profile for a leftover export. Details and the full variable
+list: [CONFIGURATION.md](CONFIGURATION.md#pinning-a-binary-carrel_bin_name).
 
 ## OCR says nothing changed / "page already has text"
 
@@ -86,10 +195,21 @@ Do this instead:
 
 - No index yet? `search` reads `.carrel/carrel.db` under `--root` (default:
   current directory) — run `carrel index` there first, and make sure you pass
-  the *same* `--root` to both commands.
+  the *same* `--root` to both commands. `carrel index --status` shows whether
+  the index exists and what is stale.
 - Scanned PDFs and images have no text until you index with `--ocr`.
+- Source files (`.py`, `.toml`, …) are not indexed types — see
+  [`pack --query` finds nothing](#pack-query-finds-nothing-or-misses-a-file-you-know-matches).
 - In scripts, `--fail-empty` makes an empty result exit 5 instead of 0, so
   pipelines can distinguish "no hits" from success.
+
+## Tags or notes vanished after I deleted `.carrel/`
+
+They lived in that database. Since v0.2.0 you can keep them portable:
+`carrel catalog export -o desk.json` before you delete or move a desk, and
+`carrel catalog import desk.json` after re-indexing (merge by default,
+`--replace` to reset). Importing the same document twice adds nothing. See
+[Quickstart §7](QUICKSTART.md#7-carry-your-tags-and-notes-catalog).
 
 ## gpg signing fails or hangs (WSL / scripts)
 
@@ -121,8 +241,8 @@ and `sign verify` always work.
 
 ## Claude Code marketplace: slash command not found
 
-The repo doubles as a plugin marketplace (five plugins: carrel-convert,
-carrel-inspect, carrel-organize, carrel-watch, carrel-agent). Two gotchas:
+The repo doubles as a plugin marketplace ([MARKETPLACE.md](MARKETPLACE.md)
+lists the current plugins). Two gotchas:
 
 - **Namespacing in headless mode.** When two plugins could claim a name — or
   always, in headless/`-p` runs — address commands by plugin:
@@ -133,7 +253,7 @@ carrel-inspect, carrel-organize, carrel-watch, carrel-agent). Two gotchas:
   commands are thin wrappers that run `carrel …` via Bash, and the
   carrel-agent plugin's PostToolUse hook runs
   `carrel index --update --if-indexed` on files Claude writes. All of it
-  requires `carrel` on `PATH`: install with `uv tool install .` from the repo
+  requires `carrel` on `PATH`: install with `uv tool install 'carrel[all]'`
   ([INSTALL.md](INSTALL.md#install-the-cli-recommended)) and check with
   `command -v carrel`. (The hook is deliberately quiet: `--if-indexed` exits
   0 silently unless you've already created a desk index in that root.)
@@ -142,18 +262,29 @@ carrel-inspect, carrel-organize, carrel-watch, carrel-agent). Two gotchas:
 
 **Exit code 4?** Input problem — missing file, unreadable, or unsupported
 type: `error: no such file: missing.pdf`. Carrel handles pdf, md, txt, html,
-json, xml, csv, png, jpg, ico.
+json, xml, csv, docx, odt, epub, rtf, xlsx (xlsm), png, jpg, ico. Detection is
+by bytes, so a docx renamed to `.bin` still inspects as `docx`.
 
 **Why won't convert overwrite my file?** By design — every output-producing
 command refuses to clobber existing files without `--force`.
 
 **Where did my index/tags/notes go?** They live in `.carrel/carrel.db` under
 whatever `--root` you used (default: the directory you ran `index` in). See
-[CONFIGURATION.md](CONFIGURATION.md#the-desk-root-root-and-carrel).
+[CONFIGURATION.md](CONFIGURATION.md#the-desk-root-root-and-carrel). Export
+them with `carrel catalog export` before moving a desk.
 
-**`fd` vs `fdfind`, `magick` vs `convert`?** Carrel tries both names
-automatically — see
+**`tag add` says "no such file" although the file exists under `--root`.**
+`tag` and `note` resolve relative paths against your current directory, not
+against `--root`. Run them from inside the desk root or pass absolute paths.
+
+**`magick` vs `convert`?** Carrel tries both names automatically — see
 [CONFIGURATION.md](CONFIGURATION.md#external-tools-adapter-path-resolution).
+To force one binary, use `CARREL_BIN_MAGICK`.
+
+**Old desk database after upgrading?** `.carrel/carrel.db` is versioned
+(`PRAGMA user_version`); a pre-v0.2.0 database is recognised and stamped
+version 1 on first open, data intact. `carrel catalog status` shows
+`(schema 1)`.
 
 **Audiobook voice sounds robotic.** That's espeak-ng, the baseline. Install
 piper (`pipx install piper-tts`) and `--engine auto` picks it up next run.
