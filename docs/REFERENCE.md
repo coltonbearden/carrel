@@ -42,7 +42,7 @@ Commands:
   form            Build HTML forms from JSON specs; list and fill PDF AcroForms.
   index           Index PATH...
   inspect         Show metadata for one file.
-  mcp             Serve the desk as an MCP server on stdio (search/pack/inspect tools).
+  mcp             Serve the desk as an MCP server on stdio: 10 tools (search, pack, inspect,...
   note            Attach notes to files (desk db) and annotations to PDFs (pypdf).
   ocr             OCR an image or PDF into text (txt/md) or a searchable PDF.
   organize        Plan (default) or perform (--apply) sorting DIRECTORY's files.
@@ -628,7 +628,8 @@ Options:
 ```text
 Usage: carrel mcp [OPTIONS]
 
-  Serve the desk as an MCP server on stdio (search/pack/inspect tools).
+  Serve the desk as an MCP server on stdio: 10 tools (search, pack, inspect, tag, note, index,
+  convert, diff, redact, doctor) and carrel:// file/search resources.
 
 Options:
   --json  Machine-readable JSON output.
