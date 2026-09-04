@@ -9,16 +9,18 @@ inspect never exits 3: the only optional binary it can use is exiftool
 
 from __future__ import annotations
 
+import contextlib
 import csv
 import functools
 import hashlib
 import json as jsonlib
 import mimetypes
 import xml.etree.ElementTree as ET
+from collections.abc import Callable
 from datetime import datetime
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, ClassVar
 
 import click
 
@@ -59,6 +61,7 @@ def _sha256(path: Path) -> str | None:
 # per-type detail
 # ---------------------------------------------------------------------------
 
+
 def _pdf_detail(path: Path) -> dict[str, Any]:
     from pypdf import PdfReader
 
@@ -71,18 +74,24 @@ def _pdf_detail(path: Path) -> dict[str, Any]:
         try:
             reader.decrypt("")
         except Exception:  # noqa: BLE001
-            detail.update({"pages": None, "title": None, "author": None,
-                           "producer": None, "form_fields": None, "annotations": None})
+            detail.update(
+                {
+                    "pages": None,
+                    "title": None,
+                    "author": None,
+                    "producer": None,
+                    "form_fields": None,
+                    "annotations": None,
+                }
+            )
             return detail
     try:
         detail["pages"] = len(reader.pages)
     except Exception:  # noqa: BLE001
         detail["pages"] = None
     meta = None
-    try:
+    with contextlib.suppress(Exception):  # metadata is optional and pypdf is picky
         meta = reader.metadata
-    except Exception:  # noqa: BLE001
-        pass
     detail["title"] = meta.title if meta else None
     detail["author"] = meta.author if meta else None
     detail["producer"] = meta.producer if meta else None
@@ -95,7 +104,7 @@ def _pdf_detail(path: Path) -> dict[str, Any]:
     try:
         for page in reader.pages:
             annotations += len(page.get("/Annots") or [])
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001, S110 — a malformed page must not sink the whole report
         pass
     detail["annotations"] = annotations
     return detail
@@ -108,8 +117,10 @@ def _image_detail(path: Path) -> dict[str, Any]:
     try:
         with Image.open(path) as im:
             detail: dict[str, Any] = {
-                "width": im.width, "height": im.height,
-                "mode": im.mode, "format": im.format,
+                "width": im.width,
+                "height": im.height,
+                "mode": im.mode,
+                "format": im.format,
             }
             sizes = im.info.get("sizes")
             if sizes:  # multi-size .ico
@@ -118,13 +129,11 @@ def _image_detail(path: Path) -> dict[str, Any]:
             try:
                 exif = im.getexif()
                 items = list(exif.items())
-                try:
+                with contextlib.suppress(Exception):  # no Exif IFD is normal
                     items += list(exif.get_ifd(IFD.Exif).items())
-                except Exception:  # noqa: BLE001
-                    pass
                 for tag, value in items:
                     summary[TAGS.get(tag, f"0x{tag:04x}")] = str(value)
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001, S110 — corrupt EXIF: report the image without it
                 pass
             detail["exif"] = summary or None
             return detail
@@ -168,8 +177,7 @@ def _csv_detail(path: Path) -> dict[str, Any]:
             rows = sum(1 for _ in reader)
     except OSError as e:
         return {"error": str(e)}
-    return {"delimiter": delimiter, "columns": header,
-            "column_count": len(header), "rows": rows}
+    return {"delimiter": delimiter, "columns": header, "column_count": len(header), "rows": rows}
 
 
 def _xml_detail(path: Path) -> dict[str, Any]:
@@ -181,13 +189,11 @@ def _xml_detail(path: Path) -> dict[str, Any]:
     def depth(el: ET.Element) -> int:
         return 1 + max((depth(c) for c in el), default=0)
 
-    return {"root": root.tag,
-            "elements": sum(1 for _ in root.iter()),
-            "depth": depth(root)}
+    return {"root": root.tag, "elements": sum(1 for _ in root.iter()), "depth": depth(root)}
 
 
 class _HTMLOutline(HTMLParser):
-    _H = {f"h{i}": i for i in range(1, 7)}
+    _H: ClassVar[dict[str, int]] = {f"h{i}": i for i in range(1, 7)}
 
     def __init__(self) -> None:
         super().__init__()
@@ -215,8 +221,7 @@ class _HTMLOutline(HTMLParser):
 
     def handle_endtag(self, tag: str) -> None:
         if tag in self._H and self._level is not None:
-            self.headings.append({"level": self._level,
-                                  "text": "".join(self._buf).strip()})
+            self.headings.append({"level": self._level, "text": "".join(self._buf).strip()})
             self._level = None
         elif tag == "title" and self._in_title:
             self.title = "".join(self._buf).strip()
@@ -226,8 +231,12 @@ class _HTMLOutline(HTMLParser):
 def _html_detail(path: Path) -> dict[str, Any]:
     parser = _HTMLOutline()
     parser.feed(path.read_text(errors="replace"))
-    return {"title": parser.title, "headings": parser.headings,
-            "links": parser.links, "images": parser.images}
+    return {
+        "title": parser.title,
+        "headings": parser.headings,
+        "links": parser.links,
+        "images": parser.images,
+    }
 
 
 def _md_detail(path: Path) -> dict[str, Any]:
@@ -250,8 +259,7 @@ def _md_detail(path: Path) -> dict[str, Any]:
 
 def _txt_detail(path: Path) -> dict[str, Any]:
     text = path.read_text(errors="replace")
-    return {"lines": len(text.splitlines()), "words": len(text.split()),
-            "chars": len(text)}
+    return {"lines": len(text.splitlines()), "words": len(text.split()), "chars": len(text)}
 
 
 def _type_detail(path: Path, ftype: FileType) -> dict[str, Any]:
@@ -292,6 +300,7 @@ def _exiftool_tags(path: Path) -> Any:
 # library entry point
 # ---------------------------------------------------------------------------
 
+
 def inspect_file(path: Path | str, deep: bool = False) -> dict[str, Any]:
     """Metadata for one file: name/size/mtime/type/sha256/mime + per-type detail.
 
@@ -322,6 +331,7 @@ def inspect_file(path: Path | str, deep: bool = False) -> dict[str, Any]:
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def _render(info: dict[str, Any]) -> None:
     for key in ("name", "path", "type", "mime", "size", "mtime", "sha256"):
         click.echo(f"{key:10} {info.get(key)}")
@@ -343,9 +353,12 @@ def _render(info: dict[str, Any]) -> None:
 @click.command(name="inspect")
 @click.argument("path", type=click.Path(path_type=Path))
 @click.option("--json", "as_json", is_flag=True, help="Machine-readable JSON output.")
-@click.option("--deep", is_flag=True,
-              help="Add exiftool's full tag table when exiftool is installed; "
-                   "without it the output notes 'not installed' (never an error).")
+@click.option(
+    "--deep",
+    is_flag=True,
+    help="Add exiftool's full tag table when exiftool is installed; "
+    "without it the output notes 'not installed' (never an error).",
+)
 @click.pass_context
 @_handled
 def cmd(ctx: click.Context, path: Path, as_json: bool, deep: bool) -> None:

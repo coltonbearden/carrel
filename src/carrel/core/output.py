@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 import sys
+from collections.abc import Callable
 from enum import IntEnum
-from typing import Any, Callable, NoReturn
+from typing import Any, NoReturn
 
 import click
 

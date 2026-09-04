@@ -23,7 +23,7 @@ from carrel.core.output import CarrelInputError
 espeak = needs("espeak-ng")
 
 
-def run(*args: str) -> "CliRunner.Result":
+def run(*args: str) -> CliRunner.Result:
     return CliRunner().invoke(cli, list(args))
 
 
@@ -40,15 +40,16 @@ def is_wav(path: Path) -> bool:
 
 # ------------------------------------------------------------------ help
 
+
 def test_help_lists_flags():
     res = run("audiobook", "--help")
     assert res.exit_code == 0
-    for flag in ("--voice", "--rate", "--engine", "--split-chapters",
-                 "--format", "-o"):
+    for flag in ("--voice", "--rate", "--engine", "--split-chapters", "--format", "-o"):
         assert flag in res.output
 
 
 # ------------------------------------------------------- markdown prep
+
 
 def test_md_to_speech_strips_syntax(fixtures: Path):
     spoken = md_to_speech((fixtures / "sample.md").read_text())
@@ -71,8 +72,7 @@ def test_md_to_speech_strips_syntax(fixtures: Path):
 
 def test_md_to_speech_images_and_blockquotes():
     spoken = md_to_speech(
-        "> A quoted thought.\n\n"
-        "![a lonely lamp](lamp.png) and ![](decor.png) here.\n"
+        "> A quoted thought.\n\n![a lonely lamp](lamp.png) and ![](decor.png) here.\n"
     )
     assert "A quoted thought." in spoken and ">" not in spoken
     assert "a lonely lamp" in spoken
@@ -82,7 +82,9 @@ def test_md_to_speech_images_and_blockquotes():
 def test_md_chapters_splits_on_h1(fixtures: Path):
     chapters = md_chapters((fixtures / "sample.md").read_text(), "sample")
     assert [t for t, _ in chapters] == [
-        "Chapter One: The Reading Room", "Chapter Two: The Catalogue"]
+        "Chapter One: The Reading Room",
+        "Chapter Two: The Catalogue",
+    ]
     assert "melodious cartography" in chapters[0][1]
     assert "desk project" in chapters[1][1]
 
@@ -103,6 +105,7 @@ def test_md_chapters_ignores_headings_inside_fences():
 
 # ---------------------------------------------------------------- chunking
 
+
 def test_chunk_text_respects_limit_and_sentences():
     sentence = "The quick brown fox jumps over the lazy dog once more. "
     text = sentence * 60  # ~3300 chars
@@ -122,11 +125,13 @@ def test_chunk_text_hard_splits_runon():
 
 # --------------------------------------------------------- synthesis (wav)
 
+
 @espeak
 def test_txt_to_wav_forced_espeak(tmp_copy):
     src = tmp_copy("sample.txt")
-    res = run("--json", "audiobook", str(src), "--engine", "espeak",
-              "--format", "wav", "--rate", "300")
+    res = run(
+        "--json", "audiobook", str(src), "--engine", "espeak", "--format", "wav", "--rate", "300"
+    )
     assert res.exit_code == 0, all_output(res)
     rec = json.loads(res.stdout)
     out = src.with_suffix(".wav")
@@ -145,8 +150,8 @@ def test_txt_to_wav_forced_espeak(tmp_copy):
 def test_auto_engine_falls_through_to_espeak(tmp_copy, monkeypatch):
     real_have = adapters.have
     monkeypatch.setattr(
-        adapters, "have",
-        lambda name: False if name in ("piper", "edge-tts") else real_have(name))
+        adapters, "have", lambda name: False if name in ("piper", "edge-tts") else real_have(name)
+    )
     result = audiobook_file(tmp_copy("sample.txt"), fmt="wav", rate=300)
     assert result["engine"] == "espeak-ng"
     assert Path(result["outputs"][0]).stat().st_size > 1024
@@ -157,8 +162,18 @@ def test_split_chapters_md_two_files(tmp_copy, tmp_path: Path):
     """Acceptance: --split-chapters on the 2-chapter md fixture → 2 files."""
     src = tmp_copy("sample.md")
     out = tmp_path / "book.wav"
-    res = run("--json", "audiobook", str(src), "-o", str(out),
-              "--split-chapters", "--format", "wav", "--rate", "300")
+    res = run(
+        "--json",
+        "audiobook",
+        str(src),
+        "-o",
+        str(out),
+        "--split-chapters",
+        "--format",
+        "wav",
+        "--rate",
+        "300",
+    )
     assert res.exit_code == 0, all_output(res)
     rec = json.loads(res.stdout)
     assert len(rec["outputs"]) == 2
@@ -194,9 +209,12 @@ def test_pdf_outline_split(tmp_path: Path):
 
     pdf = tmp_path / "outlined.pdf"
     c = canvas.Canvas(str(pdf), pagesize=letter)
-    for i, (key, title, line) in enumerate([
+    for _i, (key, title, line) in enumerate(
+        [
             ("ch1", "Part One", "Opening words of part one."),
-            ("ch2", "Part Two", "Closing words of part two.")]):
+            ("ch2", "Part Two", "Closing words of part two."),
+        ]
+    ):
         c.drawString(72, 720, line)
         c.bookmarkPage(key)
         c.addOutlineEntry(title, key, level=0)
@@ -207,14 +225,16 @@ def test_pdf_outline_split(tmp_path: Path):
     assert chapters is not None and [t for t, _ in chapters] == ["Part One", "Part Two"]
     assert "part one" in chapters[0][1].lower()
 
-    result = audiobook_file(pdf, tmp_path / "out.wav", fmt="wav",
-                            engine="espeak", rate=300, split_chapters=True)
+    result = audiobook_file(
+        pdf, tmp_path / "out.wav", fmt="wav", engine="espeak", rate=300, split_chapters=True
+    )
     names = [Path(p).name for p in result["outputs"]]
     assert names == ["out-01-part-one.wav", "out-02-part-two.wav"]
     assert all(is_wav(Path(p)) for p in result["outputs"])
 
 
 # ------------------------------------------------------------- mp3 / ffmpeg
+
 
 @espeak
 @needs("ffmpeg")
@@ -230,9 +250,16 @@ def test_md_to_mp3_real(tmp_copy):
     assert out.stat().st_size > 1024
     assert rec["duration_s"] > 0
     # title metadata was written from the filename stem
-    probe = adapters.run("ffprobe", "-v", "error", "-show_entries",
-                         "format_tags=title", "-of",
-                         "default=noprint_wrappers=1:nokey=1", str(out))
+    probe = adapters.run(
+        "ffprobe",
+        "-v",
+        "error",
+        "-show_entries",
+        "format_tags=title",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        str(out),
+    )
     assert probe.stdout.strip() == "sample"
 
 
@@ -240,8 +267,8 @@ def test_missing_ffmpeg_nonwav_exits_3(tmp_copy, monkeypatch):
     """Acceptance: absent ffmpeg + non-wav target → exit 3 with hint."""
     real_have = adapters.have
     monkeypatch.setattr(
-        adapters, "have",
-        lambda name: False if name == "ffmpeg" else real_have(name))
+        adapters, "have", lambda name: False if name == "ffmpeg" else real_have(name)
+    )
     src = tmp_copy("sample.txt")
     res = run("audiobook", str(src), "--format", "mp3")
     assert res.exit_code == 3
@@ -255,17 +282,18 @@ def test_wav_needs_no_ffmpeg(tmp_copy, monkeypatch):
     """--format wav works with espeak alone even when ffmpeg is 'absent'."""
     real_have = adapters.have
     monkeypatch.setattr(
-        adapters, "have",
-        lambda name: False if name in ("ffmpeg", "ffprobe") else real_have(name))
+        adapters, "have", lambda name: False if name in ("ffmpeg", "ffprobe") else real_have(name)
+    )
     src = tmp_copy("sample.txt")
     res = run("--json", "audiobook", str(src), "--format", "wav", "--rate", "300")
     assert res.exit_code == 0, all_output(res)
     rec = json.loads(res.stdout)
-    assert rec["duration_s"] is None            # no ffprobe → null
+    assert rec["duration_s"] is None  # no ffprobe → null
     assert is_wav(src.with_suffix(".wav"))
 
 
 # -------------------------------------------------------------- bad input
+
 
 @pytest.mark.skipif(adapters.have("piper"), reason="piper installed here")
 def test_forced_missing_engine_exits_3(tmp_copy):
@@ -309,6 +337,7 @@ def test_empty_source_exits_4(tmp_path: Path):
 
 
 # ------------------------------------------------------------- library API
+
 
 @espeak
 def test_audiobook_file_library_api(tmp_copy, tmp_path: Path):

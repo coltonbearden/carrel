@@ -18,9 +18,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 def _cli(*args: str) -> subprocess.CompletedProcess:
     """Drive the real entry point (carrel.cli.main) in a subprocess."""
-    return subprocess.run(
+    return subprocess.run(  # noqa: PLW1510 — tests inspect returncode
         [sys.executable, "-m", "carrel.cli", *args],
-        capture_output=True, text=True, timeout=60,
+        capture_output=True,
+        text=True,
+        timeout=60,
     )
 
 
@@ -39,8 +41,6 @@ def test_version_subprocess():
     proc = _cli("--version")
     assert proc.returncode == 0
     assert PRODUCT["version"] in proc.stdout
-
-
 
 
 def test_help_works():
@@ -76,6 +76,7 @@ def test_bad_flag_exits_2():
 
 
 # --- every command: --help works, --json accepted after the subcommand -----------
+
 
 @pytest.mark.parametrize("name", sorted(COMMANDS))
 def test_every_command_help(name: str):
@@ -139,7 +140,14 @@ def test_index_exits_3_when_only_missing_tools(tmp_path: Path, monkeypatch: pyte
 def test_redact_fail_empty_explains(tmp_path: Path):
     src = tmp_path / "plain.txt"
     src.write_text("nothing sensitive here\n")
-    proc = _cli("redact", str(src), "--pattern", r"\d{3}-\d{2}-\d{4}", "--fail-empty",
-                "-o", str(tmp_path / "out.txt"))
+    proc = _cli(
+        "redact",
+        str(src),
+        "--pattern",
+        r"\d{3}-\d{2}-\d{4}",
+        "--fail-empty",
+        "-o",
+        str(tmp_path / "out.txt"),
+    )
     assert proc.returncode == 5
     assert "no matches" in proc.stderr

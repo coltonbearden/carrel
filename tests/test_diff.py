@@ -27,6 +27,7 @@ def diff_json(*args: str) -> tuple[int, dict]:
 
 # ----------------------------------------------------------------- text mode
 
+
 def test_identical_file_exit_0(fixtures: Path):
     code, obj = diff_json(str(fixtures / "sample.txt"), str(fixtures / "sample.txt"))
     assert code == 0
@@ -55,8 +56,9 @@ def test_text_fallback_on_textish_mismatch(fixtures: Path):
 
 
 def test_forced_text_mode_on_json_pair(fixtures: Path):
-    code, obj = diff_json(str(fixtures / "sample.json"), str(fixtures / "records.json"),
-                          "--mode", "text")
+    code, obj = diff_json(
+        str(fixtures / "sample.json"), str(fixtures / "records.json"), "--mode", "text"
+    )
     assert obj["mode"] == "text"
     assert code == 1
 
@@ -73,6 +75,7 @@ def test_human_output_colorless_capture(fixtures: Path, tmp_path: Path):
 
 
 # --------------------------------------------------------------- struct: json
+
 
 def test_json_changed_dotted_path(fixtures: Path, tmp_path: Path):
     data = json.loads((fixtures / "sample.json").read_text())
@@ -116,18 +119,20 @@ def test_invalid_json_exit_4(fixtures: Path, tmp_path: Path):
 
 # ---------------------------------------------------------------- struct: csv
 
+
 def test_csv_cell_change_row_and_column(fixtures: Path, tmp_path: Path):
     lines = (fixtures / "sample.csv").read_text().splitlines()
-    parts = lines[2].split(",")          # data row 2
-    parts[1] = "Renamed Volume"          # title column
+    parts = lines[2].split(",")  # data row 2
+    parts[1] = "Renamed Volume"  # title column
     lines[2] = ",".join(parts)
     modified = tmp_path / "sample.csv"
     modified.write_text("\n".join(lines) + "\n")
     code, obj = diff_json(str(fixtures / "sample.csv"), str(modified))
     assert code == 1
     assert obj["mode"] == "struct"
-    assert {"row": 2, "column": "title", "a": "Zephyr Vol 1",
-            "b": "Renamed Volume"} in obj["changed"]
+    assert {"row": 2, "column": "title", "a": "Zephyr Vol 1", "b": "Renamed Volume"} in obj[
+        "changed"
+    ]
     assert obj["rows_added"] == [] and obj["rows_removed"] == []
 
 
@@ -143,6 +148,7 @@ def test_csv_row_added(fixtures: Path, tmp_path: Path):
 
 
 # ---------------------------------------------------------------- struct: xml
+
 
 def test_xml_changed_element_path(fixtures: Path, tmp_path: Path):
     modified = tmp_path / "sample.xml"
@@ -169,6 +175,7 @@ def test_xml_attribute_change(fixtures: Path, tmp_path: Path):
 
 # ------------------------------------------------------------------ pdf mode
 
+
 @needs("pdftotext")
 def test_pdf_pair_text_diff_nonempty(fixtures: Path):
     code, obj = diff_json(str(fixtures / "text+image.pdf"), str(fixtures / "b.pdf"))
@@ -189,6 +196,7 @@ def test_pdf_identical(fixtures: Path):
 
 # ---------------------------------------------------------------- image mode
 
+
 def test_image_identical_copies(fixtures: Path):
     code, obj = diff_json(str(fixtures / "sample.jpg"), str(fixtures / "sample-copy.jpg"))
     assert code == 0
@@ -199,8 +207,7 @@ def test_image_identical_copies(fixtures: Path):
 
 
 def test_image_size_mismatch_padded(fixtures: Path):
-    code, obj = diff_json(str(fixtures / "sample.jpg"),
-                          str(fixtures / "sample-resized.jpg"))
+    code, obj = diff_json(str(fixtures / "sample.jpg"), str(fixtures / "sample-resized.jpg"))
     assert code == 1
     assert obj["size_mismatch"] is True
     assert obj["size_a"] == [400, 300] and obj["size_b"] == [300, 225]
@@ -227,9 +234,9 @@ def test_image_pixel_percentage_and_mean_delta(fixtures: Path, tmp_path: Path):
 
 def test_image_heatmap_written(fixtures: Path, tmp_path: Path):
     heat = tmp_path / "heatmap.png"
-    code, obj = diff_json(str(fixtures / "sample.jpg"),
-                          str(fixtures / "sample-resized.jpg"),
-                          "--out", str(heat))
+    code, obj = diff_json(
+        str(fixtures / "sample.jpg"), str(fixtures / "sample-resized.jpg"), "--out", str(heat)
+    )
     assert code == 1
     assert obj["heatmap"] == str(heat)
     with Image.open(heat) as im:
@@ -238,13 +245,19 @@ def test_image_heatmap_written(fixtures: Path, tmp_path: Path):
 
 
 def test_out_rejected_outside_image_mode(fixtures: Path, tmp_path: Path):
-    res = run("diff", str(fixtures / "sample.txt"), str(fixtures / "sample.md"),
-              "--out", str(tmp_path / "x.png"))
+    res = run(
+        "diff",
+        str(fixtures / "sample.txt"),
+        str(fixtures / "sample.md"),
+        "--out",
+        str(tmp_path / "x.png"),
+    )
     assert res.exit_code == 4
     assert "image mode" in res.output
 
 
 # ------------------------------------------------------------ errors & modes
+
 
 def test_type_mismatch_exit_4(fixtures: Path):
     res = run("diff", str(fixtures / "sample.txt"), str(fixtures / "sample.png"))
@@ -252,8 +265,9 @@ def test_type_mismatch_exit_4(fixtures: Path):
 
 
 def test_forced_struct_mismatch_exit_4(fixtures: Path):
-    res = run("diff", str(fixtures / "sample.json"), str(fixtures / "sample.csv"),
-              "--mode", "struct")
+    res = run(
+        "diff", str(fixtures / "sample.json"), str(fixtures / "sample.csv"), "--mode", "struct"
+    )
     assert res.exit_code == 4
 
 
@@ -270,6 +284,7 @@ def test_help_documents_exit_codes(fixtures: Path):
 
 
 # ------------------------------------------------------------------- library
+
 
 def test_diff_files_library_api(fixtures: Path):
     result = diff_files(fixtures / "sample.txt", fixtures / "sample.txt")

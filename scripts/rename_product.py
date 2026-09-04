@@ -12,6 +12,7 @@ product.json is the single source of truth. This script:
 
 Run from anywhere; operates on the repo containing this script.
 """
+
 from __future__ import annotations
 
 import json
@@ -21,14 +22,34 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-RENAME_GLOBS = ["docs/**/*.md", "plugins/**/*.md", "plugins/**/*.json", "plugins/**/*.sh",
-                "snippets/**", "examples/**", "tests/**/*.py", "README.md", "CHANGELOG.md",
-                ".claude-plugin/marketplace.json", ".claude/agents/*.md", "specs/*.md"]
+RENAME_GLOBS = [
+    "docs/**/*.md",
+    "plugins/**/*.md",
+    "plugins/**/*.json",
+    "plugins/**/*.sh",
+    "snippets/**",
+    "examples/**",
+    "tests/**/*.py",
+    "README.md",
+    "CHANGELOG.md",
+    ".claude-plugin/marketplace.json",
+    ".claude/agents/*.md",
+    "specs/*.md",
+]
 
 # Core-owned literals that never rename (the Python package stays `carrel`):
 # `.carrel/` desk dirs, `carrel.db`, module paths (carrel.core, from carrel import).
-_PROTECTED = [".carrel", "carrel.db", "carrel.cli", "carrel.core", "carrel.commands",
-              "carrel.desk", "carrel._product", "import carrel", "from carrel"]
+_PROTECTED = [
+    ".carrel",
+    "carrel.db",
+    "carrel.cli",
+    "carrel.core",
+    "carrel.commands",
+    "carrel.desk",
+    "carrel._product",
+    "import carrel",
+    "from carrel",
+]
 _MASK = "\x00PROTECTED{}\x00"
 
 
@@ -81,8 +102,9 @@ def main() -> int:
     pyproject = ROOT / "pyproject.toml"
     text = pyproject.read_text()
     text = re.sub(r'(?m)^name = ".*"$', f'name = "{new}"', text, count=1)
-    text = re.sub(rf'(?m)^{re.escape(old)} = "carrel\.cli:main"$',
-                  f'{new} = "carrel.cli:main"', text, count=1)
+    text = re.sub(
+        rf'(?m)^{re.escape(old)} = "carrel\.cli:main"$', f'{new} = "carrel.cli:main"', text, count=1
+    )
     pyproject.write_text(text)
 
     # plugin directory names (plugins/carrel-convert -> plugins/<new>-convert)

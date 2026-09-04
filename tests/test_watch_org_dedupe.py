@@ -69,8 +69,8 @@ def finish(thread: threading.Thread, holder: dict, expect: int = 0):
     assert not thread.is_alive(), "watch did not exit (stop event never fired?)"
     result = holder["result"]
     assert result.exit_code == expect, (
-        f"exit {result.exit_code}: {result.output}\n{result.stderr}\n"
-        f"{result.exception!r}")
+        f"exit {result.exit_code}: {result.output}\n{result.stderr}\n{result.exception!r}"
+    )
     return result
 
 
@@ -98,7 +98,7 @@ def test_watch_due_coalesces_per_path_within_window():
     a, b = Path("/x/a"), Path("/x/b")
     pending: dict[Path, tuple[str, float]] = {}
     pending[a] = ("created", 100.0)
-    pending[a] = ("modified", 100.2)   # same path re-fires: coalesced, timer reset
+    pending[a] = ("modified", 100.2)  # same path re-fires: coalesced, timer reset
     pending[b] = ("created", 100.0)
     # at t=100.4 only b's window (0.3s = 300ms) has elapsed
     assert _due(pending, 100.4, 300) == [("created", b)]
@@ -112,14 +112,24 @@ def test_watch_once_runs_actions_in_order_then_exits(tmp_path: Path):
     watched = tmp_path / "watched"
     watched.mkdir()
     log = tmp_path / "log.txt"
-    thread, holder = run_watch_in_thread([
-        "watch", str(watched), "--debounce", "50", "--once",
-        "--timeout", str(DEADLINE),
-        "--run", f"echo one {{path}} >> {log}",
-        "--run", f"echo two {{name}} >> {log}",
-    ])
-    poke_until(watched / "hello.txt", lambda: log.exists() and
-               len(log.read_text().splitlines()) >= 2)
+    thread, holder = run_watch_in_thread(
+        [
+            "watch",
+            str(watched),
+            "--debounce",
+            "50",
+            "--once",
+            "--timeout",
+            str(DEADLINE),
+            "--run",
+            f"echo one {{path}} >> {log}",
+            "--run",
+            f"echo two {{name}} >> {log}",
+        ]
+    )
+    poke_until(
+        watched / "hello.txt", lambda: log.exists() and len(log.read_text().splitlines()) >= 2
+    )
     finish(thread, holder)
     lines = log.read_text().splitlines()
     assert len(lines) == 2  # --once: exactly one coalesced action batch
@@ -131,11 +141,20 @@ def test_watch_json_lines_output(tmp_path: Path):
     watched = tmp_path / "watched"
     watched.mkdir()
     marker = tmp_path / "marker"
-    thread, holder = run_watch_in_thread([
-        "watch", str(watched), "--debounce", "50", "--once",
-        "--timeout", str(DEADLINE), "--json-lines",
-        "--run", f"touch {marker}",
-    ])
+    thread, holder = run_watch_in_thread(
+        [
+            "watch",
+            str(watched),
+            "--debounce",
+            "50",
+            "--once",
+            "--timeout",
+            str(DEADLINE),
+            "--json-lines",
+            "--run",
+            f"touch {marker}",
+        ]
+    )
     poke_until(watched / "data.txt", marker.exists)
     result = finish(thread, holder)
     lines = [ln for ln in result.stdout.splitlines() if ln.strip()]
@@ -152,11 +171,21 @@ def test_watch_glob_filters_events(tmp_path: Path):
     watched = tmp_path / "watched"
     watched.mkdir()
     log = tmp_path / "log.txt"
-    thread, holder = run_watch_in_thread([
-        "watch", str(watched), "--glob", "*.txt", "--debounce", "30",
-        "--once", "--timeout", str(DEADLINE),
-        "--run", f"echo {{name}} >> {log}",
-    ])
+    thread, holder = run_watch_in_thread(
+        [
+            "watch",
+            str(watched),
+            "--glob",
+            "*.txt",
+            "--debounce",
+            "30",
+            "--once",
+            "--timeout",
+            str(DEADLINE),
+            "--run",
+            f"echo {{name}} >> {log}",
+        ]
+    )
     # touch BOTH names each round: if the glob leaked, skip.md would win a
     # race at least sometimes and show up in the log
     end = time.time() + DEADLINE
@@ -174,8 +203,7 @@ def test_watch_timeout_exits_cleanly_without_events(tmp_path: Path):
     watched = tmp_path / "watched"
     watched.mkdir()
     start = time.monotonic()
-    result = run("watch", str(watched), "--timeout", "0.4",
-                 "--run", "echo never")
+    result = run("watch", str(watched), "--timeout", "0.4", "--run", "echo never")
     assert time.monotonic() - start < DEADLINE
     assert "echo never" not in result.output  # no action ever fired
 
@@ -185,8 +213,7 @@ def test_watch_missing_dir_exits_4(tmp_path: Path):
 
 
 def test_watch_bad_event_name_is_usage_error(tmp_path: Path):
-    run("watch", str(tmp_path), "--on", "created,bogus", "--run", "true",
-        expect=2)
+    run("watch", str(tmp_path), "--on", "created,bogus", "--run", "true", expect=2)
 
 
 def test_watch_requires_run(tmp_path: Path):
@@ -260,9 +287,9 @@ def test_organize_by_date_uses_mtime(tmp_path: Path, tmp_copy):
 
 
 def test_organize_by_exif_date(tmp_path: Path, tmp_copy):
-    jpg = tmp_copy("sample.jpg")          # EXIF DateTimeOriginal 2021:06:15
-    png = tmp_copy("sample.png")          # no EXIF -> mtime fallback
-    txt = tmp_copy("sample.txt")          # not an image -> skipped
+    jpg = tmp_copy("sample.jpg")  # EXIF DateTimeOriginal 2021:06:15
+    png = tmp_copy("sample.png")  # no EXIF -> mtime fallback
+    txt = tmp_copy("sample.txt")  # not an image -> skipped
     stamp = datetime(2019, 11, 2).timestamp()
     os.utime(png, (stamp, stamp))
     data = run_json("organize", str(tmp_path), "--by", "exif-date")
@@ -283,8 +310,7 @@ def test_organize_into_override(messy: Path):
 def test_organize_into_bad_spec_is_usage_error(messy: Path):
     run("organize", str(messy), "--into", "movies=cinema", expect=2)
     run("organize", str(messy), "--into", "images", expect=2)
-    run("organize", str(messy), "--by", "date", "--into", "images=pics",
-        expect=2)
+    run("organize", str(messy), "--by", "date", "--into", "images=pics", expect=2)
 
 
 def test_organize_missing_dir_exits_4(tmp_path: Path):
@@ -311,8 +337,7 @@ def test_dedupe_exact_finds_planted_pair(dup_dir: Path):
     groups = run_json("dedupe", str(dup_dir))
     assert len(groups) == 1
     group = groups[0]
-    assert set(group["files"]) == {str(dup_dir / "sample.jpg"),
-                                   str(dup_dir / "sample-copy.jpg")}
+    assert set(group["files"]) == {str(dup_dir / "sample.jpg"), str(dup_dir / "sample-copy.jpg")}
     assert group["kept"] == str(dup_dir / "sample.jpg")  # oldest by default
     assert group["deleted"] == []
     assert len(group["hash"]) == 128  # blake2b hexdigest
@@ -322,7 +347,7 @@ def test_dedupe_near_clusters_resized_copy(tmp_path: Path, tmp_copy):
     jpg = tmp_copy("sample.jpg")
     resized = tmp_copy("sample-resized.jpg")  # 75% resize: different bytes
     other = stripes_png(tmp_path / "stripes.png")
-    assert hamming(dhash(jpg), dhash(resized)) <= 8      # the premise
+    assert hamming(dhash(jpg), dhash(resized)) <= 8  # the premise
     assert hamming(dhash(jpg), dhash(other)) > 8
     # exact mode does NOT pair them
     assert run_json("dedupe", str(tmp_path)) == []
@@ -381,7 +406,7 @@ def test_dedupe_multiple_dirs_and_no_dupes(tmp_path: Path, tmp_copy):
     tmp_copy("sample.txt", "a/sample.txt")
     tmp_copy("sample.txt", "b/other.txt")
     assert len(run_json("dedupe", str(a), str(b))) == 1  # across dirs
-    assert run_json("dedupe", str(a)) == []              # alone: no dupes
+    assert run_json("dedupe", str(a)) == []  # alone: no dupes
 
 
 def test_dedupe_missing_dir_exits_4(tmp_path: Path):

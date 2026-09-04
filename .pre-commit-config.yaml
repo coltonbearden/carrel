@@ -1,0 +1,35 @@
+# Local guard rails — same checks CI runs. Install once: `uv run pre-commit install`
+# (or `pipx install pre-commit`). Hooks run on staged files only.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      - id: check-added-large-files
+        args: [--maxkb=512]
+      - id: check-merge-conflict
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.6
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy (src/carrel)
+        entry: uv run mypy
+        language: system
+        pass_filenames: false
+        files: ^(src/carrel/.*\.py|pyproject\.toml)$
+      - id: product-sync
+        name: product.json ↔ generated copies
+        entry: uv run pytest -q tests/test_product_sync.py
+        language: system
+        pass_filenames: false
+        files: ^(product\.json|pyproject\.toml|CITATION\.cff|CHANGELOG\.md|src/carrel/_product\.py|\.claude-plugin/.*|plugins/.*/plugin\.json)$

@@ -26,10 +26,23 @@ def inspect_json(path: Path, *extra: str) -> dict:
 
 
 ALL_FIXTURES = [
-    "sample.txt", "sample.md", "sample.html", "sample.json", "records.json",
-    "sample.xml", "sample.csv", "sample.png", "sample.jpg", "sample-copy.jpg",
-    "sample-resized.jpg", "sample.ico", "scanned.png", "text+image.pdf",
-    "form.pdf", "scanned.pdf", "b.pdf",
+    "sample.txt",
+    "sample.md",
+    "sample.html",
+    "sample.json",
+    "records.json",
+    "sample.xml",
+    "sample.csv",
+    "sample.png",
+    "sample.jpg",
+    "sample-copy.jpg",
+    "sample-resized.jpg",
+    "sample.ico",
+    "scanned.png",
+    "text+image.pdf",
+    "form.pdf",
+    "scanned.pdf",
+    "b.pdf",
 ]
 
 COMMON_KEYS = {"path", "name", "size", "mtime", "type", "mime", "sha256", "detail"}
@@ -37,10 +50,11 @@ COMMON_KEYS = {"path", "name", "size", "mtime", "type", "mime", "sha256", "detai
 
 # ------------------------------------------------------------- common surface
 
+
 @pytest.mark.parametrize("name", ALL_FIXTURES)
 def test_every_fixture_returns_sane_json(fixtures: Path, name: str):
     obj = inspect_json(fixtures / name)
-    assert COMMON_KEYS <= set(obj)
+    assert set(obj) >= COMMON_KEYS
     assert obj["name"] == name
     assert obj["size"] > 0
     assert isinstance(obj["sha256"], str) and len(obj["sha256"]) == 64
@@ -62,6 +76,7 @@ def test_type_detected(fixtures: Path):
 
 # ------------------------------------------------------------------- per type
 
+
 def test_pdf_detail(fixtures: Path):
     d = inspect_json(fixtures / "text+image.pdf")["detail"]
     assert d["pages"] == 2
@@ -72,8 +87,8 @@ def test_pdf_detail(fixtures: Path):
 
 def test_pdf_form_fields(fixtures: Path):
     d = inspect_json(fixtures / "form.pdf")["detail"]
-    assert d["form_fields"] == 2          # name + agree
-    assert d["annotations"] >= 2          # widget annotations
+    assert d["form_fields"] == 2  # name + agree
+    assert d["annotations"] >= 2  # widget annotations
     assert d["pages"] == 1
 
 
@@ -150,6 +165,7 @@ def test_txt_detail(fixtures: Path):
 
 # ----------------------------------------------------------------------- deep
 
+
 @needs("exiftool")
 def test_deep_with_exiftool(fixtures: Path):
     obj = inspect_json(fixtures / "sample.jpg", "--deep")
@@ -177,6 +193,7 @@ def test_no_deep_flag_no_exiftool_key(fixtures: Path):
 
 # ------------------------------------------------------------ errors & UX
 
+
 def test_missing_file_exit_4(tmp_path: Path):
     res = run("inspect", str(tmp_path / "nope.txt"))
     assert res.exit_code == 4
@@ -200,9 +217,10 @@ def test_help_and_human_output(fixtures: Path):
 
 # ------------------------------------------------------------------- library
 
+
 def test_inspect_file_library_api(fixtures: Path):
     info = inspect_file(fixtures / "sample.csv")
-    assert COMMON_KEYS <= set(info)
+    assert set(info) >= COMMON_KEYS
     assert "exiftool" not in info
     with pytest.raises(CarrelInputError):
         inspect_file(fixtures / "does-not-exist.csv")

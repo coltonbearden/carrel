@@ -34,8 +34,19 @@ def _pdf_thumb(src: Path, dest: Path, size: int) -> None:
     """First PDF page → dest, long side scaled to `size` (via pdftoppm)."""
     flag = "-jpeg" if dest.suffix == ".jpg" else "-png"
     prefix = dest.parent / dest.stem  # pdftoppm appends the extension itself
-    proc = adapters.run("pdftoppm", flag, "-f", "1", "-l", "1", "-singlefile",
-                        "-scale-to", str(size), str(src), str(prefix))
+    proc = adapters.run(
+        "pdftoppm",
+        flag,
+        "-f",
+        "1",
+        "-l",
+        "1",
+        "-singlefile",
+        "-scale-to",
+        str(size),
+        str(src),
+        str(prefix),
+    )
     if proc.returncode != 0 or not dest.exists():
         err = (proc.stderr or "").strip().splitlines()
         raise CarrelError(f"pdftoppm failed ({proc.returncode}): {err[0] if err else '?'}")
@@ -61,13 +72,13 @@ def _html_thumb(src: Path, dest: Path, size: int) -> None:
         proc = adapters.run("weasyprint", str(src), str(pdf), timeout=300)
         if proc.returncode != 0 or not pdf.exists():
             err = (proc.stderr or "").strip().splitlines()
-            raise CarrelError(
-                f"weasyprint failed ({proc.returncode}): {err[-1] if err else '?'}")
+            raise CarrelError(f"weasyprint failed ({proc.returncode}): {err[-1] if err else '?'}")
         _pdf_thumb(pdf, dest, size)
 
 
-def thumb_file(src: Path | str, out_dir: Path | str, size: int = DEFAULT_SIZE,
-               fmt: str = "png") -> dict[str, Any]:
+def thumb_file(
+    src: Path | str, out_dir: Path | str, size: int = DEFAULT_SIZE, fmt: str = "png"
+) -> dict[str, Any]:
     """Thumbnail one file into out_dir; returns {"src", "thumb", "w", "h"}.
 
     Raises CarrelInputError (exit 4) for unsupported input, CarrelError
@@ -76,8 +87,9 @@ def thumb_file(src: Path | str, out_dir: Path | str, size: int = DEFAULT_SIZE,
     """
     src, out_dir = Path(src), Path(out_dir)
     if fmt not in FORMATS:
-        raise CarrelInputError(f"unsupported thumbnail format '{fmt}' "
-                               f"(choose from: {', '.join(FORMATS)})")
+        raise CarrelInputError(
+            f"unsupported thumbnail format '{fmt}' (choose from: {', '.join(FORMATS)})"
+        )
     if size < 1:
         raise CarrelInputError(f"--size must be positive (got {size})")
     ftype = detect_or_die(src)
@@ -92,8 +104,8 @@ def thumb_file(src: Path | str, out_dir: Path | str, size: int = DEFAULT_SIZE,
         _html_thumb(src, dest, size)
     else:
         raise CarrelInputError(
-            f"cannot thumbnail {ftype.value} files: {src} "
-            "(supported: pdf, png, jpg, ico, html)")
+            f"cannot thumbnail {ftype.value} files: {src} (supported: pdf, png, jpg, ico, html)"
+        )
 
     from PIL import Image
 
@@ -109,18 +121,33 @@ def _human(results: list[dict[str, Any]]) -> None:
 
 
 @click.command(name="thumb")
-@click.argument("sources", nargs=-1, required=True, metavar="SRC...",
-                type=click.Path(path_type=Path))
-@click.option("--size", type=click.IntRange(min=1), default=DEFAULT_SIZE,
-              show_default=True, help="Maximum edge length in pixels.")
-@click.option("--out-dir", type=click.Path(file_okay=False, path_type=Path),
-              default=Path("./thumbs"), show_default=True,
-              help="Directory for the thumbnails.")
-@click.option("--format", "fmt", type=click.Choice(FORMATS), default="png",
-              show_default=True, help="Thumbnail image format.")
+@click.argument(
+    "sources", nargs=-1, required=True, metavar="SRC...", type=click.Path(path_type=Path)
+)
+@click.option(
+    "--size",
+    type=click.IntRange(min=1),
+    default=DEFAULT_SIZE,
+    show_default=True,
+    help="Maximum edge length in pixels.",
+)
+@click.option(
+    "--out-dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=Path("./thumbs"),
+    show_default=True,
+    help="Directory for the thumbnails.",
+)
+@click.option(
+    "--format",
+    "fmt",
+    type=click.Choice(FORMATS),
+    default="png",
+    show_default=True,
+    help="Thumbnail image format.",
+)
 @click.pass_context
-def cmd(ctx: click.Context, sources: tuple[Path, ...], size: int,
-        out_dir: Path, fmt: str) -> None:
+def cmd(ctx: click.Context, sources: tuple[Path, ...], size: int, out_dir: Path, fmt: str) -> None:
     """Create thumbnails for SRC... (pdf, png, jpg, ico, html).
 
     Thumbnails land in --out-dir as <name>.<format>, aspect preserved,

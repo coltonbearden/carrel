@@ -14,9 +14,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 def test_product_matches_json():
     product_json = json.loads((REPO_ROOT / "product.json").read_text())
-    assert PRODUCT == product_json, (
-        "src/carrel/_product.py is out of sync with product.json — "
-        "run scripts/sync_product.py"
+    assert product_json == PRODUCT, (
+        "src/carrel/_product.py is out of sync with product.json — run scripts/sync_product.py"
     )
 
 
@@ -49,7 +48,11 @@ def test_no_stale_repository_owner():
     """Every GitHub link in docs/plugins/manifests must use the product repository owner."""
     owner = PRODUCT["repository"].removeprefix("https://github.com/").split("/")[0]
     stale = []
-    for path in list(REPO_ROOT.glob("docs/*.md")) + [REPO_ROOT / "README.md", REPO_ROOT / "mkdocs.yml"]:
+    for path in [
+        *list(REPO_ROOT.glob("docs/*.md")),
+        REPO_ROOT / "README.md",
+        REPO_ROOT / "mkdocs.yml",
+    ]:
         for lineno, line in enumerate(path.read_text().splitlines(), 1):
             for match in re.finditer(r"github\.com/([A-Za-z0-9_.-]+)/carrel", line):
                 if match.group(1).lower() != owner.lower():

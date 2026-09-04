@@ -13,10 +13,31 @@ from carrel.core.output import ExitCode
 
 # spec 00-core: registry must cover these names
 REQUIRED_ADAPTERS = {
-    "pandoc", "pdftotext", "pdftoppm", "pdfimages", "qpdf", "gs", "weasyprint",
-    "tesseract", "ocrmypdf", "magick", "exiftool", "ffmpeg", "pngquant",
-    "icotool", "jq", "mlr", "rg", "fd", "sqlite3", "inotifywait",
-    "espeak-ng", "piper", "edge-tts", "gpg", "claude",
+    "pandoc",
+    "pdftotext",
+    "pdftoppm",
+    "pdfimages",
+    "qpdf",
+    "gs",
+    "weasyprint",
+    "tesseract",
+    "ocrmypdf",
+    "magick",
+    "exiftool",
+    "ffmpeg",
+    "pngquant",
+    "icotool",
+    "jq",
+    "mlr",
+    "rg",
+    "fd",
+    "sqlite3",
+    "inotifywait",
+    "espeak-ng",
+    "piper",
+    "edge-tts",
+    "gpg",
+    "claude",
 }
 
 

@@ -9,13 +9,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
 from click.testing import CliRunner
+from conftest import needs
 from PIL import Image
 from pypdf import PdfReader, PdfWriter
 
 from carrel.cli import cli
-from conftest import needs
 
 # ------------------------------------------------------------------ helpers
 
@@ -45,8 +44,9 @@ def make_pdf(path: Path, pages: int, *, password: str | None = None) -> Path:
     return path
 
 
-def make_image(path: Path, size=(40, 20), *, exif_make: str | None = None,
-               color=(200, 30, 30)) -> Path:
+def make_image(
+    path: Path, size=(40, 20), *, exif_make: str | None = None, color=(200, 30, 30)
+) -> Path:
     img = Image.new("RGB", size, color)
     kwargs = {}
     if exif_make is not None:
@@ -164,13 +164,18 @@ def test_pdf_encrypted_without_decrypt_exits_4(tmp_path: Path):
 def test_pdf_qpdf_missing_degrades_to_exit_3(tmp_path: Path, monkeypatch):
     from carrel.core import adapters as ad
 
-    broken = ad.Adapter("qpdf", ("definitely-not-a-real-binary-xyz",),
-                        ("--version",), ad.ADAPTERS["qpdf"].install_hint,
-                        ad.ADAPTERS["qpdf"].purpose)
+    broken = ad.Adapter(
+        "qpdf",
+        ("definitely-not-a-real-binary-xyz",),
+        ("--version",),
+        ad.ADAPTERS["qpdf"].install_hint,
+        ad.ADAPTERS["qpdf"].purpose,
+    )
     monkeypatch.setitem(ad.ADAPTERS, "qpdf", broken)
     src = make_pdf(tmp_path / "s.pdf", 1)
     result = CliRunner().invoke(
-        cli, ["edit", "pdf", str(src), "--linearize", "-o", str(tmp_path / "o.pdf")])
+        cli, ["edit", "pdf", str(src), "--linearize", "-o", str(tmp_path / "o.pdf")]
+    )
     assert result.exit_code == 3
     assert "qpdf" in result.stderr and "install" in result.stderr
 
@@ -189,18 +194,17 @@ def test_image_rotate_90_swaps_dimensions(tmp_path: Path):
 
 def test_image_resize_exact_and_percent(tmp_path: Path):
     src = make_image(tmp_path / "s.png", size=(40, 20))
-    record = run_json("edit", "image", str(src), "--resize", "10x5",
-                      "-o", str(tmp_path / "a.png"))
+    record = run_json("edit", "image", str(src), "--resize", "10x5", "-o", str(tmp_path / "a.png"))
     assert record["size_out"] == [10, 5]
-    record = run_json("edit", "image", str(src), "--resize", "50%",
-                      "-o", str(tmp_path / "b.png"))
+    record = run_json("edit", "image", str(src), "--resize", "50%", "-o", str(tmp_path / "b.png"))
     assert record["size_out"] == [20, 10]
 
 
 def test_image_crop(tmp_path: Path):
     src = make_image(tmp_path / "c.png", size=(40, 20))
-    record = run_json("edit", "image", str(src), "--crop", "5,5,10,8",
-                      "-o", str(tmp_path / "out.png"))
+    record = run_json(
+        "edit", "image", str(src), "--crop", "5,5,10,8", "-o", str(tmp_path / "out.png")
+    )
     assert record["size_out"] == [10, 8]
 
 
@@ -226,10 +230,11 @@ def test_image_exif_preserved_without_strip(tmp_path: Path):
 def test_image_quality_shrinks_jpeg(tmp_path: Path):
     import random
 
-    rng = random.Random(42)
+    rng = random.Random(42)  # noqa: S311 — deterministic noise, not crypto
     noisy = Image.new("RGB", (64, 64))
-    noisy.putdata([(rng.randrange(256), rng.randrange(256), rng.randrange(256))
-                   for _ in range(64 * 64)])
+    noisy.putdata(
+        [(rng.randrange(256), rng.randrange(256), rng.randrange(256)) for _ in range(64 * 64)]
+    )
     src = tmp_path / "noise.jpg"
     noisy.save(src, quality=95)
     lo, hi = tmp_path / "lo.jpg", tmp_path / "hi.jpg"
@@ -262,8 +267,9 @@ def test_text_literal_replace(tmp_path: Path):
     src = tmp_path / "note.txt"
     src.write_text("apples and apples, not oranges\n")
     out = tmp_path / "out.txt"
-    record = run_json("edit", "text", str(src), "--find", "apples",
-                      "--replace", "pears", "-o", str(out))
+    record = run_json(
+        "edit", "text", str(src), "--find", "apples", "--replace", "pears", "-o", str(out)
+    )
     assert record["replacements"] == 2
     assert out.read_text() == "pears and pears, not oranges\n"
 
@@ -272,8 +278,18 @@ def test_text_regex_replace(tmp_path: Path):
     src = tmp_path / "doc.md"
     src.write_text("v1.2 then v3.4 done\n")
     out = tmp_path / "out.md"
-    record = run_json("edit", "text", str(src), "--find", r"v(\d)\.(\d)",
-                      "--replace", r"version \1-\2", "--regex", "-o", str(out))
+    record = run_json(
+        "edit",
+        "text",
+        str(src),
+        "--find",
+        r"v(\d)\.(\d)",
+        "--replace",
+        r"version \1-\2",
+        "--regex",
+        "-o",
+        str(out),
+    )
     assert record["replacements"] == 2
     assert out.read_text() == "version 1-2 then version 3-4 done\n"
 
@@ -294,19 +310,30 @@ def test_text_output_overwrite_needs_force(tmp_path: Path):
     src.write_text("x")
     existing = tmp_path / "b.txt"
     existing.write_text("keep me")
-    run("edit", "text", str(src), "--find", "x", "--replace", "y",
-        "-o", str(existing), expect=1)
+    run("edit", "text", str(src), "--find", "x", "--replace", "y", "-o", str(existing), expect=1)
     assert existing.read_text() == "keep me"
-    run_json("edit", "text", str(src), "--find", "x", "--replace", "y",
-             "-o", str(existing), "--force")
+    run_json(
+        "edit", "text", str(src), "--find", "x", "--replace", "y", "-o", str(existing), "--force"
+    )
     assert existing.read_text() == "y"
 
 
 def test_text_both_i_and_o_is_usage_error(tmp_path: Path):
     src = tmp_path / "a.txt"
     src.write_text("x")
-    run("edit", "text", str(src), "--find", "x", "--replace", "y",
-        "-i", "-o", str(tmp_path / "o.txt"), expect=2)
+    run(
+        "edit",
+        "text",
+        str(src),
+        "--find",
+        "x",
+        "--replace",
+        "y",
+        "-i",
+        "-o",
+        str(tmp_path / "o.txt"),
+        expect=2,
+    )
 
 
 def test_text_wrong_type_exits_4(tmp_path: Path):
@@ -327,8 +354,9 @@ def test_json_set_and_del_roundtrip(tmp_path: Path):
     src = tmp_path / "cfg.json"
     src.write_text(json.dumps({"a": {"b": {"c": 1}}, "drop": True, "keep": "yes"}))
     out = tmp_path / "out.json"
-    record = run_json("edit", "json", str(src), "--set", "a.b.c=42",
-                      "--del", "drop", "-o", str(out))
+    record = run_json(
+        "edit", "json", str(src), "--set", "a.b.c=42", "--del", "drop", "-o", str(out)
+    )
     data = json.loads(out.read_text())
     assert data == {"a": {"b": {"c": 42}}, "keep": "yes"}
     assert record["set"] == [{"path": "a.b.c", "value": 42}]
@@ -339,10 +367,23 @@ def test_json_value_parsing_and_string_fallback(tmp_path: Path):
     src = tmp_path / "v.json"
     src.write_text("{}")
     out = tmp_path / "out.json"
-    run_json("edit", "json", str(src),
-             "--set", "num=3.5", "--set", "flag=true", "--set", "obj={\"x\": 1}",
-             "--set", "name=plain words", "--set", "nested.deep=ok",
-             "-o", str(out))
+    run_json(
+        "edit",
+        "json",
+        str(src),
+        "--set",
+        "num=3.5",
+        "--set",
+        "flag=true",
+        "--set",
+        'obj={"x": 1}',
+        "--set",
+        "name=plain words",
+        "--set",
+        "nested.deep=ok",
+        "-o",
+        str(out),
+    )
     data = json.loads(out.read_text())
     assert data["num"] == 3.5
     assert data["flag"] is True
@@ -355,8 +396,7 @@ def test_json_list_index_paths(tmp_path: Path):
     src = tmp_path / "l.json"
     src.write_text(json.dumps({"items": [{"id": 1}, {"id": 2}]}))
     out = tmp_path / "out.json"
-    run_json("edit", "json", str(src), "--set", "items.1.id=99",
-             "--del", "items.0", "-o", str(out))
+    run_json("edit", "json", str(src), "--set", "items.1.id=99", "--del", "items.0", "-o", str(out))
     assert json.loads(out.read_text()) == {"items": [{"id": 99}]}
 
 
@@ -405,7 +445,6 @@ def test_edit_help_and_subcommand_help():
 def test_json_flag_emits_single_json_object(tmp_path: Path):
     src = tmp_path / "j.json"
     src.write_text("{}")
-    result = run("--json", "edit", "json", str(src), "--set", "a=1",
-                 "-o", str(tmp_path / "o.json"))
+    result = run("--json", "edit", "json", str(src), "--set", "a=1", "-o", str(tmp_path / "o.json"))
     record = json.loads(result.output)  # would raise if anything but one JSON doc
     assert record["action"] == "edit-json"

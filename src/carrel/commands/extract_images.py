@@ -17,9 +17,10 @@ from __future__ import annotations
 import functools
 import shutil
 import urllib.parse
+from collections.abc import Callable
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import click
 
@@ -49,6 +50,7 @@ def _handled(fn: Callable) -> Callable:
 # --------------------------------------------------------------------------
 # pdf
 
+
 def _extract_pdf(src: Path, out_dir: Path, min_size: int) -> list[Path]:
     from PIL import Image
 
@@ -75,6 +77,7 @@ def _extract_pdf(src: Path, out_dir: Path, min_size: int) -> list[Path]:
 # --------------------------------------------------------------------------
 # ico
 
+
 def _extract_ico(src: Path, out_dir: Path) -> list[Path]:
     if adapters.have("icotool"):
         before = set(out_dir.iterdir())
@@ -91,7 +94,7 @@ def _extract_ico(src: Path, out_dir: Path) -> list[Path]:
     extracted: list[Path] = []
     for w, h in sizes:
         with Image.open(src) as im:
-            im.size = (w, h)
+            im.size = (w, h)  # type: ignore[misc]  # IcoImageFile: selecting a frame
             im.load()
             dest = out_dir / f"{src.stem}_{w}x{h}.png"
             im.save(dest)
@@ -101,6 +104,7 @@ def _extract_ico(src: Path, out_dir: Path) -> list[Path]:
 
 # --------------------------------------------------------------------------
 # html
+
 
 class _ImgCollector(HTMLParser):
     def __init__(self) -> None:
@@ -142,8 +146,10 @@ def _extract_html(src: Path, out_dir: Path) -> list[Path]:
 # --------------------------------------------------------------------------
 # library entry point + CLI
 
-def extract_images_file(src: Path | str, out_dir: Path | str | None = None,
-                        min_size: int = DEFAULT_MIN_SIZE) -> dict[str, Any]:
+
+def extract_images_file(
+    src: Path | str, out_dir: Path | str | None = None, min_size: int = DEFAULT_MIN_SIZE
+) -> dict[str, Any]:
     """Extract images from src; returns {"src", "out_dir", "count", "extracted"}."""
     src = Path(src)
     ftype = detect_or_die(src)
@@ -158,10 +164,14 @@ def extract_images_file(src: Path | str, out_dir: Path | str | None = None,
         extracted = _extract_html(src, out_dir)
     else:
         raise CarrelInputError(
-            f"cannot extract images from {ftype.value} files: {src} "
-            "(supported: pdf, ico, html)")
-    return {"src": str(src), "out_dir": str(out_dir),
-            "count": len(extracted), "extracted": [str(p) for p in extracted]}
+            f"cannot extract images from {ftype.value} files: {src} (supported: pdf, ico, html)"
+        )
+    return {
+        "src": str(src),
+        "out_dir": str(out_dir),
+        "count": len(extracted),
+        "extracted": [str(p) for p in extracted],
+    }
 
 
 def _human(result: dict[str, Any]) -> None:
@@ -172,11 +182,18 @@ def _human(result: dict[str, Any]) -> None:
 
 @click.command(name="extract-images")
 @click.argument("src", type=click.Path(path_type=Path))
-@click.option("--out-dir", type=click.Path(file_okay=False, path_type=Path),
-              help="Output directory [default: <SRC>-images next to the source].")
-@click.option("--min-size", type=click.IntRange(min=1), default=DEFAULT_MIN_SIZE,
-              show_default=True,
-              help="pdf mode: discard images smaller than this on either edge.")
+@click.option(
+    "--out-dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    help="Output directory [default: <SRC>-images next to the source].",
+)
+@click.option(
+    "--min-size",
+    type=click.IntRange(min=1),
+    default=DEFAULT_MIN_SIZE,
+    show_default=True,
+    help="pdf mode: discard images smaller than this on either edge.",
+)
 @click.pass_context
 @_handled
 def cmd(ctx: click.Context, src: Path, out_dir: Path | None, min_size: int) -> None:

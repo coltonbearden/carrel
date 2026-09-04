@@ -29,8 +29,9 @@ import shutil
 import sys
 import tempfile
 import xml.etree.ElementTree as ET
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import click
 
@@ -61,6 +62,7 @@ def normalize_target(ext: str) -> FileType | None:
 # --------------------------------------------------------------------------
 # small shared helpers
 
+
 def _html_doc(title: str, body: str) -> str:
     return (
         "<!DOCTYPE html>\n<html>\n<head>\n"
@@ -72,8 +74,7 @@ def _html_doc(title: str, body: str) -> str:
 
 
 def _run_pandoc(src: Path, dest: Path, from_fmt: str, to_fmt: str, *extra: str) -> None:
-    proc = adapters.run("pandoc", "-f", from_fmt, "-t", to_fmt, *extra,
-                        str(src), "-o", str(dest))
+    proc = adapters.run("pandoc", "-f", from_fmt, "-t", to_fmt, *extra, str(src), "-o", str(dest))
     if proc.returncode != 0:
         err = (proc.stderr or "").strip().splitlines()
         raise CarrelError(f"pandoc failed ({proc.returncode}): {err[0] if err else '?'}")
@@ -95,6 +96,7 @@ def _check_overwrite(dest: Path, force: bool) -> None:
 # converters — each fn(src, dest, opts) writes dest and returns at least
 # {"via": ...}; extra keys are merged into the result record.
 
+
 def _copy(src: Path, dest: Path, opts: dict) -> dict:
     shutil.copyfile(src, dest)
     return {"via": "copy"}
@@ -102,8 +104,7 @@ def _copy(src: Path, dest: Path, opts: dict) -> dict:
 
 def _md_to_html(src: Path, dest: Path, opts: dict) -> dict:
     if adapters.have("pandoc"):
-        _run_pandoc(src, dest, "markdown", "html", "-s",
-                    "--metadata", f"title={src.stem}")
+        _run_pandoc(src, dest, "markdown", "html", "-s", "--metadata", f"title={src.stem}")
         return {"via": "pandoc"}
     body = textextract.markdown_to_html(src.read_text(errors="replace"))
     dest.write_text(_html_doc(src.stem, body))
@@ -189,22 +190,35 @@ def _pdf_to_image(src: Path, dest: Path, opts: dict) -> dict:
     fmt_flag = "-jpeg" if normalize_target(dest.suffix) is FileType.JPG else "-png"
     if opts.get("pages") != "all":
         prefix = dest.parent / dest.stem
-        proc = adapters.run("pdftoppm", fmt_flag, "-r", PDF_RASTER_DPI,
-                            "-f", "1", "-l", "1", "-singlefile", str(src), str(prefix))
+        proc = adapters.run(
+            "pdftoppm",
+            fmt_flag,
+            "-r",
+            PDF_RASTER_DPI,
+            "-f",
+            "1",
+            "-l",
+            "1",
+            "-singlefile",
+            str(src),
+            str(prefix),
+        )
         if proc.returncode != 0 or not dest.exists():
             raise CarrelError(f"pdftoppm failed ({proc.returncode}) on {src}")
         return {"via": "pdftoppm"}
     with tempfile.TemporaryDirectory(prefix="carrel-convert-") as td:
-        proc = adapters.run("pdftoppm", fmt_flag, "-r", PDF_RASTER_DPI,
-                            str(src), str(Path(td) / "page"))
+        proc = adapters.run(
+            "pdftoppm", fmt_flag, "-r", PDF_RASTER_DPI, str(src), str(Path(td) / "page")
+        )
         produced = sorted(Path(td).glob("page-*"), key=_page_no)
         if proc.returncode != 0 or not produced:
             raise CarrelError(f"pdftoppm failed ({proc.returncode}) on {src}")
-        targets = [dest.with_name(f"{dest.stem}-{i}{dest.suffix}")
-                   for i in range(1, len(produced) + 1)]
+        targets = [
+            dest.with_name(f"{dest.stem}-{i}{dest.suffix}") for i in range(1, len(produced) + 1)
+        ]
         for target in targets:
             _check_overwrite(target, opts.get("force", False))
-        for page, target in zip(produced, targets):
+        for page, target in zip(produced, targets, strict=False):
             shutil.move(str(page), target)
     return {"via": "pdftoppm", "dest": str(targets[0]), "dests": [str(t) for t in targets]}
 
@@ -219,8 +233,9 @@ def _image_convert(src: Path, dest: Path, opts: dict) -> dict:
             ico = im.convert("RGBA")
             if max(ico.size) < ICO_SIZES[-1]:  # upscale small sources: full size set
                 scale = ICO_SIZES[-1] / max(ico.size)
-                ico = ico.resize((round(ico.width * scale), round(ico.height * scale)),
-                                 Image.LANCZOS)
+                ico = ico.resize(
+                    (round(ico.width * scale), round(ico.height * scale)), Image.Resampling.LANCZOS
+                )
             side = max(ico.size)  # square-pad so every frame is a proper icon
             canvas = Image.new("RGBA", (side, side), (0, 0, 0, 0))
             canvas.paste(ico, ((side - ico.width) // 2, (side - ico.height) // 2))
@@ -236,6 +251,7 @@ def _image_convert(src: Path, dest: Path, opts: dict) -> dict:
 
 
 # ---- structured data -------------------------------------------------------
+
 
 def _load_json(src: Path) -> Any:
     try:
@@ -261,8 +277,7 @@ def _flatten(value: Any, prefix: str = "") -> dict[str, Any]:
 def _json_records(data: Any) -> tuple[list[str], list[dict[str, Any]]]:
     """(ordered fieldnames, flattened rows) for tabular renderings."""
     records = data if isinstance(data, list) else [data]
-    flat = [_flatten(r) if isinstance(r, (dict, list)) else {"value": r}
-            for r in records]
+    flat = [_flatten(r) if isinstance(r, (dict, list)) else {"value": r} for r in records]
     fields: list[str] = []
     for row in flat:
         for key in row:
@@ -308,8 +323,7 @@ def _csv_to_json(src: Path, dest: Path, opts: dict) -> dict:
         reader = csv.DictReader(fh)
         if not reader.fieldnames:
             raise CarrelInputError(f"empty CSV (no header row): {src}")
-        rows = [{k: _infer(v) for k, v in row.items() if k is not None}
-                for row in reader]
+        rows = [{k: _infer(v) for k, v in row.items() if k is not None} for row in reader]
     dest.write_text(jsonlib.dumps(rows, indent=2, ensure_ascii=False) + "\n")
     return {"via": "builtin"}
 
@@ -328,8 +342,10 @@ def _md_table(header: list[str], rows: list[list[str]]) -> str:
     def esc(c: str) -> str:
         return c.replace("|", "\\|").replace("\n", " ")
 
-    lines = ["| " + " | ".join(esc(c) for c in header) + " |",
-             "| " + " | ".join("---" for _ in header) + " |"]
+    lines = [
+        "| " + " | ".join(esc(c) for c in header) + " |",
+        "| " + " | ".join("---" for _ in header) + " |",
+    ]
     lines += ["| " + " | ".join(esc(c) for c in row) + " |" for row in rows]
     return "\n".join(lines) + "\n"
 
@@ -337,11 +353,8 @@ def _md_table(header: list[str], rows: list[list[str]]) -> str:
 def _html_table(title: str, header: list[str], rows: list[list[str]]) -> str:
     e = htmllib.escape
     head = "".join(f"<th>{e(c)}</th>" for c in header)
-    body = "\n".join(
-        "<tr>" + "".join(f"<td>{e(c)}</td>" for c in row) + "</tr>" for row in rows
-    )
-    table = (f"<table>\n<thead><tr>{head}</tr></thead>\n"
-             f"<tbody>\n{body}\n</tbody>\n</table>")
+    body = "\n".join("<tr>" + "".join(f"<td>{e(c)}</td>" for c in row) + "</tr>" for row in rows)
+    table = f"<table>\n<thead><tr>{head}</tr></thead>\n<tbody>\n{body}\n</tbody>\n</table>"
     return _html_doc(title, table)
 
 
@@ -457,8 +470,9 @@ def supported_targets(src_type: FileType) -> list[str]:
     return sorted(d.value for (s, d) in CONVERTERS if s is src_type)
 
 
-def convert_file(src: Path | str, dest: Path | str, force: bool = False,
-                 *, pages: str = "first") -> dict[str, Any]:
+def convert_file(
+    src: Path | str, dest: Path | str, force: bool = False, *, pages: str = "first"
+) -> dict[str, Any]:
     """Convert one file; returns {"src", "dest", "via", "ok", ...}.
 
     Raises CarrelInputError (exit 4) for unsupported input or pair,
@@ -483,18 +497,18 @@ def convert_file(src: Path | str, dest: Path | str, force: bool = False,
             f"(supported targets for {src_type.value}: "
             f"{', '.join(supported_targets(src_type)) or 'none'})"
         )
-    multi = (fn is _pdf_to_image and pages == "all")
+    multi = fn is _pdf_to_image and pages == "all"
     if not multi:
         _check_overwrite(dest, force)
     dest.parent.mkdir(parents=True, exist_ok=True)
     info = fn(src, dest, {"pages": pages, "force": force})
     via = info.pop("via")
-    return {"src": str(src), "dest": info.pop("dest", str(dest)),
-            "via": via, "ok": True, **info}
+    return {"src": str(src), "dest": info.pop("dest", str(dest)), "via": via, "ok": True, **info}
 
 
 # --------------------------------------------------------------------------
 # CLI
+
 
 def _matrix_epilog() -> str:
     by_src: dict[str, list[str]] = {}
@@ -512,22 +526,45 @@ def _human(results: list[dict[str, Any]]) -> None:
 
 
 @click.command(name="convert", epilog=_matrix_epilog())
-@click.argument("sources", nargs=-1, required=True, metavar="SRC...",
-                type=click.Path(path_type=Path))
-@click.option("--to", "to", required=True, metavar="EXT",
-              help="Target type: pdf, md, txt, html, json, xml, csv, png, jpg, ico.")
-@click.option("-o", "--output", type=click.Path(dir_okay=False, path_type=Path),
-              help="Explicit output path (single SRC only).")
-@click.option("--out-dir", type=click.Path(file_okay=False, path_type=Path),
-              help="Write outputs into this directory (required for multiple SRC).")
+@click.argument(
+    "sources", nargs=-1, required=True, metavar="SRC...", type=click.Path(path_type=Path)
+)
+@click.option(
+    "--to",
+    "to",
+    required=True,
+    metavar="EXT",
+    help="Target type: pdf, md, txt, html, json, xml, csv, png, jpg, ico.",
+)
+@click.option(
+    "-o",
+    "--output",
+    type=click.Path(dir_okay=False, path_type=Path),
+    help="Explicit output path (single SRC only).",
+)
+@click.option(
+    "--out-dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    help="Write outputs into this directory (required for multiple SRC).",
+)
 @click.option("--force", is_flag=True, help="Overwrite existing outputs.")
-@click.option("--pages", type=click.Choice(["first", "all"]), default="first",
-              show_default=True,
-              help="pdf → png/jpg only: rasterize the first page, or every "
-                   "page as DEST-1..N.")
+@click.option(
+    "--pages",
+    type=click.Choice(["first", "all"]),
+    default="first",
+    show_default=True,
+    help="pdf → png/jpg only: rasterize the first page, or every page as DEST-1..N.",
+)
 @click.pass_context
-def cmd(ctx: click.Context, sources: tuple[Path, ...], to: str,
-        output: Path | None, out_dir: Path | None, force: bool, pages: str) -> None:
+def cmd(
+    ctx: click.Context,
+    sources: tuple[Path, ...],
+    to: str,
+    output: Path | None,
+    out_dir: Path | None,
+    force: bool,
+    pages: str,
+) -> None:
     """Convert SRC... to another supported type.
 
     By default the output lands next to each SRC with the new extension.
@@ -548,15 +585,15 @@ def cmd(ctx: click.Context, sources: tuple[Path, ...], to: str,
     results: list[dict[str, Any]] = []
     first_err = 0
     for src in sources:
-        dest = output or ((out_dir or src.parent) / src.name).with_suffix(
-            f".{dest_type.value}")
+        dest = output or ((out_dir or src.parent) / src.name).with_suffix(f".{dest_type.value}")
         try:
             results.append(convert_file(src, dest, force=force, pages=pages))
         except CarrelError as e:
             if ctx.obj and ctx.obj.get("debug"):
                 raise
-            results.append({"src": str(src), "dest": str(dest), "via": None,
-                            "ok": False, "error": str(e)})
+            results.append(
+                {"src": str(src), "dest": str(dest), "via": None, "ok": False, "error": str(e)}
+            )
             click.echo(f"error: {e}", err=True)
             first_err = first_err or int(e.exit_code)
     emit(ctx, results, human=_human)

@@ -15,6 +15,7 @@ import hashlib
 import json
 import mimetypes
 import sys
+from collections.abc import Iterator
 from datetime import datetime
 from math import ceil
 from pathlib import Path
@@ -36,7 +37,7 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "carrel_search",
         "description": "Full-text search the carrel desk index (.carrel/carrel.db) "
-                       "under a root directory. Requires a prior `carrel index` run.",
+        "under a root directory. Requires a prior `carrel index` run.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -50,15 +51,20 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "carrel_pack",
         "description": "Pack a file or directory into LLM-ready context: file tree "
-                       "plus extracted text contents of supported files.",
+        "plus extracted text contents of supported files.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "path": {"type": "string", "description": "File or directory to pack."},
-                "max_bytes": {"type": "integer",
-                              "description": "Content budget in bytes; files past it are listed but omitted."},
-                "tree_only": {"type": "boolean", "description": "Tree without contents.",
-                              "default": False},
+                "max_bytes": {
+                    "type": "integer",
+                    "description": "Content budget in bytes; files past it are listed but omitted.",
+                },
+                "tree_only": {
+                    "type": "boolean",
+                    "description": "Tree without contents.",
+                    "default": False,
+                },
             },
             "required": ["path"],
         },
@@ -80,6 +86,7 @@ TOOLS: list[dict[str, Any]] = [
 # ---------------------------------------------------------------------------
 # tool implementations
 # ---------------------------------------------------------------------------
+
 
 def _resolve(raw: str, default_root: Path) -> Path:
     path = Path(raw).expanduser()
@@ -108,7 +115,7 @@ def _tool_search(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
     }
 
 
-def _walk(path: Path):
+def _walk(path: Path) -> Iterator[Path]:
     """Deterministic walk: dirs first, alphabetical; skips .git/.carrel/hidden dirs."""
     if path.is_file():
         yield path
@@ -213,6 +220,7 @@ _TOOL_IMPLS = {
 # JSON-RPC plumbing
 # ---------------------------------------------------------------------------
 
+
 def _error(mid: Any, code: int, message: str) -> dict[str, Any]:
     return {"jsonrpc": "2.0", "id": mid, "error": {"code": code, "message": message}}
 
@@ -240,15 +248,16 @@ def _handle(msg: Any, default_root: Path) -> dict[str, Any] | None:
     elif method == "tools/list":
         result = {"tools": TOOLS}
     elif method == "tools/call":
-        name = params.get("name")
+        name = str(params.get("name") or "")
         impl = _TOOL_IMPLS.get(name)
         if impl is None:
             return None if is_notification else _error(mid, -32602, f"unknown tool: {name}")
         try:
             payload = impl(params.get("arguments") or {}, default_root)
             result = {
-                "content": [{"type": "text",
-                             "text": json.dumps(payload, ensure_ascii=False, default=str)}],
+                "content": [
+                    {"type": "text", "text": json.dumps(payload, ensure_ascii=False, default=str)}
+                ],
                 "isError": False,
             }
         except Exception as e:  # noqa: BLE001 — tool failures are data, not crashes
