@@ -29,7 +29,8 @@ jobs:
         with:
           python-version: "3.12"
           enable-cache: true
-      - run: uv sync --group dev
+      # all extras: mypy sees every optional import and sync_reference.py can load every command
+      - run: uv sync --group dev --all-extras
       - name: ruff check
         run: uv run ruff check --output-format=github src tests scripts
       - name: ruff format --check
@@ -40,6 +41,10 @@ jobs:
         run: |
           uv run python scripts/sync_product.py
           git diff --exit-code -- src/carrel/_product.py pyproject.toml .claude-plugin plugins CITATION.cff
+      - name: docs/REFERENCE.md ↔ CLI --help
+        run: |
+          uv run python scripts/sync_reference.py
+          git diff --exit-code -- docs/REFERENCE.md
 
   test:
     name: test (py${{ matrix.python }})
@@ -67,15 +72,18 @@ jobs:
           python-version: ${{ matrix.python }}
           enable-cache: true
 
-      - run: uv sync --group dev
+      - run: uv sync --group dev --all-extras
 
       - name: Fixtures regenerate byte-identically
         run: |
           uv run python tests/fixtures/generate.py
           git diff --exit-code --stat -- tests/fixtures
 
-      - name: Test suite (with coverage)
-        run: uv run pytest --cov=carrel --cov-report=term-missing:skip-covered
+      # Coverage floor: measured 86% on feat/v0.2.0 (604 tests, 2026-09-04);
+      # floor = observed - 5, rounded down to a multiple of 5. Re-measure with
+      # `uv run pytest --cov=carrel -q` before raising it.
+      - name: Test suite (with coverage floor)
+        run: uv run pytest --cov=carrel --cov-report=term-missing:skip-covered --cov-fail-under=80
 
       - name: CLI smoke
         run: |
@@ -92,10 +100,52 @@ jobs:
           "${RUNNER_TEMP}/smoke/bin/carrel" doctor --json > /dev/null
 
   test-minimal:
-    # degradation guard: no optional binaries installed at all
+    # degradation guard: no optional binaries and no extras installed at all
     name: test-minimal
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --group dev
+      - name: Suite must pass via skips, never crashes
+        run: uv run pytest
+      - name: doctor reports missing tools without failing
+        run: uv run carrel doctor
+
+  test-minimal-macos:
+    # same degradation guard on macOS; required check "test-minimal (macos)" (docs/REPO_SETTINGS.md)
+    name: test-minimal (macos)
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --group dev
+      - name: Suite must pass via skips, never crashes
+        run: uv run pytest
+      - name: doctor reports missing tools without failing
+        run: uv run carrel doctor
+
+  test-minimal-windows:
+    # advisory until green for one release (BUILD_PLAN scope guard)
+    name: test-minimal (windows)
+    runs-on: windows-latest
+    timeout-minutes: 25
+    continue-on-error: true
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
