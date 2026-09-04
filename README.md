@@ -25,38 +25,40 @@
 
 </div>
 
-A *carrel* is a private study desk in a library: your materials close at hand, organized your way. **carrel** is that desk for your local files — pdf, md, images, html, json, xml, csv — with 24 commands to convert, OCR, inspect, diff, index, search, pack, watch, and more. And it treats AI agents as first-class users of the desk: every data-producing command speaks `--json` with stable exit codes, `carrel pack` turns file trees into LLM-ready context, and the repo doubles as a [Claude Code plugin marketplace](#the-marketplace) whose plugins drive the same CLI.
+A *carrel* is a private study desk in a library: your materials close at hand, organized your way. **carrel** is that desk for your local files — pdf, docx, odt, epub, rtf, xlsx, md, html, txt, json, xml, csv, and png/jpg/ico images — with 26 commands to convert, OCR, inspect, diff, index, search, pack, watch, and more. And it treats AI agents as first-class users of the desk: every data-producing command speaks `--json` with stable exit codes, `carrel pack` turns file trees into LLM-ready context, and the repo doubles as a [Claude Code plugin marketplace](#the-marketplace) whose plugins drive the same CLI.
 
 ## What can it do
 
 | Domain | Command | What it does |
 |---|---|---|
-| **Convert & transform** | `carrel convert` | Any-to-any conversion across pdf, md, html, txt, png/jpg/ico, json, xml, csv |
+| **Convert & transform** | `carrel convert` | Conversion across pdf, md, html, txt, docx, odt, epub, rtf, png/jpg/ico, json, xml, csv, plus xlsx → csv/json; the full SRC → target matrix is in `carrel convert --help` |
 | | `carrel ocr` | Images and scanned PDFs → text, markdown, or a searchable PDF |
 | | `carrel edit` | PDF merge/split/rotate/extract-pages, image resize/rotate/crop, text find-replace, json set/del |
 | | `carrel extract-images` | Pull embedded images out of pdf, ico, and html |
 | | `carrel audiobook` | Narrate txt/md/pdf into mp3/ogg, chapters from markdown headings |
-| **Inspect & prove** | `carrel inspect` | Metadata + per-type structure summary: sha256, pages, EXIF, json shape, csv dialect… |
+| **Inspect & prove** | `carrel inspect` | Metadata + per-type structure summary: sha256, pages, EXIF, json shape, csv dialect, docx paragraphs, xlsx sheets… |
 | | `carrel diff` | Unified text diffs, structural json/csv diffs, pdf text diffs, image pixel diffs |
 | | `carrel thumb` | Thumbnails for pdfs, images, and html |
 | | `carrel proof` | Soft-proof against an ICC profile, with a ΔE summary |
 | | `carrel color` | Dominant palette extraction, ICC conversion, contrast checks |
-| **The desk index** | `carrel index` | SQLite FTS5 index of everything under a root (`.carrel/carrel.db`, portable) |
+| **The desk index** | `carrel index` | SQLite FTS5 index of everything under a root (`.carrel/carrel.db`, versioned schema); `--status` reports stale rows |
 | | `carrel search` | bm25-ranked full-text search with type and tag filters |
 | | `carrel tag` | Tag files; find by tag |
 | | `carrel note` | Sidecar notes on any file; real text annotations on PDFs |
-| **Agents & context** | `carrel pack` | Bundle files/trees into one LLM-ready document — md/xml/json, include/exclude globs, `.gitignore`-aware, chunking, token estimates |
-| | `carrel mcp` | Serve search/pack/inspect as an MCP server on stdio |
+| | `carrel catalog` | Export/import tags + notes as JSON (move a desk, commit it next to a repo); `status` shows schema version and stale index rows |
+| **Agents & context** | `carrel pack` | Bundle files/trees into one LLM-ready document — md/xml/json; `--query` packs what the desk index ranks relevant, `--since REF`/`--changed` packs what git touched; include/exclude globs, `.gitignore`-aware (with `!` negation), chunking, `--dedupe-content`, `--outline`, token estimates or exact counts (`--tokenizer exact`) |
+| | `carrel mcp` | Serve the whole desk over MCP on stdio: 10 tools (search, pack, inspect, tag, note, index, convert, diff, redact, doctor) plus `carrel://file/{path}` and `carrel://search/{query}` resources |
 | **Housekeeping** | `carrel organize` | Sort a folder by type/date/EXIF date — dry-run by default |
 | | `carrel dedupe` | Exact (BLAKE2) and near (perceptual hash) duplicate detection |
 | | `carrel watch` | Watch a folder and run shell actions on file events |
 | | `carrel redact` | Pattern/PII redaction for text formats; true raster redaction for PDFs |
 | | `carrel sign` | Visible PDF stamps, sha256 manifests, gpg-backed verify |
 | | `carrel form` | Build html/pdf forms from JSON specs; list and fill AcroForm PDFs |
-| **The desk itself** | `carrel desk` | The flagship TUI — see [below](#the-desk-tui) |
+| **The desk itself** | `carrel desk` | The flagship TUI — see [below](#the-desk-tui); needs the `tui` extra |
 | | `carrel doctor` | What your environment enables today, with install hints for the rest |
+| | `carrel completion` | Tab-completion scripts for bash, zsh, and fish |
 
-carrel wraps the masters — pandoc, poppler, qpdf, tesseract/ocrmypdf, ImageMagick, exiftool, ffmpeg… — behind one adapter layer with capability detection. Missing binary? Commands degrade with an install hint (exit 3), never a crash.
+carrel wraps the masters — pandoc, poppler, qpdf, tesseract/ocrmypdf, ImageMagick, exiftool, ffmpeg… — behind one adapter layer with capability detection. Missing binary? Commands degrade with an install hint (exit 3), never a crash. Several copies of a tool on `PATH`? Pin one with `CARREL_BIN_<NAME>` ([docs/CONFIGURATION.md](docs/CONFIGURATION.md#pinning-a-binary-carrel_bin_name)).
 
 ## Quickstart
 
@@ -74,15 +76,18 @@ A first taste:
 
 ```sh
 carrel inspect paper.pdf                              # pages, sha256, producer, form fields…
+carrel convert minutes.docx --to md                   # office/ebook formats read and write via pandoc
 carrel index . && carrel search "marginal notes"      # FTS5 over your whole desk
 carrel pack src/ --format xml -o context.xml --stats  # LLM-ready context + token table
+carrel pack docs/ --query "release checklist" --stats # only the files the index ranks relevant
+carrel catalog export -o desk.json                    # tags + notes, portable and diff-able
 ```
 
-Add `--json` to any of these and you get machine-readable output on stable exit codes — that's the whole agent contract.
+Add `--json` to any of these and you get machine-readable output on stable exit codes — that's the whole agent contract. Tab completion: `eval "$(carrel completion bash)"` (zsh and fish too).
 
 ## The marketplace
 
-This repo is also a Claude Code plugin marketplace: five plugins whose slash commands, agents, skills, and hooks all delegate to the CLI above.
+This repo is also a Claude Code plugin marketplace: plugins whose slash commands, agents, skills, and hooks all delegate to the CLI above. The table below is a snapshot — [docs/MARKETPLACE.md](docs/MARKETPLACE.md) is authoritative for the current plugin list.
 
 ```sh
 claude plugin marketplace add coltonbearden/carrel
@@ -122,8 +127,8 @@ The flagship: a three-pane [Textual](https://textual.textualize.io/) desk. A fil
 - [docs/VISION.md](docs/VISION.md) — why a library desk, and the product principles
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — the adapter layer, the index, the plugin design
 - [docs/FEATURES.md](docs/FEATURES.md) — the capability × strategy matrix
-- [docs/TEST_REPORT.md](docs/TEST_REPORT.md) — everything above, executed for real (501 tests, 7 cookbook runs)
-- [examples/cookbook/](examples/cookbook/) — nine end-to-end recipes, from scan→searchable-notes to markdown→audiobook
+- [docs/TEST_REPORT.md](docs/TEST_REPORT.md) — everything above, executed for real (855 tests; cookbook runs; office and `pack --query` proofs)
+- [examples/cookbook/](examples/cookbook/) — ten end-to-end recipes, from scan→searchable-notes to pack-what-matters
 - [docs/BRAND.md](docs/BRAND.md) — palette, typography, logo usage, voice
 
 ## License
