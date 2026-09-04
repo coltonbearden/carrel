@@ -35,6 +35,9 @@ markdown_extensions:
   - pymdownx.superfences
   - pymdownx.snippets:
       check_paths: true
+      # repo root, so COOKBOOK.md can --8<-- examples/cookbook/*.sh and snippets/*
+      base_path:
+        - !relative $config_dir
 
 plugins:
   - search
@@ -51,6 +54,7 @@ nav:
       - Carrel in ten minutes: QUICKSTART.md
       - Installing: INSTALL.md
       - Command reference: REFERENCE.md
+      - Cookbook & snippets: COOKBOOK.md
       - Configuration: CONFIGURATION.md
       - Troubleshooting & FAQ: TROUBLESHOOTING.md
   - The marketplace:

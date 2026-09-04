@@ -78,5 +78,5 @@ Same mechanism: waves of ≤3 parallel `module-builder` subagents on a feature b
 
 - If wave 2 slips: cut `pack --outline` and `--tokenizer exact` first (both isolated flags), then MCP resources (keep the 10 tools). Log in FEATURES.md.
 - If `carrel-guard` cannot rewrite `Read` input reliably on the installed Claude Code, ship it as `deny` + reason naming the `carrel convert` command, and document.
-- The Windows CI job is advisory (`continue-on-error`) for v0.2.0; promote to required in the first release where it has been green on `main` for two consecutive weeks.
+- The Windows CI job `test-minimal (windows)` is advisory (`continue-on-error: true` in `.github/workflows/test.yml`) for v0.2.0; promote it to required (drop the flag, add the check name to the `main` ruleset) in the first release where it has been green on `main` for two consecutive weeks. `test-minimal (macos)` is required from v0.2.0.
 - Textual moves to the `tui` extra (D-007); if user feedback during the release cycle objects, revert to a core dependency in a patch release — the guard in `commands/desk.py` makes either choice safe.
