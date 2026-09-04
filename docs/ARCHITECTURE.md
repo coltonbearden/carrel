@@ -66,7 +66,7 @@ tags  (file_id INT, tag TEXT, UNIQUE(file_id, tag))
 notes (id INTEGER PK, file_id INT, created REAL, body TEXT)
 ```
 
-`DeskDB(root)` context manager; `ensure()` creates schema; all db-backed commands (index/search/tag/note/dedupe cache) share it.
+`DeskDB(root)` context manager; opening applies `MIGRATIONS` (tracked by `PRAGMA user_version`, v1 = the layout above) and adding a migration is the only way to change the schema; all db-backed commands (index/search/tag/note/catalog) share it.
 
 ### Product identity
 
