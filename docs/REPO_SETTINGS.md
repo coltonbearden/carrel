@@ -23,7 +23,7 @@ Release tags cannot be deleted, moved, or force-updated. Same admin bypass.
 
 - Dependabot alerts + security updates: on (`.github/dependabot.yml` also
   schedules weekly grouped updates for `uv` and `github-actions`).
-- Secret scanning + push protection + non-provider patterns: on.
+- Secret scanning + push protection: on. (Non-provider patterns: the API accepts but ignores the toggle on user-owned repos — flip it under *Settings → Advanced Security* if wanted.)
 - Private vulnerability reporting: on (`SECURITY.md` links the form).
 - CodeQL default setup: on, extended query suite, languages `python` + `actions`.
 
@@ -40,6 +40,15 @@ Release tags cannot be deleted, moved, or force-updated. Same admin bypass.
 - Squash merge (PR title + body) and rebase allowed; merge commits disabled.
 - Auto-merge enabled, head branch auto-deleted, "update branch" button on.
 - Wiki disabled (docs live in `docs/`, published to GitHub Pages).
+
+## Verified state (2026-09-04)
+
+`scripts/github-harden.sh` applied and read back every setting above after PR #7
+merged: both rulesets active, secret scanning + push protection enabled, private
+vulnerability reporting on, CodeQL default setup configured (extended), Actions
+restricted to the allow-list with SHA pinning required, `pypi` environment
+limited to `v*` tags. PR #7 itself was the first change to land under the
+required checks (`lint`, `test (py3.12/3.13/3.14)`, `test-minimal`).
 
 ## Not enforced (deliberately)
 

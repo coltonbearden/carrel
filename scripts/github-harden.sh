@@ -158,7 +158,8 @@ check "delete branch on merge"   '.delete_branch_on_merge'  true
 check "update-branch button"     '.allow_update_branch'     true
 check "secret scanning"          '.security_and_analysis.secret_scanning.status' enabled
 check "push protection"          '.security_and_analysis.secret_scanning_push_protection.status' enabled
-check "non-provider patterns"    '.security_and_analysis.secret_scanning_non_provider_patterns.status' enabled
+npp="$(echo "$r" | jq -r '.security_and_analysis.secret_scanning_non_provider_patterns.status')"
+[ "$npp" = "enabled" ] && ok "non-provider patterns" || printf '   \033[1;33m•\033[0m %s\n' "non-provider patterns = $npp (GitHub ignores this via the API on user-owned repos; toggle it under Settings → Advanced Security if wanted)"
 [ "$(api "repos/$REPO/private-vulnerability-reporting" --jq .enabled)" = "true" ] && ok "private vulnerability reporting" || bad "private vulnerability reporting"
 [ "$(api "repos/$REPO/vulnerability-alerts" -i 2>/dev/null | head -1 | grep -c 204)" = "1" ] && ok "dependabot alerts" || bad "dependabot alerts"
 [ "$(api "repos/$REPO/automated-security-fixes" --jq .enabled)" = "true" ] && ok "dependabot security updates" || bad "dependabot security updates"
