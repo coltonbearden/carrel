@@ -4,12 +4,55 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_LOCKED: "1"   # every job resolves from uv.lock, never re-resolves
 
 jobs:
-  test:
+  lint:
+    name: lint
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --group dev
+      - name: ruff check
+        run: uv run ruff check --output-format=github src tests scripts
+      - name: ruff format --check
+        run: uv run ruff format --check src tests scripts
+      - name: mypy (strict)
+        run: uv run mypy
+      - name: product.json ↔ generated copies
+        run: |
+          uv run python scripts/sync_product.py
+          git diff --exit-code -- src/carrel/_product.py pyproject.toml .claude-plugin plugins CITATION.cff
+
+  test:
+    name: test (py${{ matrix.python }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install external tools (full-capability run)
         run: |
@@ -19,32 +62,50 @@ jobs:
             tesseract-ocr ocrmypdf imagemagick libimage-exiftool-perl \
             ffmpeg pngquant icoutils jq miller ripgrep espeak-ng gnupg
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v8.3.2
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          python-version: ${{ matrix.python }}
+          enable-cache: true
 
-      - name: Sync dependencies
-        run: uv sync
+      - run: uv sync --group dev
 
-      - name: Regenerate fixtures (idempotence check)
-        run: uv run python tests/fixtures/generate.py
+      - name: Fixtures regenerate byte-identically
+        run: |
+          uv run python tests/fixtures/generate.py
+          git diff --exit-code --stat -- tests/fixtures
 
-      - name: Run test suite
-        run: uv run pytest -q
+      - name: Test suite (with coverage)
+        run: uv run pytest --cov=carrel --cov-report=term-missing:skip-covered
 
       - name: CLI smoke
         run: |
           uv run carrel --version
           uv run carrel doctor
-          uv run carrel --json pack src/carrel/core --tree-only > /dev/null
+          uv run carrel pack src/carrel/core --tree-only --json > /dev/null
+
+      - name: Build and install the wheel into a clean venv
+        run: |
+          uv build
+          uv venv --python ${{ matrix.python }} "${RUNNER_TEMP}/smoke"
+          uv pip install --python "${RUNNER_TEMP}/smoke/bin/python" dist/*.whl
+          "${RUNNER_TEMP}/smoke/bin/carrel" --version
+          "${RUNNER_TEMP}/smoke/bin/carrel" doctor --json > /dev/null
 
   test-minimal:
     # degradation guard: no optional binaries installed at all
+    name: test-minimal
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v8.3.2
-      - run: uv sync
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --group dev
       - name: Suite must pass via skips, never crashes
-        run: uv run pytest -q
+        run: uv run pytest
       - name: doctor reports missing tools without failing
         run: uv run carrel doctor

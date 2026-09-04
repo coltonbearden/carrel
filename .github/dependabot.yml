@@ -1,0 +1,29 @@
+version: 2
+updates:
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/Chicago
+    groups:
+      python-deps:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    labels: [dependencies]
+    commit-message:
+      prefix: "chore(deps)"
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/Chicago
+    groups:
+      actions:
+        patterns: ["*"]
+    labels: [dependencies, ci]
+    commit-message:
+      prefix: "ci(deps)"

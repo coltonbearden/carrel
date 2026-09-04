@@ -11,5 +11,5 @@ PRODUCT = {
     "marketplace": "carrel",
     "repository": "https://github.com/coltonbearden/carrel",
     "license": "MIT",
-    "author": "Colton Bearden",
+    "author": "Colton Bearden"
 }
