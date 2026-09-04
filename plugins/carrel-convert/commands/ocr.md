@@ -21,4 +21,4 @@ carrel ocr SRC [-o OUT] [--lang LANG] [--to txt|pdf|md] [--redo] [--force]
 
 Afterwards, tell the user where the output landed. For `--to txt/md`, offer to show or summarize the extracted text. Exit code 3 means tesseract/ocrmypdf is missing — relay the install hint from stderr (`sudo apt install tesseract-ocr` / `ocrmypdf`). Exit code 4 means the input type isn't OCR-able.
 
-**Requires the carrel CLI on PATH.** If `carrel` is not found, tell the user to install it with `uv tool install <path-to-carrel-repo>` (see the repo's INSTALL notes), or run it as `uv run carrel ...` from the carrel repo root.
+**Requires the carrel CLI on PATH.** If `carrel` is not found, tell the user to install it with `uv tool install carrel` (see the repo's INSTALL notes), or run it as `uv run carrel ...` from the carrel repo root.

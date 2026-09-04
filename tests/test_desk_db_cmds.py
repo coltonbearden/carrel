@@ -14,10 +14,10 @@ from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
+from conftest import needs
 from pypdf import PdfWriter
 
 from carrel.cli import cli
-from conftest import needs
 
 # ------------------------------------------------------------------ helpers
 
@@ -144,8 +144,9 @@ def test_index_update_skips_unsupported_and_missing_quietly(desk: Path):
     run_json("--root", str(desk), "index")
     weird = desk / "hook_output.py"
     weird.write_text("x = 1")
-    summary = run_json("--root", str(desk), "index", "--update",
-                       str(weird), str(desk / "ghost.txt"))
+    summary = run_json(
+        "--root", str(desk), "index", "--update", str(weird), str(desk / "ghost.txt")
+    )
     assert summary["indexed"] == 0 and summary["errors"] == []
     assert summary["skipped"] == 2
 
@@ -195,8 +196,7 @@ def test_search_tag_filter(two_docs: Path):
     hits = run_json("--root", root, "search", "bumfuzzle", "--tag", "work")
     assert [h["path"] for h in hits] == ["a.md"]
     # AND semantics across repeated --tag
-    hits = run_json("--root", root, "search", "bumfuzzle",
-                    "--tag", "work", "--tag", "absent")
+    hits = run_json("--root", root, "search", "bumfuzzle", "--tag", "work", "--tag", "absent")
     assert hits == []
 
 
@@ -295,9 +295,20 @@ def test_note_add_missing_file_exits_4(desk: Path):
 def test_note_pdf_add_then_pdf_lists_it(tmp_path: Path):
     src = make_pdf(tmp_path / "doc.pdf", pages=2)
     out = tmp_path / "annotated.pdf"
-    data = run_json("--root", str(tmp_path), "note", "pdf-add", str(src),
-                    "hello margin note", "--page", "2", "--pos", "100,700",
-                    "-o", str(out))
+    data = run_json(
+        "--root",
+        str(tmp_path),
+        "note",
+        "pdf-add",
+        str(src),
+        "hello margin note",
+        "--page",
+        "2",
+        "--pos",
+        "100,700",
+        "-o",
+        str(out),
+    )
     assert data["page"] == 2 and data["contents"] == "hello margin note"
     annots = run_json("--root", str(tmp_path), "note", "pdf", str(out))
     assert {"page": 2, "subtype": "FreeText", "contents": "hello margin note"} in annots

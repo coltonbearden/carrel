@@ -47,6 +47,7 @@ def write(name: str, data: bytes) -> None:
 # text-ish fixtures
 # --------------------------------------------------------------------------
 
+
 def gen_txt() -> None:
     text = f"""\
 Carrel sample text fixture. This paragraph exists so that plain-text
@@ -198,8 +199,16 @@ def gen_xml() -> None:
 def gen_csv() -> None:
     header = "id,title,shelf,year,checked_out"
     titles = [
-        "Palimpsest", "Zephyr", "Cartography", "Harbor", "Quixotic",
-        "Melody", "Atlas", "Lantern", "Vellum", "Folio",
+        "Palimpsest",
+        "Zephyr",
+        "Cartography",
+        "Harbor",
+        "Quixotic",
+        "Melody",
+        "Atlas",
+        "Lantern",
+        "Vellum",
+        "Folio",
     ]
     rows = [header]
     for i in range(1, 21):
@@ -214,6 +223,7 @@ def gen_csv() -> None:
 # --------------------------------------------------------------------------
 # images
 # --------------------------------------------------------------------------
+
 
 def make_art() -> Image.Image:
     """Deterministic 400x300 'art': gradient + shapes + text."""
@@ -243,8 +253,10 @@ def gen_images() -> Image.Image:
 
     # sample.jpg — same art, JPEG, EXIF DateTimeOriginal via Pillow Image.Exif
     exif = Image.Exif()
-    exif[0x010F] = "deskfixture"                 # Make (IFD0) — name-neutral: binaries are committed and never renamed
-    exif[0x0110] = "fixture-generator"          # Model (IFD0)
+    exif[0x010F] = (
+        "deskfixture"  # Make (IFD0) — name-neutral: binaries are committed and never renamed
+    )
+    exif[0x0110] = "fixture-generator"  # Model (IFD0)
     exif.get_ifd(0x8769)[36867] = EXIF_DATETIME  # Exif IFD -> DateTimeOriginal
     buf = io.BytesIO()
     art.save(buf, "JPEG", quality=90, exif=exif)
@@ -289,10 +301,11 @@ def gen_scanned_png() -> Image.Image:
 # PDFs
 # --------------------------------------------------------------------------
 
+
 def gen_text_image_pdf(art: Image.Image) -> None:
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=letter, invariant=1)
-    width, height = letter
+    _width, height = letter
 
     # page 1: text with sentinel + embedded PNG
     c.setFont("Helvetica-Bold", 18)
@@ -313,11 +326,13 @@ def gen_text_image_pdf(art: Image.Image) -> None:
     c.setFont("Helvetica-Bold", 16)
     c.drawString(72, height - 90, "Page Two: The Appendix")
     c.setFont("Helvetica", 12)
-    for i, line in enumerate([
-        "Page two exists so page-count, split, and per-page text tests",
-        "have a second page to point at. It repeats no sentinel; it just",
-        "sits here being reliably, deterministically boring.",
-    ]):
+    for i, line in enumerate(
+        [
+            "Page two exists so page-count, split, and per-page text tests",
+            "have a second page to point at. It repeats no sentinel; it just",
+            "sits here being reliably, deterministically boring.",
+        ]
+    ):
         c.drawString(72, height - 130 - 18 * i, line)
     c.showPage()
     c.save()
@@ -332,8 +347,15 @@ def gen_form_pdf() -> None:
     c.drawString(72, height - 90, "Carrel AcroForm Fixture")
     c.setFont("Helvetica", 12)
     c.drawString(72, height - 132, "Name:")
-    c.acroForm.textfield(name="name", x=130, y=height - 144, width=220, height=20,
-                         borderStyle="inset", forceBorder=True)
+    c.acroForm.textfield(
+        name="name",
+        x=130,
+        y=height - 144,
+        width=220,
+        height=20,
+        borderStyle="inset",
+        forceBorder=True,
+    )
     c.drawString(72, height - 180, "I agree:")
     c.acroForm.checkbox(name="agree", x=130, y=height - 188, size=16, forceBorder=True)
     c.showPage()
@@ -343,8 +365,7 @@ def gen_form_pdf() -> None:
 
 def gen_scanned_pdf(scanned: Image.Image) -> None:
     buf = io.BytesIO()
-    scanned.save(buf, format="PDF", resolution=150,
-                 creationDate=FIXED_TS, modDate=FIXED_TS)
+    scanned.save(buf, format="PDF", resolution=150, creationDate=FIXED_TS, modDate=FIXED_TS)
     write("scanned.pdf", buf.getvalue())
 
 
@@ -355,10 +376,12 @@ def gen_b_pdf() -> None:
     c.setFont("Helvetica-Bold", 16)
     c.drawString(72, height - 90, "Fixture B")
     c.setFont("Helvetica", 12)
-    for i, line in enumerate([
-        "A second, small PDF used as the other operand in merge and",
-        "diff tests. Its distinguishing phrase is: second fiddle harbor.",
-    ]):
+    for i, line in enumerate(
+        [
+            "A second, small PDF used as the other operand in merge and",
+            "diff tests. Its distinguishing phrase is: second fiddle harbor.",
+        ]
+    ):
         c.drawString(72, height - 130 - 18 * i, line)
     c.showPage()
     c.save()
@@ -366,6 +389,7 @@ def gen_b_pdf() -> None:
 
 
 # --------------------------------------------------------------------------
+
 
 def main() -> None:
     print(f"generating fixtures in {FIXDIR}")

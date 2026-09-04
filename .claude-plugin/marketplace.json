@@ -12,7 +12,7 @@
       "name": "carrel-convert",
       "source": "./plugins/carrel-convert",
       "description": "Convert, OCR, thumbnail, and narrate local files with the carrel CLI: /convert, /ocr, /thumb, /audiobook, plus a doc-converter batch agent.",
-      "version": "0.1.0",
+      "version": "0.1.2",
       "author": { "name": "Colton Bearden" },
       "license": "MIT",
       "keywords": ["files", "convert", "pdf", "ocr", "thumbnails", "audiobook", "tts"]
@@ -21,7 +21,7 @@
       "name": "carrel-inspect",
       "source": "./plugins/carrel-inspect",
       "description": "Inspect, diff, search, and pack local files for LLM context with the carrel CLI: /inspect, /diff, /search, /pack, plus a context-packing skill.",
-      "version": "0.1.0",
+      "version": "0.1.2",
       "author": { "name": "Colton Bearden" },
       "license": "MIT",
       "keywords": ["files", "inspect", "diff", "search", "fts5", "pack", "llm-context"]
@@ -30,7 +30,7 @@
       "name": "carrel-organize",
       "source": "./plugins/carrel-organize",
       "description": "Organize, dedupe, tag, and annotate local files with the carrel CLI: /organize, /dedupe, /tag, /note-file.",
-      "version": "0.1.0",
+      "version": "0.1.2",
       "author": { "name": "Colton Bearden" },
       "license": "MIT",
       "keywords": ["files", "organize", "dedupe", "tags", "notes"]
@@ -39,7 +39,7 @@
       "name": "carrel-watch",
       "source": "./plugins/carrel-watch",
       "description": "Watch folders and run carrel actions on file events: /watch-folder plus a watch-automation recipe skill.",
-      "version": "0.1.0",
+      "version": "0.1.2",
       "author": { "name": "Colton Bearden" },
       "license": "MIT",
       "keywords": ["files", "watch", "automation", "watchdog", "folder-actions"]
@@ -48,7 +48,7 @@
       "name": "carrel-agent",
       "source": "./plugins/carrel-agent",
       "description": "Agentic file librarian for carrel desks: file-librarian agent, agent-workflows skill, carrel MCP server (search/pack/inspect), and a PostToolUse hook that re-indexes files Claude writes.",
-      "version": "0.1.0",
+      "version": "0.1.2",
       "author": { "name": "Colton Bearden" },
       "license": "MIT",
       "keywords": ["agent", "mcp", "index", "search", "hooks", "librarian"]

@@ -12,16 +12,16 @@ db exists yet (so a PostToolUse hook is a no-op outside an indexed desk).
 from __future__ import annotations
 
 import functools
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import click
 
 from carrel.core.adapters import MissingDependencyError
 from carrel.core.db import DeskDB
 from carrel.core.filetypes import FileType, detect
-from carrel.core.output import CarrelError, CarrelInputError, emit, fail, progress
+from carrel.core.output import CarrelError, CarrelInputError, ExitCode, emit, fail, progress
 from carrel.core.textextract import extract_text
 
 
@@ -65,8 +65,15 @@ def _walk(top: Path) -> Iterator[Path]:
             yield child
 
 
-def _index_file(db: DeskDB, path: Path, *, ocr: bool, counts: dict[str, int],
-                errors: list[dict[str, str]], ctx: click.Context) -> None:
+def _index_file(
+    db: DeskDB,
+    path: Path,
+    *,
+    ocr: bool,
+    counts: dict[str, int],
+    errors: list[dict[str, str]],
+    ctx: click.Context,
+) -> None:
     if db.is_fresh(path):
         counts["skipped"] += 1
         return
@@ -74,8 +81,11 @@ def _index_file(db: DeskDB, path: Path, *, ocr: bool, counts: dict[str, int],
     progress(f"indexing {rel}", ctx)
     try:
         text = extract_text(path, ocr=ocr)
-    except (CarrelInputError, MissingDependencyError) as e:
-        errors.append({"path": rel, "error": str(e)})
+    except MissingDependencyError as e:
+        errors.append({"path": rel, "error": str(e), "kind": "missing_dependency"})
+        return
+    except CarrelInputError as e:
+        errors.append({"path": rel, "error": str(e), "kind": "bad_input"})
         return
     fid = db.upsert_file(path, ftype=detect(path).value)
     db.set_content(fid, path, text)
@@ -91,27 +101,43 @@ def _human_summary(data: dict[str, Any]) -> None:
     table = Table(title="index summary")
     for col in ("indexed", "skipped", "pruned", "errors"):
         table.add_column(col, justify="right")
-    table.add_row(str(data["indexed"]), str(data["skipped"]),
-                  str(data["pruned"]), str(len(data["errors"])))
+    table.add_row(
+        str(data["indexed"]), str(data["skipped"]), str(data["pruned"]), str(len(data["errors"]))
+    )
     Console().print(table)
 
 
 @click.command(name="index")
 @click.argument("paths", nargs=-1, type=click.Path(path_type=Path))
-@click.option("--ocr", is_flag=True,
-              help="OCR images and scanned PDFs (needs tesseract / ocrmypdf).")
-@click.option("--prune", is_flag=True,
-              help="Remove index rows whose files no longer exist on disk.")
-@click.option("--update", "update_mode", is_flag=True,
-              help="Treat PATH... as individual files to (re)index — no directory "
-                   "walking; unsupported or missing files are silently skipped.")
-@click.option("--if-indexed", is_flag=True,
-              help="Exit 0 silently when no desk db exists yet under --root "
-                   "(for hooks: only refresh an index someone already created).")
+@click.option(
+    "--ocr", is_flag=True, help="OCR images and scanned PDFs (needs tesseract / ocrmypdf)."
+)
+@click.option(
+    "--prune", is_flag=True, help="Remove index rows whose files no longer exist on disk."
+)
+@click.option(
+    "--update",
+    "update_mode",
+    is_flag=True,
+    help="Treat PATH... as individual files to (re)index — no directory "
+    "walking; unsupported or missing files are silently skipped.",
+)
+@click.option(
+    "--if-indexed",
+    is_flag=True,
+    help="Exit 0 silently when no desk db exists yet under --root "
+    "(for hooks: only refresh an index someone already created).",
+)
 @click.pass_context
 @_handled
-def cmd(ctx: click.Context, paths: tuple[Path, ...], ocr: bool, prune: bool,
-        update_mode: bool, if_indexed: bool) -> None:
+def cmd(
+    ctx: click.Context,
+    paths: tuple[Path, ...],
+    ocr: bool,
+    prune: bool,
+    update_mode: bool,
+    if_indexed: bool,
+) -> None:
     """Index PATH... (default: the desk root) into .carrel/carrel.db.
 
     Walks directories for the supported file types, skipping hidden entries
@@ -149,3 +175,10 @@ def cmd(ctx: click.Context, paths: tuple[Path, ...], ocr: bool, prune: bool,
             counts["pruned"] = db.prune()
 
     emit(ctx, {**counts, "errors": errors}, human=_human_summary)
+    missing = [e for e in errors if e.get("kind") == "missing_dependency"]
+    if missing and counts["indexed"] == 0 and len(missing) == len(errors):
+        # every candidate needed a binary we don't have: that is exit 3, not success
+        fail(
+            f"nothing indexed — {len(missing)} file(s) need a missing tool:\n{missing[0]['error']}",
+            ExitCode.MISSING_DEP,
+        )

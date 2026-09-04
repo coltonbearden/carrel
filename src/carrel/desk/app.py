@@ -15,18 +15,18 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Callable, Iterable
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Iterable
+from typing import ClassVar
 
 from rich.text import Text
 from textual import on, work
 from textual.app import App, ComposeResult
-from textual.binding import Binding
+from textual.binding import Binding, BindingType
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import (DirectoryTree, Footer, Header, Input, Label,
-                             OptionList, Static)
+from textual.widgets import DirectoryTree, Footer, Header, Input, Label, OptionList, Static
 from textual.widgets.option_list import Option
 
 from carrel._product import PRODUCT
@@ -47,11 +47,10 @@ PALETTE_COLORS = 6
 #: one-keypress useful ones per the spec) — filtered per source type.
 CONVERT_TARGETS = ("pdf", "txt", "md", "html", "png")
 OCR_SOURCES = (FileType.PDF, FileType.JPG, FileType.PNG)
-THUMB_SOURCES = (FileType.PDF, FileType.PNG, FileType.JPG, FileType.ICO,
-                 FileType.HTML)
+THUMB_SOURCES = (FileType.PDF, FileType.PNG, FileType.JPG, FileType.ICO, FileType.HTML)
 
 ACCENT = "#E8A13D"  # keep in sync with $carrel-accent in styles.tcss
-MUTED = "#9A8F7C"   # keep in sync with $carrel-muted in styles.tcss
+MUTED = "#9A8F7C"  # keep in sync with $carrel-muted in styles.tcss
 
 
 class FilteredDirectoryTree(DirectoryTree):
@@ -74,7 +73,7 @@ class FilteredDirectoryTree(DirectoryTree):
 class TextPrompt(ModalScreen[str | None]):
     """One-line modal input; dismisses with the text, or None on escape."""
 
-    BINDINGS = [Binding("escape", "cancel", "Cancel")]
+    BINDINGS: ClassVar[list[BindingType]] = [Binding("escape", "cancel", "Cancel")]
 
     def __init__(self, title: str, placeholder: str = "") -> None:
         super().__init__()
@@ -103,7 +102,7 @@ class DeskApp(App[None]):
 
     TITLE = f"{PRODUCT['name']} desk"
     CSS_PATH = "styles.tcss"
-    BINDINGS = [
+    BINDINGS: ClassVar[list[BindingType]] = [
         Binding("q", "quit", "Quit"),
         Binding("/", "focus_search", "Search"),
         Binding("t", "tag_prompt", "Tag"),
@@ -126,8 +125,7 @@ class DeskApp(App[None]):
         with Horizontal(id="body"):
             yield FilteredDirectoryTree(self.root_path, id="tree")
             with VerticalScroll(id="inspector"):
-                yield Static(Text("Select a file to inspect.", style=MUTED),
-                             id="meta")
+                yield Static(Text("Select a file to inspect.", style=MUTED), id="meta")
                 yield Static("", id="preview")
                 yield Static("", id="annotations")
             with Vertical(id="actions-pane"):
@@ -135,8 +133,7 @@ class DeskApp(App[None]):
                 yield OptionList(id="actions")
         with Vertical(id="search-bar"):
             yield OptionList(id="results")
-            yield Input(placeholder="Search the desk index  (press / to focus)",
-                        id="search")
+            yield Input(placeholder="Search the desk index  (press / to focus)", id="search")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -160,8 +157,7 @@ class DeskApp(App[None]):
         self.selected = path
         self.selected_is_dir = False
         self._build_actions()
-        self.query_one("#meta", Static).update(
-            Text(f"Inspecting {path.name} …", style=MUTED))
+        self.query_one("#meta", Static).update(Text(f"Inspecting {path.name} …", style=MUTED))
         self._load_inspector(path)
 
     def show_dir(self, path: Path) -> None:
@@ -171,8 +167,10 @@ class DeskApp(App[None]):
         self._build_actions()
         meta = Text()
         meta.append(f"{path.name or path}/", style=f"bold {ACCENT}")
-        meta.append("\n\ndirectory — Pack bundles it into one LLM-ready "
-                    "document (see Actions).", style=MUTED)
+        meta.append(
+            "\n\ndirectory — Pack bundles it into one LLM-ready document (see Actions).",
+            style=MUTED,
+        )
         self.query_one("#meta", Static).update(meta)
         self.query_one("#preview", Static).update("")
         self.query_one("#annotations", Static).update("")
@@ -184,23 +182,25 @@ class DeskApp(App[None]):
         try:
             info = inspect_file(path)
         except CarrelError as e:
-            self.call_from_thread(self._set_inspector, path,
-                                  Text(f"error: {e}", style="red"),
-                                  Text(""), Text(""))
+            self.call_from_thread(
+                self._set_inspector, path, Text(f"error: {e}", style="red"), Text(""), Text("")
+            )
             return
         except Exception as e:  # noqa: BLE001 — inspector degrades, never crashes
-            self.call_from_thread(self._set_inspector, path,
-                                  Text(f"unexpected error: {e}", style="red"),
-                                  Text(""), Text(""))
+            self.call_from_thread(
+                self._set_inspector,
+                path,
+                Text(f"unexpected error: {e}", style="red"),
+                Text(""),
+                Text(""),
+            )
             return
         meta = self._meta_text(info)
         preview = self._preview_text(path, FileType(info["type"]))
         annotations = self._annotations_text(path)
-        self.call_from_thread(self._set_inspector, path, meta, preview,
-                              annotations)
+        self.call_from_thread(self._set_inspector, path, meta, preview, annotations)
 
-    def _set_inspector(self, path: Path, meta: Text, preview: Text,
-                       annotations: Text) -> None:
+    def _set_inspector(self, path: Path, meta: Text, preview: Text, annotations: Text) -> None:
         if self.selected != path:  # stale worker: selection moved on
             return
         self.inspected_path = path
@@ -239,8 +239,7 @@ class DeskApp(App[None]):
         lines = content.splitlines()
         body = Text("\n".join(lines[:PREVIEW_LINES]) or "(empty)")
         if len(lines) > PREVIEW_LINES:
-            body.append(f"\n… (+{len(lines) - PREVIEW_LINES} more lines)",
-                        style=MUTED)
+            body.append(f"\n… (+{len(lines) - PREVIEW_LINES} more lines)", style=MUTED)
         return header + body
 
     @staticmethod
@@ -259,7 +258,7 @@ class DeskApp(App[None]):
             return Text(f"(no preview: {e})", style=MUTED)
         text = Text(f"{width} x {height} px\n\n")
         text.append("palette  ", style=MUTED)
-        for r, g, b in zip(raw[0::3], raw[1::3], raw[2::3]):
+        for r, g, b in zip(raw[0::3], raw[1::3], raw[2::3], strict=False):
             text.append("    ", style=f"on #{r:02x}{g:02x}{b:02x}")
             text.append(" ")
         return text
@@ -267,8 +266,7 @@ class DeskApp(App[None]):
     def _annotations_text(self, path: Path) -> Text:
         header = Text(f"── tags & notes {'─' * 25}\n", style=MUTED)
         if not DeskDB.exists(self.root_path):
-            return header + Text(
-                "no desk index yet — run the 'Index root' action", style=MUTED)
+            return header + Text("no desk index yet — run the 'Index root' action", style=MUTED)
         try:
             with DeskDB(self.root_path) as db:
                 tags = db.tags_of(path)
@@ -296,8 +294,7 @@ class DeskApp(App[None]):
             ftype = detect(sel)
             for target in CONVERT_TARGETS:
                 if target in supported_targets(ftype):
-                    options.append(Option(f"Convert → {target}",
-                                          id=f"convert:{target}"))
+                    options.append(Option(f"Convert → {target}", id=f"convert:{target}"))
             if ftype in OCR_SOURCES:
                 options.append(Option("OCR → txt", id="ocr"))
             if ftype in THUMB_SOURCES:
@@ -354,8 +351,8 @@ class DeskApp(App[None]):
             self._run_action("OCR", job)
         elif action_id == "thumb":
 
-            def job(src: Path = sel, out: Path = out_dir) -> str:
-                record = thumb_file(src, out, THUMB_SIZE, "png")
+            def job(src: Path = sel, dest: Path = out_dir) -> str:
+                record = thumb_file(src, dest, THUMB_SIZE, "png")
                 return f"wrote {record['thumb']} ({record['w']}x{record['h']})"
 
             self._run_action("Thumbnail", job)
@@ -366,25 +363,31 @@ class DeskApp(App[None]):
                 result = pack_paths([src], fmt="md")
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 dest.write_text(result.document)
-                return (f"wrote {dest} ({result.meta['files_included']} files, "
-                        f"~{result.meta['tokens_est']} tokens_est)")
+                return (
+                    f"wrote {dest} ({result.meta['files_included']} files, "
+                    f"~{result.meta['tokens_est']} tokens_est)"
+                )
 
             self._run_action("Pack", job)
         else:
             self.notify(f"unknown action: {action_id}", severity="warning")
 
     @work(thread=True, group="action")
-    def _run_action(self, label: str, job: Callable[[], str],
-                    refresh: bool = False) -> None:
+    def _run_action(self, label: str, job: Callable[[], str], refresh: bool = False) -> None:
         try:
             message = job()
         except CarrelError as e:
-            self.call_from_thread(self.notify, str(e), title=f"{label} failed",
-                                  severity="error", timeout=10)
+            self.call_from_thread(
+                self.notify, str(e), title=f"{label} failed", severity="error", timeout=10
+            )
         except Exception as e:  # noqa: BLE001 — actions toast, never crash
-            self.call_from_thread(self.notify, f"unexpected error: {e}",
-                                  title=f"{label} failed", severity="error",
-                                  timeout=10)
+            self.call_from_thread(
+                self.notify,
+                f"unexpected error: {e}",
+                title=f"{label} failed",
+                severity="error",
+                timeout=10,
+            )
         else:
             self.call_from_thread(self.notify, message, title=label, timeout=6)
             if refresh and self.selected is not None and not self.selected_is_dir:
@@ -433,8 +436,7 @@ class DeskApp(App[None]):
 
             self._run_action("Tag", job, refresh=True)
 
-        self.push_screen(
-            TextPrompt(f"Tag {sel.name}", "comma-separated tags"), done)
+        self.push_screen(TextPrompt(f"Tag {sel.name}", "comma-separated tags"), done)
 
     def action_note_prompt(self) -> None:
         sel = self.selected
@@ -481,20 +483,19 @@ class DeskApp(App[None]):
             self.call_from_thread(
                 self.notify,
                 "No desk index yet — run the 'Index root' action first.",
-                severity="warning")
+                severity="warning",
+            )
             return
         try:
             with DeskDB(self.root_path) as db:
                 rows = db.fts_search(query, limit=20)
         except Exception as e:  # noqa: BLE001 — e.g. FTS5 syntax errors
-            self.call_from_thread(self.notify, f"search failed: {e}",
-                                  severity="error")
+            self.call_from_thread(self.notify, f"search failed: {e}", severity="error")
             return
         hits = [(row["path"], row["snip"]) for row in rows]
         self.call_from_thread(self._show_results, hits)
         if not hits:
-            self.call_from_thread(self.notify, f"no hits for {query!r}",
-                                  severity="warning")
+            self.call_from_thread(self.notify, f"no hits for {query!r}", severity="warning")
 
     def _show_results(self, hits: list[tuple[str, str]]) -> None:
         results = self.query_one("#results", OptionList)
@@ -534,9 +535,13 @@ class DeskApp(App[None]):
             child = None
             for _ in range(100):  # directory contents load asynchronously
                 child = next(
-                    (c for c in node.children
-                     if c.data is not None and Path(c.data.path).name == part),
-                    None)
+                    (
+                        c
+                        for c in node.children
+                        if c.data is not None and Path(c.data.path).name == part
+                    ),
+                    None,
+                )
                 if child is not None:
                     break
                 await asyncio.sleep(0.02)

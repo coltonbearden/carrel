@@ -21,4 +21,4 @@ carrel diff A B [--mode auto|text|struct|image|pdf] [--out FILE] --json
 
 Interpret the exit code first: **0 = identical, 1 = files differ** (that's data, not an error), 2 = bad usage, 3 = missing optional dependency (pdf mode needs pdftotext — relay the install hint), 4 = missing/unsupported input or no mode fits the type pair. Then summarize the differences for the user: what changed, where, and how much — not a raw dump.
 
-**Requires the carrel CLI on PATH.** If `carrel` is not found, tell the user to install it with `uv tool install <path-to-carrel-repo>` (see the repo's INSTALL notes), or run it as `uv run carrel ...` from the carrel repo root.
+**Requires the carrel CLI on PATH.** If `carrel` is not found, tell the user to install it with `uv tool install carrel` (see the repo's INSTALL notes), or run it as `uv run carrel ...` from the carrel repo root.

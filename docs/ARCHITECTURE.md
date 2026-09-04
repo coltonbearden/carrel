@@ -48,7 +48,7 @@ require(name) -> str                         # resolved path | raises MissingDep
 run(name, *args, input=None, timeout=120) -> CompletedProcess  # check=False; caller checks rc
 ```
 
-Command modules NEVER call subprocess directly. `MissingDependencyError` is caught centrally in `cli.py` → stderr message + hint, exit 3.
+Command modules never call subprocess directly — with one documented exception: `commands/watch.py` runs user-authored `--run` shell actions itself (substitutions are shell-quoted, `--action-timeout` bounds each action). `MissingDependencyError` is caught centrally in `cli.py` → stderr message + hint, exit 3; a binary exceeding its timeout raises `ToolTimeoutError` → exit 1 with the binary named, never a traceback.
 
 ### Output (`core.output`)
 

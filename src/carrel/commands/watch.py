@@ -22,11 +22,12 @@ import fnmatch
 import functools
 import json
 import shlex
-import subprocess  # noqa: S404 — see module docstring: user-supplied actions
+import subprocess
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import click
 
@@ -55,31 +56,39 @@ def _handled(fn: Callable) -> Callable:
 def _render(template: str, path: Path) -> str:
     """Substitute {path}/{name}/{dir} into an action template, shlex-quoted."""
     return (
-        template
-        .replace("{path}", shlex.quote(str(path)))
+        template.replace("{path}", shlex.quote(str(path)))
         .replace("{name}", shlex.quote(path.name))
         .replace("{dir}", shlex.quote(str(path.parent)))
     )
 
 
-def _due(pending: dict[Path, tuple[str, float]], now: float,
-         window_ms: int) -> list[tuple[str, Path]]:
+def _due(
+    pending: dict[Path, tuple[str, float]], now: float, window_ms: int
+) -> list[tuple[str, Path]]:
     """Pop and return (event_type, path) pairs whose debounce window elapsed.
 
     `pending` maps path -> (latest event type, monotonic time of last event);
     repeated events for one path within the window coalesce into one entry.
     """
-    ready = [p for p, (_evt, last) in pending.items()
-             if (now - last) * 1000.0 >= window_ms]
+    ready = [p for p, (_evt, last) in pending.items() if (now - last) * 1000.0 >= window_ms]
     return [(pending.pop(p)[0], p) for p in sorted(ready)]
 
 
 class _Watcher:
     """Event sink + action runner shared between the handler and the loop."""
 
-    def __init__(self, *, on: set[str], glob: str | None, debounce_ms: int,
-                 runs: tuple[str, ...], json_lines: bool):
+    def __init__(
+        self,
+        *,
+        on: set[str],
+        glob: str | None,
+        debounce_ms: int,
+        runs: tuple[str, ...],
+        json_lines: bool,
+        action_timeout: float | None = 300.0,
+    ) -> None:
         self.on = on
+        self.action_timeout = action_timeout
         self.glob = glob
         self.debounce_ms = debounce_ms
         self.runs = runs
@@ -114,21 +123,44 @@ class _Watcher:
         try:
             for template in self.runs:
                 rendered = _render(template, path)
-                proc = subprocess.run(  # noqa: S602 — user-authored action
-                    rendered, shell=True, capture_output=True, text=True,
-                )
+                try:
+                    proc = subprocess.run(
+                        rendered,
+                        shell=True,
+                        capture_output=True,
+                        text=True,
+                        timeout=self.action_timeout,
+                        check=False,
+                    )
+                except subprocess.TimeoutExpired as e:
+                    proc = subprocess.CompletedProcess(
+                        rendered,
+                        returncode=124,
+                        stdout=_as_text(e.stdout),
+                        stderr=_as_text(e.stderr)
+                        + f"\naction timed out after {self.action_timeout:g}s (rc=124)",
+                    )
                 self._log(event_type, path, rendered, proc)
         finally:
             with self.lock:
                 self.inflight.discard(path)
 
-    def _log(self, event_type: str, path: Path, cmd: str,
-             proc: subprocess.CompletedProcess) -> None:
+    def _log(
+        self, event_type: str, path: Path, cmd: str, proc: subprocess.CompletedProcess
+    ) -> None:
         if self.json_lines:
-            click.echo(json.dumps({
-                "event": event_type, "path": str(path), "cmd": cmd,
-                "rc": proc.returncode, "stdout": proc.stdout.strip(),
-            }, ensure_ascii=False))
+            click.echo(
+                json.dumps(
+                    {
+                        "event": event_type,
+                        "path": str(path),
+                        "cmd": cmd,
+                        "rc": proc.returncode,
+                        "stdout": proc.stdout.strip(),
+                    },
+                    ensure_ascii=False,
+                )
+            )
         else:
             click.echo(f"[{event_type}] {path} :: {cmd} -> rc={proc.returncode}")
             if proc.stdout.strip():
@@ -137,11 +169,17 @@ class _Watcher:
             click.echo(proc.stderr.rstrip(), err=True)
 
 
-def _make_handler(watcher: _Watcher):
+def _as_text(data: bytes | str | None) -> str:
+    if data is None:
+        return ""
+    return data.decode(errors="replace") if isinstance(data, bytes) else data
+
+
+def _make_handler(watcher: _Watcher) -> Any:
     from watchdog.events import FileSystemEventHandler
 
     class _Handler(FileSystemEventHandler):
-        def on_any_event(self, event) -> None:  # noqa: ANN001 — watchdog type
+        def on_any_event(self, event: Any) -> None:
             if event.is_directory:
                 return
             event_type = event.event_type
@@ -155,30 +193,74 @@ def _make_handler(watcher: _Watcher):
 
 @click.command(name="watch")
 @click.argument("directory", type=click.Path(path_type=Path))
-@click.option("--on", "on_", default="created,modified", show_default=True,
-              metavar="EVENTS",
-              help="Comma-separated events to react to: "
-                   f"{', '.join(EVENT_TYPES)}.")
-@click.option("--glob", "glob_", default=None, metavar="PATTERN",
-              help="Only react to file names matching this glob (e.g. '*.pdf').")
-@click.option("--run", "runs", multiple=True, required=True, metavar="CMD",
-              help="Shell action to run per event; repeatable, runs in order. "
-                   "{path}, {name} and {dir} are substituted (shell-quoted).")
-@click.option("--debounce", default=500, show_default=True, metavar="MS",
-              type=click.IntRange(min=0),
-              help="Coalesce events per path within this window.")
-@click.option("--once", is_flag=True,
-              help="Exit after the first triggered action batch.")
-@click.option("--timeout", "timeout_", type=click.FloatRange(min_open=True, min=0),
-              default=None, metavar="SECS", help="Hard stop after SECS seconds.")
-@click.option("--json-lines", is_flag=True,
-              help="Log one JSON object per action to stdout instead of "
-                   "human lines.")
+@click.option(
+    "--on",
+    "on_",
+    default="created,modified",
+    show_default=True,
+    metavar="EVENTS",
+    help=f"Comma-separated events to react to: {', '.join(EVENT_TYPES)}.",
+)
+@click.option(
+    "--glob",
+    "glob_",
+    default=None,
+    metavar="PATTERN",
+    help="Only react to file names matching this glob (e.g. '*.pdf').",
+)
+@click.option(
+    "--run",
+    "runs",
+    multiple=True,
+    required=True,
+    metavar="CMD",
+    help="Shell action to run per event; repeatable, runs in order. "
+    "{path}, {name} and {dir} are substituted (shell-quoted).",
+)
+@click.option(
+    "--debounce",
+    default=500,
+    show_default=True,
+    metavar="MS",
+    type=click.IntRange(min=0),
+    help="Coalesce events per path within this window.",
+)
+@click.option("--once", is_flag=True, help="Exit after the first triggered action batch.")
+@click.option(
+    "--timeout",
+    "timeout_",
+    type=click.FloatRange(min_open=True, min=0),
+    default=None,
+    metavar="SECS",
+    help="Hard stop after SECS seconds.",
+)
+@click.option(
+    "--action-timeout",
+    type=click.FloatRange(min_open=True, min=0),
+    default=300.0,
+    show_default=True,
+    metavar="SECS",
+    help="Kill an action that runs longer than SECS (logged as rc=124).",
+)
+@click.option(
+    "--json-lines",
+    is_flag=True,
+    help="Log one JSON object per action to stdout instead of human lines (--json implies this).",
+)
 @click.pass_context
 @_handled
-def cmd(ctx: click.Context, directory: Path, on_: str, glob_: str | None,
-        runs: tuple[str, ...], debounce: int, once: bool,
-        timeout_: float | None, json_lines: bool) -> None:
+def cmd(
+    ctx: click.Context,
+    directory: Path,
+    on_: str,
+    glob_: str | None,
+    runs: tuple[str, ...],
+    debounce: int,
+    once: bool,
+    timeout_: float | None,
+    action_timeout: float,
+    json_lines: bool,
+) -> None:
     """Watch DIRECTORY (non-recursive) and run shell actions on file events.
 
     Events for files an action is currently producing are suppressed via an
@@ -187,6 +269,7 @@ def cmd(ctx: click.Context, directory: Path, on_: str, glob_: str | None,
     watched directory WILL re-trigger — write outputs elsewhere or use
     --glob to narrow matches. Ctrl-C exits cleanly.
     """
+    json_lines = json_lines or bool(ctx.obj and ctx.obj.get("json"))
     directory = directory.resolve()
     if not directory.is_dir():
         raise CarrelInputError(f"no such directory: {directory}")
@@ -194,18 +277,26 @@ def cmd(ctx: click.Context, directory: Path, on_: str, glob_: str | None,
     bad = on - set(EVENT_TYPES)
     if bad or not on:
         raise click.UsageError(
-            f"--on must be a comma list of {', '.join(EVENT_TYPES)} "
-            f"(got: {on_!r})")
+            f"--on must be a comma list of {', '.join(EVENT_TYPES)} (got: {on_!r})"
+        )
 
     from watchdog.observers import Observer
 
-    watcher = _Watcher(on=on, glob=glob_, debounce_ms=debounce, runs=runs,
-                       json_lines=json_lines)
+    watcher = _Watcher(
+        on=on,
+        glob=glob_,
+        debounce_ms=debounce,
+        runs=runs,
+        json_lines=json_lines,
+        action_timeout=action_timeout,
+    )
     observer = Observer()
     observer.schedule(_make_handler(watcher), str(directory), recursive=False)
-    click.echo(f"watching {directory} (on: {', '.join(sorted(on))}"
-               f"{f', glob: {glob_}' if glob_ else ''}) — Ctrl-C to stop",
-               err=True)
+    click.echo(
+        f"watching {directory} (on: {', '.join(sorted(on))}"
+        f"{f', glob: {glob_}' if glob_ else ''}) — Ctrl-C to stop",
+        err=True,
+    )
 
     deadline = time.monotonic() + timeout_ if timeout_ is not None else None
     observer.start()

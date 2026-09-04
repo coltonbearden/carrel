@@ -40,11 +40,12 @@ def proj(tmp_path: Path) -> Path:
     return root
 
 
-def run(*args: str) -> "CliRunner.Result":
+def run(*args: str) -> CliRunner.Result:
     return CliRunner().invoke(cli, list(args))
 
 
 # --------------------------------------------------------------------- md
+
 
 def test_md_default_contains_tree_and_every_text_file(proj: Path):
     res = run("pack", str(proj))
@@ -57,10 +58,10 @@ def test_md_default_contains_tree_and_every_text_file(proj: Path):
     assert "## Tree" in out and "proj/" in out
     assert "├──" in out or "└──" in out
     # every text fixture inlined
-    assert "hello world alpha beta" in out          # a.txt
-    assert "Inline" in out                          # docs/readme.md
-    assert "note line here" in out                  # sub/notes.txt
-    assert "k: v" in out                            # data.json via textextract
+    assert "hello world alpha beta" in out  # a.txt
+    assert "Inline" in out  # docs/readme.md
+    assert "note line here" in out  # sub/notes.txt
+    assert "k: v" in out  # data.json via textextract
 
 
 def test_md_fence_collision_lengthens_fence(proj: Path):
@@ -71,12 +72,15 @@ def test_md_fence_collision_lengthens_fence(proj: Path):
 def test_tree_dirs_first_alphabetical(proj: Path):
     res = run("pack", str(proj), "--tree-only")
     lines = res.output.splitlines()
-    idx = {name: next(i for i, ln in enumerate(lines) if name in ln)
-           for name in ("docs/", "sub/", "a.txt", "data.json")}
+    idx = {
+        name: next(i for i, ln in enumerate(lines) if name in ln)
+        for name in ("docs/", "sub/", "a.txt", "data.json")
+    }
     assert idx["docs/"] < idx["sub/"] < idx["a.txt"] < idx["data.json"]
 
 
 # ------------------------------------------------------ filters / ignores
+
 
 def test_gitignore_honored(proj: Path):
     out = run("pack", str(proj)).output
@@ -114,6 +118,7 @@ def test_binary_image_listed_not_inlined(proj: Path):
 
 # ----------------------------------------------------------------- formats
 
+
 def test_xml_parses_with_cdata_intact(proj: Path):
     res = run("pack", str(proj), "--format", "xml")
     assert res.exit_code == 0, res.output
@@ -150,11 +155,12 @@ def test_global_json_flag_emits_json_pack(proj: Path):
 
 # ---------------------------------------------------------------- tree-only
 
+
 def test_tree_only_has_no_contents(proj: Path):
     for extra in ([], ["--format", "xml"], ["--format", "json"]):
         res = run("pack", str(proj), "--tree-only", *extra)
         assert res.exit_code == 0
-        assert "a.txt" in res.output               # listed in tree
+        assert "a.txt" in res.output  # listed in tree
         assert "hello world alpha beta" not in res.output
         assert "note line here" not in res.output
     obj = json.loads(run("pack", str(proj), "--tree-only", "--format", "json").output)
@@ -162,6 +168,7 @@ def test_tree_only_has_no_contents(proj: Path):
 
 
 # ------------------------------------------------------------------ budgets
+
 
 def test_max_file_bytes_skips_large_file(proj: Path):
     limit = len(NOTES_TXT) + 1  # a.txt is bigger, notes.txt fits
@@ -175,12 +182,13 @@ def test_max_bytes_stops_adding_and_notes_omissions(proj: Path):
     readme_size = len(README_MD)
     res = pack_paths([proj], max_bytes=readme_size + 1)
     assert res.meta["files_included"] == 1  # walk order: docs/readme.md first
-    assert res.meta["omitted_budget"]       # everything after is omitted
+    assert res.meta["omitted_budget"]  # everything after is omitted
     assert "omitted over --max-bytes budget" in res.document
     assert "hello world alpha beta" not in res.document
 
 
 # ----------------------------------------------------------------- chunking
+
 
 def test_chunk_requires_output(proj: Path):
     res = run("pack", str(proj), "--chunk", "100")
@@ -194,8 +202,7 @@ def test_chunking_parts_within_budget(proj: Path, tmp_path: Path):
     out = tmp_path / "pack.md"
     res = run("pack", str(proj), "-o", str(out), "--chunk", str(budget))
     assert res.exit_code == 0, res.output
-    parts = sorted(tmp_path.glob("pack.md.part*"),
-                   key=lambda p: int(p.name.rsplit("part", 1)[1]))
+    parts = sorted(tmp_path.glob("pack.md.part*"), key=lambda p: int(p.name.rsplit("part", 1)[1]))
     assert len(parts) >= 2
     assert not out.exists()  # only OUT.partN files
     joined = ""
@@ -215,8 +222,7 @@ def test_chunking_parts_within_budget(proj: Path, tmp_path: Path):
 
 def test_chunk_small_file_not_split(proj: Path, tmp_path: Path):
     out = tmp_path / "p.xml"
-    res = run("pack", str(proj / "a.txt"), "-o", str(out),
-              "--chunk", "5000", "--format", "xml")
+    res = run("pack", str(proj / "a.txt"), "-o", str(out), "--chunk", "5000", "--format", "xml")
     assert res.exit_code == 0, res.output
     part1 = tmp_path / "p.xml.part1"
     assert part1.exists()
@@ -225,6 +231,7 @@ def test_chunk_small_file_not_split(proj: Path, tmp_path: Path):
 
 
 # -------------------------------------------------------------------- stats
+
 
 def test_stats_json(proj: Path):
     res = run("--json", "pack", str(proj), "--stats")
@@ -244,6 +251,7 @@ def test_stats_human_table(proj: Path):
 
 
 # ------------------------------------------------------------ misc / library
+
 
 def test_single_file_argument(proj: Path):
     res = run("pack", str(proj / "a.txt"))

@@ -52,8 +52,7 @@ def test_image_to_txt_reads_fixture_text(fixtures, tmp_path: Path):
 @needs("tesseract")
 def test_image_to_md_same_text(fixtures, tmp_path: Path):
     out = tmp_path / "scan.md"
-    record = run_json("ocr", str(fixtures / "scanned.png"), "--to", "md",
-                      "-o", str(out))
+    record = run_json("ocr", str(fixtures / "scanned.png"), "--to", "md", "-o", str(out))
     assert record["engine"] == "tesseract"
     assert "CARREL" in out.read_text()
 
@@ -61,8 +60,7 @@ def test_image_to_md_same_text(fixtures, tmp_path: Path):
 @needs("tesseract")
 def test_image_to_pdf_writes_pdf(fixtures, tmp_path: Path):
     out = tmp_path / "scan.pdf"
-    record = run_json("ocr", str(fixtures / "scanned.png"), "--to", "pdf",
-                      "-o", str(out))
+    record = run_json("ocr", str(fixtures / "scanned.png"), "--to", "pdf", "-o", str(out))
     assert record["engine"] == "tesseract"
     assert out.read_bytes()[:4] == b"%PDF"
     if adapters.have("pdftotext"):
@@ -84,13 +82,15 @@ def test_default_dest_next_to_src(tmp_copy):
 @needs("pdftotext")
 def test_scanned_pdf_to_searchable_pdf(fixtures, tmp_path: Path):
     out = tmp_path / "searchable.pdf"
-    record = run_json("ocr", str(fixtures / "scanned.pdf"), "--to", "pdf",
-                      "-o", str(out))
+    record = run_json("ocr", str(fixtures / "scanned.pdf"), "--to", "pdf", "-o", str(out))
     assert record["engine"] == "ocrmypdf"
     assert out.read_bytes()[:4] == b"%PDF"
     extracted = subprocess.run(
         [adapters.require("pdftotext"), "-layout", str(out), "-"],
-        capture_output=True, text=True, check=True).stdout
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
     assert "CARREL" in extracted
     assert record["chars"] == len(extracted) > 0
 
@@ -124,13 +124,15 @@ def test_prior_text_rc6_suggests_redo(fixtures, tmp_path: Path, monkeypatch):
     def fake_run(name, *args, **kwargs):
         if name == "ocrmypdf":
             return subprocess.CompletedProcess(
-                [name, *args], 6, stdout="", stderr="PriorOcrFoundError: page already has text!")
+                [name, *args], 6, stdout="", stderr="PriorOcrFoundError: page already has text!"
+            )
         return real_run(name, *args, **kwargs)
 
     monkeypatch.setattr(adapters, "run", fake_run)
     monkeypatch.setattr("carrel.commands.ocr.adapters.run", fake_run)
     result = CliRunner().invoke(
-        cli, ["ocr", str(fixtures / "text+image.pdf"), "-o", str(tmp_path / "o.txt")])
+        cli, ["ocr", str(fixtures / "text+image.pdf"), "-o", str(tmp_path / "o.txt")]
+    )
     assert result.exit_code == 1
     assert "--redo" in result.stderr and "text layer" in result.stderr
 
@@ -140,22 +142,34 @@ def test_prior_text_rc6_suggests_redo(fixtures, tmp_path: Path, monkeypatch):
 
 def test_missing_tesseract_exits_3_with_hint(fixtures, tmp_path: Path, monkeypatch):
     real = adapters.ADAPTERS["tesseract"]
-    broken = adapters.Adapter("tesseract", ("definitely-not-a-real-binary-xyz",),
-                              real.version_args, real.install_hint, real.purpose)
+    broken = adapters.Adapter(
+        "tesseract",
+        ("definitely-not-a-real-binary-xyz",),
+        real.version_args,
+        real.install_hint,
+        real.purpose,
+    )
     monkeypatch.setitem(adapters.ADAPTERS, "tesseract", broken)
     result = CliRunner().invoke(
-        cli, ["ocr", str(fixtures / "scanned.png"), "-o", str(tmp_path / "o.txt")])
+        cli, ["ocr", str(fixtures / "scanned.png"), "-o", str(tmp_path / "o.txt")]
+    )
     assert result.exit_code == 3
     assert "tesseract" in result.stderr and "install" in result.stderr
 
 
 def test_missing_ocrmypdf_exits_3_with_hint(fixtures, tmp_path: Path, monkeypatch):
     real = adapters.ADAPTERS["ocrmypdf"]
-    broken = adapters.Adapter("ocrmypdf", ("definitely-not-a-real-binary-xyz",),
-                              real.version_args, real.install_hint, real.purpose)
+    broken = adapters.Adapter(
+        "ocrmypdf",
+        ("definitely-not-a-real-binary-xyz",),
+        real.version_args,
+        real.install_hint,
+        real.purpose,
+    )
     monkeypatch.setitem(adapters.ADAPTERS, "ocrmypdf", broken)
     result = CliRunner().invoke(
-        cli, ["ocr", str(fixtures / "scanned.pdf"), "-o", str(tmp_path / "o.txt")])
+        cli, ["ocr", str(fixtures / "scanned.pdf"), "-o", str(tmp_path / "o.txt")]
+    )
     assert result.exit_code == 3
     assert "ocrmypdf" in result.stderr and "install" in result.stderr
 
@@ -165,8 +179,8 @@ def test_missing_language_pack_hint_image(fixtures, tmp_path: Path):
     # 'xyz' is not a real language pack: tesseract fails loading it, and the
     # error must carry the apt install hint. Exit 3 = missing dependency.
     result = CliRunner().invoke(
-        cli, ["ocr", str(fixtures / "scanned.png"), "--lang", "xyz",
-              "-o", str(tmp_path / "o.txt")])
+        cli, ["ocr", str(fixtures / "scanned.png"), "--lang", "xyz", "-o", str(tmp_path / "o.txt")]
+    )
     assert result.exit_code == 3
     assert "sudo apt install tesseract-ocr-xyz" in result.stderr
 
@@ -174,8 +188,8 @@ def test_missing_language_pack_hint_image(fixtures, tmp_path: Path):
 @needs("ocrmypdf")
 def test_missing_language_pack_hint_pdf(fixtures, tmp_path: Path):
     result = CliRunner().invoke(
-        cli, ["ocr", str(fixtures / "scanned.pdf"), "--lang", "xyz",
-              "-o", str(tmp_path / "o.txt")])
+        cli, ["ocr", str(fixtures / "scanned.pdf"), "--lang", "xyz", "-o", str(tmp_path / "o.txt")]
+    )
     assert result.exit_code == 3
     assert "sudo apt install tesseract-ocr-xyz" in result.stderr
 
@@ -232,7 +246,6 @@ def test_ocr_file_plain_function(fixtures, tmp_path: Path):
 
 @needs("tesseract")
 def test_json_flag_emits_single_json_object(fixtures, tmp_path: Path):
-    result = run("--json", "ocr", str(fixtures / "scanned.png"),
-                 "-o", str(tmp_path / "o.txt"))
+    result = run("--json", "ocr", str(fixtures / "scanned.png"), "-o", str(tmp_path / "o.txt"))
     record = json.loads(result.output)  # raises if anything but one JSON doc
     assert record["src"].endswith("scanned.png")

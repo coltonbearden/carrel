@@ -22,7 +22,7 @@ from carrel.core.output import CarrelInputError
 HEX_RE = re.compile(r"#[0-9a-f]{6}\Z")
 
 
-def run(*args: str) -> "CliRunner.Result":
+def run(*args: str) -> CliRunner.Result:
     return CliRunner().invoke(cli, list(args))
 
 
@@ -50,6 +50,7 @@ def needs_profile(alias: str) -> pytest.MarkDecorator:
 
 # ===================================================================== thumb
 
+
 def test_thumb_help():
     res = run("thumb", "--help")
     assert res.exit_code == 0
@@ -74,8 +75,9 @@ def test_thumb_png_fits_size_and_keeps_aspect(tmp_copy, tmp_path: Path):
 def test_thumb_jpg_format(tmp_copy, tmp_path: Path):
     src = tmp_copy("sample.png")
     out = tmp_path / "thumbs"
-    res = run("--json", "thumb", str(src), "--format", "jpg",
-              "--out-dir", str(out), "--size", "100")
+    res = run(
+        "--json", "thumb", str(src), "--format", "jpg", "--out-dir", str(out), "--size", "100"
+    )
     assert res.exit_code == 0, all_output(res)
     thumb = Path(json.loads(res.stdout)[0]["thumb"])
     assert thumb.suffix == ".jpg"
@@ -84,15 +86,15 @@ def test_thumb_jpg_format(tmp_copy, tmp_path: Path):
 
 def test_thumb_ico_uses_largest_frame(tmp_copy, tmp_path: Path):
     src = tmp_copy("sample.ico")  # frames 16/32/48
-    rec = json.loads(run("--json", "thumb", str(src), "--out-dir",
-                         str(tmp_path / "t")).stdout)[0]
+    rec = json.loads(run("--json", "thumb", str(src), "--out-dir", str(tmp_path / "t")).stdout)[0]
     assert (rec["w"], rec["h"]) == (48, 48)  # largest frame, never upscaled
 
 
 def test_thumb_never_upscales_images(tmp_copy, tmp_path: Path):
     src = tmp_copy("sample.png")  # 400x300
-    rec = json.loads(run("--json", "thumb", str(src), "--size", "9999",
-                         "--out-dir", str(tmp_path / "t")).stdout)[0]
+    rec = json.loads(
+        run("--json", "thumb", str(src), "--size", "9999", "--out-dir", str(tmp_path / "t")).stdout
+    )[0]
     assert (rec["w"], rec["h"]) == (400, 300)
 
 
@@ -113,8 +115,7 @@ def test_thumb_pdf_first_page(tmp_copy, tmp_path: Path):
 def test_thumb_html_chain(tmp_copy, tmp_path: Path):
     tmp_copy("sample.png")  # sample.html references it relatively
     src = tmp_copy("sample.html")
-    res = run("--json", "thumb", str(src), "--size", "120",
-              "--out-dir", str(tmp_path / "thumbs"))
+    res = run("--json", "thumb", str(src), "--size", "120", "--out-dir", str(tmp_path / "thumbs"))
     assert res.exit_code == 0, all_output(res)
     rec = json.loads(res.stdout)[0]
     assert max(rec["w"], rec["h"]) <= 120
@@ -123,8 +124,9 @@ def test_thumb_html_chain(tmp_copy, tmp_path: Path):
 
 def test_thumb_multiple_sources(tmp_copy, tmp_path: Path):
     a, b = tmp_copy("sample.png"), tmp_copy("sample.jpg")
-    res = run("--json", "thumb", str(a), str(b), "--size", "50",
-              "--out-dir", str(tmp_path / "thumbs"))
+    res = run(
+        "--json", "thumb", str(a), str(b), "--size", "50", "--out-dir", str(tmp_path / "thumbs")
+    )
     assert res.exit_code == 0, all_output(res)
     recs = json.loads(res.stdout)
     assert len(recs) == 2
@@ -146,8 +148,7 @@ def test_thumb_missing_file_exits_4(tmp_path: Path):
 
 def test_thumb_batch_continues_after_failure(tmp_copy, tmp_path: Path):
     bad, good = tmp_copy("sample.txt"), tmp_copy("sample.png")
-    res = run("--json", "thumb", str(bad), str(good), "--out-dir",
-              str(tmp_path / "t"))
+    res = run("--json", "thumb", str(bad), str(good), "--out-dir", str(tmp_path / "t"))
     assert res.exit_code == 4  # first failure's code, batch still finished
     recs = json.loads(res.stdout)
     assert recs[0]["thumb"] is None and "error" in recs[0]
@@ -166,6 +167,7 @@ def test_thumb_file_library_api(tmp_copy, tmp_path: Path):
 
 
 # ============================================================ extract-images
+
 
 def test_extract_images_help():
     res = run("extract-images", "--help")
@@ -192,8 +194,7 @@ def test_extract_pdf_yields_pngs(tmp_copy, tmp_path: Path):
 def test_extract_pdf_min_size_filters_everything(tmp_copy, tmp_path: Path):
     src = tmp_copy("text+image.pdf")
     out = tmp_path / "imgs"
-    res = run("--json", "extract-images", str(src), "--out-dir", str(out),
-              "--min-size", "5000")
+    res = run("--json", "extract-images", str(src), "--out-dir", str(out), "--min-size", "5000")
     assert res.exit_code == 0, all_output(res)
     data = json.loads(res.stdout)
     assert data["count"] == 0
@@ -234,12 +235,13 @@ def test_extract_html_copies_only_local_existing(tmp_path: Path, fixtures: Path)
     page.write_text(
         "<html><body>"
         '<img src="art.png">'
-        '<img src="art.png">'                          # duplicate → copied once
-        '<img src="missing.png">'                      # doesn\'t exist → skipped
-        '<img src="https://example.com/remote.png">'   # remote → never fetched
+        '<img src="art.png">'  # duplicate → copied once
+        '<img src="missing.png">'  # doesn\'t exist → skipped
+        '<img src="https://example.com/remote.png">'  # remote → never fetched
         '<img src="//cdn.example.com/x.png">'
         '<img src="data:image/png;base64,AAAA">'
-        "</body></html>")
+        "</body></html>"
+    )
     out = tmp_path / "found"
     data = extract_images_file(page, out)
     assert data["count"] == 1
@@ -272,6 +274,7 @@ def test_extract_unsupported_type_exits_4(tmp_copy):
 
 
 # ===================================================================== proof
+
 
 def test_proof_help():
     res = run("proof", "--help")
@@ -341,6 +344,7 @@ def test_proof_non_image_exits_4(tmp_copy):
 
 # ===================================================================== color
 
+
 def test_color_group_help_lists_subcommands():
     res = run("color", "--help")
     assert res.exit_code == 0
@@ -402,8 +406,7 @@ def test_color_convert_srgb_png_out(tmp_copy, tmp_path: Path):
 @needs_profile("cmyk")
 def test_color_convert_cmyk_refuses_png_out(tmp_copy, tmp_path: Path):
     src = tmp_copy("sample.png")
-    res = run("color", "convert", str(src), "--to-profile", "cmyk",
-              "-o", str(tmp_path / "bad.png"))
+    res = run("color", "convert", str(src), "--to-profile", "cmyk", "-o", str(tmp_path / "bad.png"))
     assert res.exit_code == 4
     assert "CMYK" in all_output(res)
 
@@ -435,13 +438,26 @@ def test_contrast_bad_hex_is_usage_error():
 
 # ------------------------------------------------------------- subprocess
 
+
 def test_subprocess_real_cli_thumb(tmp_copy, tmp_path: Path):
     src = tmp_copy("sample.png")
     out = tmp_path / "thumbs"
-    proc = subprocess.run(
-        [sys.executable, "-m", "carrel.cli", "--json", "thumb", str(src),
-         "--size", "32", "--out-dir", str(out)],
-        capture_output=True, text=True, timeout=120,
+    proc = subprocess.run(  # noqa: PLW1510 — tests inspect returncode
+        [
+            sys.executable,
+            "-m",
+            "carrel.cli",
+            "--json",
+            "thumb",
+            str(src),
+            "--size",
+            "32",
+            "--out-dir",
+            str(out),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
     )
     assert proc.returncode == 0, proc.stderr
     rec = json.loads(proc.stdout)[0]

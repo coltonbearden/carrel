@@ -3,7 +3,7 @@
 ## Dev setup
 
 ```bash
-git clone https://github.com/FirstCastSolutions423/carrel.git ~/projects/carrel && cd ~/projects/carrel
+git clone https://github.com/coltonbearden/carrel.git ~/projects/carrel && cd ~/projects/carrel
 uv sync                 # creates .venv from pyproject.toml + uv.lock
 uv run carrel doctor    # which optional binaries you have + apt install hints
 uv run pytest           # 501 tests; binary-gated tests skip (with reason) when a binary is absent
@@ -16,7 +16,7 @@ required to run the core suite.
 
 ## Coding standards
 
-The binding rules live in [`CLAUDE.md`](https://github.com/FirstCastSolutions423/carrel/blob/main/CLAUDE.md) (repo root) and
+The binding rules live in [`CLAUDE.md`](https://github.com/coltonbearden/carrel/blob/main/CLAUDE.md) (repo root) and
 [ARCHITECTURE.md](ARCHITECTURE.md) §Global contracts. The short version:
 
 - Type hints on public functions, `pathlib.Path` over strings, f-strings, no global

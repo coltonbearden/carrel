@@ -34,13 +34,37 @@ _ALWAYS_SKIP_DIRS = frozenset({".git", ".carrel"})
 _SPLIT_SAFETY = {"md": 0.97, "xml": 0.92, "json": 0.5}
 
 _LANG = {
-    ".py": "python", ".js": "javascript", ".ts": "typescript", ".tsx": "tsx",
-    ".jsx": "jsx", ".md": "markdown", ".markdown": "markdown", ".json": "json",
-    ".html": "html", ".htm": "html", ".xml": "xml", ".csv": "csv",
-    ".sh": "bash", ".bash": "bash", ".toml": "toml", ".yml": "yaml",
-    ".yaml": "yaml", ".css": "css", ".sql": "sql", ".rs": "rust", ".go": "go",
-    ".c": "c", ".h": "c", ".cpp": "cpp", ".java": "java", ".rb": "ruby",
-    ".ini": "ini", ".cfg": "ini", ".txt": "", ".text": "", ".pdf": "text",
+    ".py": "python",
+    ".js": "javascript",
+    ".ts": "typescript",
+    ".tsx": "tsx",
+    ".jsx": "jsx",
+    ".md": "markdown",
+    ".markdown": "markdown",
+    ".json": "json",
+    ".html": "html",
+    ".htm": "html",
+    ".xml": "xml",
+    ".csv": "csv",
+    ".sh": "bash",
+    ".bash": "bash",
+    ".toml": "toml",
+    ".yml": "yaml",
+    ".yaml": "yaml",
+    ".css": "css",
+    ".sql": "sql",
+    ".rs": "rust",
+    ".go": "go",
+    ".c": "c",
+    ".h": "c",
+    ".cpp": "cpp",
+    ".java": "java",
+    ".rb": "ruby",
+    ".ini": "ini",
+    ".cfg": "ini",
+    ".txt": "",
+    ".text": "",
+    ".pdf": "text",
 }
 
 
@@ -61,6 +85,7 @@ def _human_size(n: int) -> str:
 # --------------------------------------------------------------------------
 # .gitignore (simple matcher — see cmd docstring for documented limits)
 
+
 @dataclass(frozen=True)
 class _IgnoreFile:
     base: Path
@@ -78,7 +103,7 @@ def _load_ignore(directory: Path) -> _IgnoreFile | None:
         return None
     for raw in lines:
         line = raw.strip()
-        if not line or line.startswith("#") or line.startswith("!"):
+        if not line or line.startswith(("#", "!")):
             continue  # comments; negation is NOT supported (documented)
         dir_only = line.endswith("/")
         line = line.rstrip("/")
@@ -119,15 +144,16 @@ def _ignored(path: Path, is_dir: bool, ignores: tuple[_IgnoreFile, ...]) -> bool
 # --------------------------------------------------------------------------
 # data model
 
+
 @dataclass(frozen=True)
 class PackEntry:
-    path: str                # display path (POSIX, relative to root)
-    size: int                # bytes on disk
-    ftype: str               # FileType value ("txt", "pdf", "unknown", ...)
-    content: str | None      # extracted text; None when skipped/tree-only
+    path: str  # display path (POSIX, relative to root)
+    size: int  # bytes on disk
+    ftype: str  # FileType value ("txt", "pdf", "unknown", ...)
+    content: str | None  # extracted text; None when skipped/tree-only
     tokens_est: int
-    skipped: str | None = None   # reason, or None when included
-    continued: bool = False      # True on split pieces in chunked output
+    skipped: str | None = None  # reason, or None when included
+    continued: bool = False  # True on split pieces in chunked output
 
     @property
     def included(self) -> bool:
@@ -141,7 +167,7 @@ class PackResult:
     meta: dict[str, Any]
     tree: str
     entries: list[PackEntry]
-    documents: list[str]     # one rendered document, or N parts when chunked
+    documents: list[str]  # one rendered document, or N parts when chunked
 
     @property
     def document(self) -> str:
@@ -154,8 +180,13 @@ class PackResult:
     def stats(self) -> dict[str, Any]:
         return {
             "files": [
-                {"path": e.path, "type": e.ftype, "bytes": e.size,
-                 "tokens_est": e.tokens_est, "skipped": e.skipped}
+                {
+                    "path": e.path,
+                    "type": e.ftype,
+                    "bytes": e.size,
+                    "tokens_est": e.tokens_est,
+                    "skipped": e.skipped,
+                }
                 for e in self.entries
             ],
             "totals": {
@@ -170,6 +201,7 @@ class PackResult:
 
 # --------------------------------------------------------------------------
 # extraction
+
 
 def _looks_text(path: Path) -> bool:
     try:
@@ -210,6 +242,7 @@ def _extract(path: Path, ftype: FileType, ocr: bool) -> tuple[str | None, str | 
 # --------------------------------------------------------------------------
 # tree rendering
 
+
 def _render_tree(root_label: str, entries: list[PackEntry]) -> str:
     tree: dict[str, Any] = {}
     for e in entries:
@@ -232,7 +265,9 @@ def _render_tree(root_label: str, entries: list[PackEntry]) -> str:
                 lines.append(f"{prefix}{branch}{name}/")
                 rec(val, prefix + ("    " if last else "│   "))
             else:
-                note = f"  [skipped: {val.skipped}] ({_human_size(val.size)})" if val.skipped else ""
+                note = (
+                    f"  [skipped: {val.skipped}] ({_human_size(val.size)})" if val.skipped else ""
+                )
                 lines.append(f"{prefix}{branch}{name}{note}")
 
     rec(tree, "")
@@ -241,6 +276,7 @@ def _render_tree(root_label: str, entries: list[PackEntry]) -> str:
 
 # --------------------------------------------------------------------------
 # format renderers — signature: (meta, tree|None, entries, part|None) -> str
+
 
 def _header_lines(meta: dict[str, Any], part: tuple[int, int] | None) -> list[str]:
     lines = [
@@ -278,8 +314,9 @@ def _md_section(e: PackEntry) -> str:
     return f"{title}\n\n{fence}{_lang_for(e.path)}\n{content}\n{fence}\n"
 
 
-def _render_md(meta: dict[str, Any], tree: str | None,
-               entries: list[PackEntry], part: tuple[int, int] | None) -> str:
+def _render_md(
+    meta: dict[str, Any], tree: str | None, entries: list[PackEntry], part: tuple[int, int] | None
+) -> str:
     out = [f"# {PRODUCT['name']} pack", ""]
     out += [f"- {ln}" for ln in _header_lines(meta, part)]
     if tree is not None:
@@ -295,8 +332,9 @@ def _cdata(text: str) -> str:
     return "<![CDATA[" + text.replace("]]>", "]]]]><![CDATA[>") + "]]>"
 
 
-def _render_xml(meta: dict[str, Any], tree: str | None,
-                entries: list[PackEntry], part: tuple[int, int] | None) -> str:
+def _render_xml(
+    meta: dict[str, Any], tree: str | None, entries: list[PackEntry], part: tuple[int, int] | None
+) -> str:
     attrs = {
         "generated-by": meta["generated_by"],
         "root": meta["root"],
@@ -320,8 +358,9 @@ def _render_xml(meta: dict[str, Any], tree: str | None,
     return "\n".join(out) + "\n"
 
 
-def _render_json(meta: dict[str, Any], tree: str | None,
-                 entries: list[PackEntry], part: tuple[int, int] | None) -> str:
+def _render_json(
+    meta: dict[str, Any], tree: str | None, entries: list[PackEntry], part: tuple[int, int] | None
+) -> str:
     m = dict(meta)
     if part:
         m["part"] = f"{part[0]}/{part[1]}"
@@ -329,9 +368,12 @@ def _render_json(meta: dict[str, Any], tree: str | None,
         "meta": m,
         "tree": tree or "",
         "files": [
-            {"path": e.path, "tokens_est": e.tokens_est,
-             "content": e.content or "",
-             **({"continued": True} if e.continued else {})}
+            {
+                "path": e.path,
+                "tokens_est": e.tokens_est,
+                "content": e.content or "",
+                **({"continued": True} if e.continued else {}),
+            }
             for e in entries
         ],
     }
@@ -344,6 +386,7 @@ _RENDERERS = {"md": _render_md, "xml": _render_xml, "json": _render_json}
 # --------------------------------------------------------------------------
 # chunking
 
+
 def _split_entry(e: PackEntry, fmt: str, meta: dict[str, Any], budget: int) -> list[PackEntry]:
     """Split one oversized file on line boundaries into budget-sized pieces."""
     render = _RENDERERS[fmt]
@@ -351,9 +394,7 @@ def _split_entry(e: PackEntry, fmt: str, meta: dict[str, Any], budget: int) -> l
     overhead = estimate_tokens(render(meta, None, [empty], (1, 1)))
     avail = int((budget - overhead) * CHARS_PER_TOKEN * _SPLIT_SAFETY[fmt])
     if avail < 1:
-        raise CarrelInputError(
-            f"--chunk {budget} is too small to fit any content of {e.path}"
-        )
+        raise CarrelInputError(f"--chunk {budget} is too small to fit any content of {e.path}")
     chunks: list[str] = []
     buf: list[str] = []
     buflen = 0
@@ -378,8 +419,9 @@ def _split_entry(e: PackEntry, fmt: str, meta: dict[str, Any], budget: int) -> l
     ]
 
 
-def _chunked_documents(fmt: str, meta: dict[str, Any], tree: str,
-                       entries: list[PackEntry], budget: int) -> list[str]:
+def _chunked_documents(
+    fmt: str, meta: dict[str, Any], tree: str, entries: list[PackEntry], budget: int
+) -> list[str]:
     render = _RENDERERS[fmt]
 
     def doc_tokens(group: list[PackEntry], with_tree: bool) -> int:
@@ -398,7 +440,7 @@ def _chunked_documents(fmt: str, meta: dict[str, Any], tree: str,
         if not cur and not groups and doc_tokens([p], True) > budget:
             groups.append([])  # tree alone fills part 1
             cur = [p]
-        elif cur and doc_tokens(cur + [p], not groups) > budget:
+        elif cur and doc_tokens([*cur, p], not groups) > budget:
             groups.append(cur)
             cur = [p]
         else:
@@ -406,12 +448,12 @@ def _chunked_documents(fmt: str, meta: dict[str, Any], tree: str,
     if cur or not groups:
         groups.append(cur)
     n = len(groups)
-    return [render(meta, tree if i == 0 else None, g, (i + 1, n))
-            for i, g in enumerate(groups)]
+    return [render(meta, tree if i == 0 else None, g, (i + 1, n)) for i, g in enumerate(groups)]
 
 
 # --------------------------------------------------------------------------
 # core
+
 
 def pack_paths(
     paths: Sequence[Path | str],
@@ -458,7 +500,7 @@ def pack_paths(
         if not no_gitignore:
             ig = _load_ignore(d)
             if ig:
-                ignores = ignores + (ig,)
+                ignores = (*ignores, ig)
         try:
             children = sorted(d.iterdir(), key=lambda p: p.name)
         except OSError:
@@ -477,9 +519,7 @@ def pack_paths(
                 continue
             if not no_gitignore and _ignored(f, False, ignores):
                 continue
-            if include and not any(
-                fnmatch(rel_of(f), g) or fnmatch(f.name, g) for g in include
-            ):
+            if include and not any(fnmatch(rel_of(f), g) or fnmatch(f.name, g) for g in include):
                 continue
             _add(f)
 
@@ -541,12 +581,14 @@ def pack_paths(
         documents = _chunked_documents(fmt, meta, tree, body, chunk)
     else:
         documents = [_RENDERERS[fmt](meta, tree, body, None)]
-    return PackResult(fmt=fmt, root=root, meta=meta, tree=tree,
-                      entries=entries, documents=documents)
+    return PackResult(
+        fmt=fmt, root=root, meta=meta, tree=tree, entries=entries, documents=documents
+    )
 
 
 # --------------------------------------------------------------------------
 # CLI
+
 
 def _print_stats_table(data: dict[str, Any]) -> None:
     from rich.console import Console
@@ -556,12 +598,22 @@ def _print_stats_table(data: dict[str, Any]) -> None:
     for col in ("path", "type", "size", "tokens_est", "note"):
         table.add_column(col)
     for row in data["files"]:
-        table.add_row(row["path"], row["type"], _human_size(row["bytes"]),
-                      str(row["tokens_est"]), row["skipped"] or "")
+        table.add_row(
+            row["path"],
+            row["type"],
+            _human_size(row["bytes"]),
+            str(row["tokens_est"]),
+            row["skipped"] or "",
+        )
     totals = data["totals"]
     table.add_section()
-    table.add_row("TOTAL", f"{totals['included']} in / {totals['skipped']} skip",
-                  _human_size(totals["bytes"]), str(totals["tokens_est"]), "")
+    table.add_row(
+        "TOTAL",
+        f"{totals['included']} in / {totals['skipped']} skip",
+        _human_size(totals["bytes"]),
+        str(totals["tokens_est"]),
+        "",
+    )
     Console().print(table)
     if data.get("written"):
         click.echo("wrote " + ", ".join(data["written"]), err=True)
@@ -569,36 +621,73 @@ def _print_stats_table(data: dict[str, Any]) -> None:
 
 @click.command(name="pack")
 @click.argument("paths", nargs=-1, required=True, type=click.Path(path_type=Path))
-@click.option("-o", "--output", type=click.Path(dir_okay=False, path_type=Path),
-              help="Write here instead of stdout (with --chunk: OUT.part1..N).")
-@click.option("--format", "fmt", type=click.Choice(["md", "xml", "json"]),
-              default="md", show_default=True, help="Output format.")
-@click.option("--include", multiple=True, metavar="GLOB",
-              help="Only pack files matching GLOB (repeatable).")
-@click.option("--exclude", multiple=True, metavar="GLOB",
-              help="Drop files/dirs matching GLOB (repeatable).")
+@click.option(
+    "-o",
+    "--output",
+    type=click.Path(dir_okay=False, path_type=Path),
+    help="Write here instead of stdout (with --chunk: OUT.part1..N).",
+)
+@click.option(
+    "--format",
+    "fmt",
+    type=click.Choice(["md", "xml", "json"]),
+    default="md",
+    show_default=True,
+    help="Output format.",
+)
+@click.option(
+    "--include", multiple=True, metavar="GLOB", help="Only pack files matching GLOB (repeatable)."
+)
+@click.option(
+    "--exclude", multiple=True, metavar="GLOB", help="Drop files/dirs matching GLOB (repeatable)."
+)
 @click.option("--no-gitignore", is_flag=True, help="Do not honor .gitignore files.")
-@click.option("--max-bytes", type=int, metavar="N",
-              help="Stop adding file contents once N total bytes are packed; "
-                   "omissions are noted in the header.")
-@click.option("--max-file-bytes", type=int, metavar="N",
-              help="Skip any single file larger than N bytes.")
-@click.option("--chunk", type=int, metavar="TOKENS",
-              help="Split into OUT.part1..N, each at most TOKENS estimated "
-                   "tokens (requires -o). Files are never split mid-file "
-                   "unless one alone exceeds the budget; then it is split on "
-                   "line boundaries with (continued) markers.")
+@click.option(
+    "--max-bytes",
+    type=int,
+    metavar="N",
+    help="Stop adding file contents once N total bytes are packed; "
+    "omissions are noted in the header.",
+)
+@click.option(
+    "--max-file-bytes", type=int, metavar="N", help="Skip any single file larger than N bytes."
+)
+@click.option(
+    "--chunk",
+    type=int,
+    metavar="TOKENS",
+    help="Split into OUT.part1..N, each at most TOKENS estimated "
+    "tokens (requires -o). Files are never split mid-file "
+    "unless one alone exceeds the budget; then it is split on "
+    "line boundaries with (continued) markers.",
+)
 @click.option("--tree-only", is_flag=True, help="Emit header + tree only, no contents.")
-@click.option("--ocr", is_flag=True,
-              help="OCR images and scanned PDFs (needs tesseract / ocrmypdf).")
-@click.option("--stats", "show_stats", is_flag=True,
-              help="Print a per-file token table instead of the pack "
-                   "(the pack is still written when -o is given).")
+@click.option(
+    "--ocr", is_flag=True, help="OCR images and scanned PDFs (needs tesseract / ocrmypdf)."
+)
+@click.option(
+    "--stats",
+    "show_stats",
+    is_flag=True,
+    help="Print a per-file token table instead of the pack "
+    "(the pack is still written when -o is given).",
+)
 @click.pass_context
-def cmd(ctx: click.Context, paths: tuple[Path, ...], output: Path | None, fmt: str,
-        include: tuple[str, ...], exclude: tuple[str, ...], no_gitignore: bool,
-        max_bytes: int | None, max_file_bytes: int | None, chunk: int | None,
-        tree_only: bool, ocr: bool, show_stats: bool) -> None:
+def cmd(
+    ctx: click.Context,
+    paths: tuple[Path, ...],
+    output: Path | None,
+    fmt: str,
+    include: tuple[str, ...],
+    exclude: tuple[str, ...],
+    no_gitignore: bool,
+    max_bytes: int | None,
+    max_file_bytes: int | None,
+    chunk: int | None,
+    tree_only: bool,
+    ocr: bool,
+    show_stats: bool,
+) -> None:
     """Bundle PATH... (files or directories) into one LLM-ready context document.
 
     Formats: md (default: header + fenced tree + per-file fenced sections,
@@ -624,9 +713,16 @@ def cmd(ctx: click.Context, paths: tuple[Path, ...], output: Path | None, fmt: s
         fmt = "json"  # global --json: stdout must be one JSON document
 
     result = pack_paths(
-        list(paths), fmt=fmt, include=include, exclude=exclude,
-        no_gitignore=no_gitignore, max_bytes=max_bytes,
-        max_file_bytes=max_file_bytes, chunk=chunk, tree_only=tree_only, ocr=ocr,
+        list(paths),
+        fmt=fmt,
+        include=include,
+        exclude=exclude,
+        no_gitignore=no_gitignore,
+        max_bytes=max_bytes,
+        max_file_bytes=max_file_bytes,
+        chunk=chunk,
+        tree_only=tree_only,
+        ocr=ocr,
     )
 
     written: list[Path] = []
@@ -648,8 +744,14 @@ def cmd(ctx: click.Context, paths: tuple[Path, ...], output: Path | None, fmt: s
         return
     if written:
         summary = {"written": [str(p) for p in written], **result.meta}
-        emit(ctx, summary, human=lambda d: click.echo(
-            f"wrote {', '.join(d['written'])} "
-            f"({d['files_included']} files, ~{d['tokens_est']} tokens_est)", err=True))
+        emit(
+            ctx,
+            summary,
+            human=lambda d: click.echo(
+                f"wrote {', '.join(d['written'])} "
+                f"({d['files_included']} files, ~{d['tokens_est']} tokens_est)",
+                err=True,
+            ),
+        )
         return
     click.echo(result.document, nl=False)

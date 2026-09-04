@@ -21,4 +21,4 @@ carrel note pdf-add PATH TEXT ...           # add TEXT as a FreeText annotation 
 
 Quote TEXT carefully in Bash. Afterwards confirm what was attached, or present the listed notes/annotations with their timestamps/pages.
 
-**Requires the carrel CLI on PATH.** If `carrel` is not found, tell the user to install it with `uv tool install <path-to-carrel-repo>` (see the repo's INSTALL notes), or run it as `uv run carrel ...` from the carrel repo root.
+**Requires the carrel CLI on PATH.** If `carrel` is not found, tell the user to install it with `uv tool install carrel` (see the repo's INSTALL notes), or run it as `uv run carrel ...` from the carrel repo root.

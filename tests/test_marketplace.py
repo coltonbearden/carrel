@@ -53,7 +53,7 @@ def read_frontmatter(md: Path) -> dict[str, str]:
 
 
 def run_hook(payload: str, cwd: Path, env: dict[str, str] | None = None):
-    return subprocess.run(
+    return subprocess.run(  # noqa: PLW1510 — tests inspect returncode
         [str(HOOK_SCRIPT)],
         input=payload,
         capture_output=True,
@@ -120,12 +120,17 @@ def all_command_files() -> list[Path]:
 
 def test_expected_command_files_exist():
     for plugin, commands in EXPECTED_PLUGINS.items():
-        found = {p.name for p in (PLUGINS_DIR / plugin / "commands").glob("*.md")} \
-            if (PLUGINS_DIR / plugin / "commands").is_dir() else set()
+        found = (
+            {p.name for p in (PLUGINS_DIR / plugin / "commands").glob("*.md")}
+            if (PLUGINS_DIR / plugin / "commands").is_dir()
+            else set()
+        )
         assert found == commands, f"{plugin}: {found} != {commands}"
 
 
-@pytest.mark.parametrize("md", all_command_files(), ids=lambda p: f"{p.parent.parent.name}/{p.name}")
+@pytest.mark.parametrize(
+    "md", all_command_files(), ids=lambda p: f"{p.parent.parent.name}/{p.name}"
+)
 def test_command_frontmatter(md: Path):
     fm = read_frontmatter(md)
     assert fm.get("description"), f"{md}: frontmatter needs description"
@@ -133,15 +138,19 @@ def test_command_frontmatter(md: Path):
     assert "Bash(carrel" in fm["allowed-tools"], fm["allowed-tools"]
     body = md.read_text(encoding="utf-8")
     assert "carrel" in body
-    assert "uv tool install" in body or "uv run carrel" in body, \
+    assert "uv tool install" in body or "uv run carrel" in body, (
         f"{md}: must point users at the carrel install fallback"
+    )
 
 
 @pytest.mark.parametrize(
     "md",
     sorted(PLUGINS_DIR.glob("*/agents/*.md")) + sorted(PLUGINS_DIR.glob("*/skills/*/SKILL.md")),
-    ids=lambda p: f"{p.parent.parent.name}/{p.name}" if p.name != "SKILL.md"
-    else f"{p.parents[2].name}/{p.parent.name}",
+    ids=lambda p: (
+        f"{p.parent.parent.name}/{p.name}"
+        if p.name != "SKILL.md"
+        else f"{p.parents[2].name}/{p.parent.name}"
+    ),
 )
 def test_agent_and_skill_frontmatter(md: Path):
     fm = read_frontmatter(md)
@@ -213,9 +222,7 @@ def test_hook_script_exits_zero_when_carrel_missing(tmp_path: Path):
     """carrel off PATH → exit 0 before touching anything."""
     target = tmp_path / "note.md"
     target.write_text("hello\n")
-    payload = json.dumps(
-        {"cwd": str(tmp_path), "tool_input": {"file_path": str(target)}}
-    )
+    payload = json.dumps({"cwd": str(tmp_path), "tool_input": {"file_path": str(target)}})
     env = os.environ.copy()
     env["PATH"] = "/usr/bin:/bin"  # keep jq/python3, drop the project venv
     assert shutil.which("carrel", path=env["PATH"]) is None, "test premise broken"
@@ -230,7 +237,9 @@ def test_hook_script_reindexes_written_file(tmp_path: Path):
     target.write_text("hello world\n")
     subprocess.run(
         ["carrel", "--root", str(tmp_path), "index", str(tmp_path)],
-        check=True, capture_output=True, cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        cwd=tmp_path,
     )
     target.write_text("hello world\nxylophone content\n")
     payload = json.dumps(
@@ -246,7 +255,10 @@ def test_hook_script_reindexes_written_file(tmp_path: Path):
     hits = json.loads(
         subprocess.run(
             ["carrel", "--json", "--root", str(tmp_path), "search", "xylophone"],
-            check=True, capture_output=True, text=True, cwd=tmp_path,
+            check=True,
+            capture_output=True,
+            text=True,
+            cwd=tmp_path,
         ).stdout
     )
     assert any(hit["path"] == "note.md" for hit in hits), hits
@@ -258,12 +270,15 @@ def test_hook_script_reindexes_written_file(tmp_path: Path):
 @pytest.mark.skipif(shutil.which("claude") is None, reason="claude CLI not installed")
 def test_claude_plugin_validate():
     """Run the real validator over the marketplace and each plugin directory."""
-    targets = [REPO] + sorted(p for p in PLUGINS_DIR.iterdir() if p.is_dir())
+    targets = [REPO, *sorted(p for p in PLUGINS_DIR.iterdir() if p.is_dir())]
     for target in targets:
         try:
-            proc = subprocess.run(
+            proc = subprocess.run(  # noqa: PLW1510 — tests inspect returncode
                 ["claude", "plugin", "validate", str(target)],
-                capture_output=True, text=True, timeout=120, cwd=REPO,
+                capture_output=True,
+                text=True,
+                timeout=120,
+                cwd=REPO,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:  # environmental
             pytest.skip(f"claude plugin validate could not run: {exc}")

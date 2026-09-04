@@ -16,12 +16,12 @@ from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
+from conftest import needs
 from PIL import Image
 from pypdf import PdfReader
 
 from carrel.cli import cli
 from carrel.core import adapters
-from conftest import needs
 
 PLANTED_EMAILS = ("jane.doe@example.com", "j.public+desk@test.example.org")
 PLANTED_SSN = "123-45-6789"
@@ -52,8 +52,9 @@ def pdf_text(pdf: Path) -> str:
 
 def render_page(pdf: Path, page: int, out_dir: Path, tag: str) -> Image.Image:
     prefix = out_dir / f"render-{tag}"
-    proc = adapters.run("pdftoppm", "-r", "72", "-png",
-                        "-f", str(page), "-l", str(page), str(pdf), str(prefix))
+    proc = adapters.run(
+        "pdftoppm", "-r", "72", "-png", "-f", str(page), "-l", str(page), str(pdf), str(prefix)
+    )
     assert proc.returncode == 0, proc.stderr
     (png,) = sorted(out_dir.glob(f"render-{tag}-*.png"))
     return Image.open(png).convert("RGB")
@@ -86,12 +87,17 @@ def test_redact_txt_builtin_phone(tmp_copy, tmp_path: Path):
 
 def test_redact_json_stays_parseable(tmp_path: Path):
     src = tmp_path / "people.json"
-    src.write_text(json.dumps({
-        "people": [
-            {"name": "Jane", "email": "jane.doe@example.com", "ssn": "123-45-6789"},
-            {"name": "Joe", "email": "j.public@test.example.org", "note": "no secrets"},
-        ],
-    }, indent=2))
+    src.write_text(
+        json.dumps(
+            {
+                "people": [
+                    {"name": "Jane", "email": "jane.doe@example.com", "ssn": "123-45-6789"},
+                    {"name": "Joe", "email": "j.public@test.example.org", "note": "no secrets"},
+                ],
+            },
+            indent=2,
+        )
+    )
     out = tmp_path / "people.redacted.json"
     record = run_json("redact", str(src), "--builtin", "email,ssn", "-o", str(out))
     data = json.loads(out.read_text())  # acceptance: output re-parses
@@ -114,8 +120,9 @@ def test_redact_xml_stays_parseable(tmp_path: Path):
 def test_redact_custom_pattern_and_replacement(tmp_copy, tmp_path: Path):
     src = tmp_copy("sample.txt")
     out = tmp_path / "out.txt"
-    record = run_json("redact", str(src), "--pattern", "zephyr",
-                      "--replacement", "[REDACTED]", "-o", str(out))
+    record = run_json(
+        "redact", str(src), "--pattern", "zephyr", "--replacement", "[REDACTED]", "-o", str(out)
+    )
     text = out.read_text()
     assert record["matches"]["zephyr"] == 2
     assert "zephyr" not in text
@@ -124,8 +131,9 @@ def test_redact_custom_pattern_and_replacement(tmp_copy, tmp_path: Path):
 
 def test_redact_cc_luhn_checked(tmp_path: Path):
     src = tmp_path / "cards.txt"
-    src.write_text("good: 4111 1111 1111 1111\nbad luhn: 4111 1111 1111 1112\n"
-                   "order number 1234567 stays\n")
+    src.write_text(
+        "good: 4111 1111 1111 1111\nbad luhn: 4111 1111 1111 1112\norder number 1234567 stays\n"
+    )
     out = tmp_path / "out.txt"
     record = run_json("redact", str(src), "--builtin", "cc", "-o", str(out))
     text = out.read_text()
@@ -156,8 +164,16 @@ def test_redact_zero_matches_writes_output_exit_0(tmp_copy, tmp_path: Path):
 
 def test_redact_zero_matches_fail_empty_exits_5(tmp_copy, tmp_path: Path):
     src = tmp_copy("sample.txt")
-    run("redact", str(src), "--pattern", "nonexistentxyzzy",
-        "-o", str(tmp_path / "o.txt"), "--fail-empty", expect=5)
+    run(
+        "redact",
+        str(src),
+        "--pattern",
+        "nonexistentxyzzy",
+        "-o",
+        str(tmp_path / "o.txt"),
+        "--fail-empty",
+        expect=5,
+    )
 
 
 def test_redact_no_patterns_is_usage_error(tmp_copy):
@@ -243,8 +259,19 @@ def test_stamp_default_text_mentions_signer(tmp_copy, tmp_path: Path):
 def test_stamp_custom_text_page_pos_pixels_change(tmp_copy, tmp_path: Path):
     src = tmp_copy("text+image.pdf")
     out = tmp_path / "signed.pdf"
-    record = run_json("sign", "stamp", str(src), "--text", "CARREL STAMP XYZ",
-                      "--page", "1", "--pos", "top-left", "-o", str(out))
+    record = run_json(
+        "sign",
+        "stamp",
+        str(src),
+        "--text",
+        "CARREL STAMP XYZ",
+        "--page",
+        "1",
+        "--pos",
+        "top-left",
+        "-o",
+        str(out),
+    )
     assert record["page"] == 1 and record["pos"] == "top-left"
     assert "CARREL STAMP XYZ" in pdf_text(out)
     before = render_page(src, 1, tmp_path, "before")
@@ -259,8 +286,7 @@ def test_stamp_image_overlay_changes_pixels(tmp_copy, tmp_path: Path):
     Image.new("RGB", (120, 40), (10, 10, 160)).save(sig)
     src = tmp_copy("text+image.pdf")
     out = tmp_path / "signed.pdf"
-    record = run_json("sign", "stamp", str(src), "--image", str(sig),
-                      "--page", "2", "-o", str(out))
+    record = run_json("sign", "stamp", str(src), "--image", str(sig), "--page", "2", "-o", str(out))
     assert record["image"] == str(sig)
     before = render_page(src, 2, tmp_path, "ib")
     after = render_page(out, 2, tmp_path, "ia")
@@ -268,13 +294,29 @@ def test_stamp_image_overlay_changes_pixels(tmp_copy, tmp_path: Path):
 
 
 def test_stamp_page_out_of_range_exits_4(tmp_copy, tmp_path: Path):
-    run("sign", "stamp", str(tmp_copy("text+image.pdf")), "--page", "99",
-        "-o", str(tmp_path / "x.pdf"), expect=4)
+    run(
+        "sign",
+        "stamp",
+        str(tmp_copy("text+image.pdf")),
+        "--page",
+        "99",
+        "-o",
+        str(tmp_path / "x.pdf"),
+        expect=4,
+    )
 
 
 def test_stamp_bad_page_spec_is_usage_error(tmp_copy, tmp_path: Path):
-    run("sign", "stamp", str(tmp_copy("text+image.pdf")), "--page", "verso",
-        "-o", str(tmp_path / "x.pdf"), expect=2)
+    run(
+        "sign",
+        "stamp",
+        str(tmp_copy("text+image.pdf")),
+        "--page",
+        "verso",
+        "-o",
+        str(tmp_path / "x.pdf"),
+        expect=2,
+    )
 
 
 def test_stamp_non_pdf_exits_4(tmp_copy, tmp_path: Path):
@@ -295,8 +337,9 @@ def make_tree(tmp_path: Path) -> Path:
 def test_manifest_verify_roundtrip(tmp_path: Path):
     docs = make_tree(tmp_path)
     manifest = tmp_path / "MANIFEST.sha256"
-    record = run_json("sign", "manifest", str(docs / "a.txt"), str(docs / "b.txt"),
-                      "-o", str(manifest))
+    record = run_json(
+        "sign", "manifest", str(docs / "a.txt"), str(docs / "b.txt"), "-o", str(manifest)
+    )
     assert record["files"] == 2 and record["signature"] is None
     lines = manifest.read_text().splitlines()
     assert len(lines) == 2
@@ -340,8 +383,7 @@ def test_verify_garbage_manifest_exits_4(tmp_path: Path):
 
 
 def test_manifest_no_files_exits_4(tmp_path: Path):
-    run("sign", "manifest", str(tmp_path / "ghost.txt"),
-        "-o", str(tmp_path / "m.sha256"), expect=4)
+    run("sign", "manifest", str(tmp_path / "ghost.txt"), "-o", str(tmp_path / "m.sha256"), expect=4)
 
 
 # ------------------------------------------------------------------ gpg tests
@@ -366,9 +408,11 @@ def gpg_home(tmp_path: Path, monkeypatch) -> Path:
         "Expire-Date: 0\n"
         "%commit\n"
     )
-    proc = subprocess.run(
+    proc = subprocess.run(  # noqa: PLW1510 — tests inspect returncode
         [adapters.require("gpg"), "--batch", "--gen-key", str(batch)],
-        capture_output=True, text=True, env={"GNUPGHOME": str(home), "PATH": "/usr/bin:/bin"},
+        capture_output=True,
+        text=True,
+        env={"GNUPGHOME": str(home), "PATH": "/usr/bin:/bin"},
     )
     if proc.returncode != 0:
         pytest.skip(f"ephemeral gpg key generation failed: {proc.stderr.strip()[:200]}")
@@ -408,13 +452,25 @@ FORM_SPEC = {
         {"name": "email", "label": "Email", "type": "email", "required": True},
         {"name": "birthdate", "label": "Date of birth", "type": "date"},
         {"name": "books", "label": "Books at once", "type": "number"},
-        {"name": "branch", "label": "Home branch", "type": "select",
-         "options": ["Central", "East", "West"]},
-        {"name": "format", "label": "Preferred format", "type": "radio",
-         "options": ["print", "ebook", "audio"]},
+        {
+            "name": "branch",
+            "label": "Home branch",
+            "type": "select",
+            "options": ["Central", "East", "West"],
+        },
+        {
+            "name": "format",
+            "label": "Preferred format",
+            "type": "radio",
+            "options": ["print", "ebook", "audio"],
+        },
         {"name": "notes", "label": "Anything else?", "type": "textarea"},
-        {"name": "agree", "label": "I accept the late-fee policy", "type": "checkbox",
-         "required": True},
+        {
+            "name": "agree",
+            "label": "I accept the late-fee policy",
+            "type": "checkbox",
+            "required": True,
+        },
     ],
 }
 
@@ -440,7 +496,7 @@ def test_form_build_produces_valid_html(tmp_path: Path):
     assert names == {f["name"] for f in FORM_SPEC["fields"]}
     for field in FORM_SPEC["fields"]:
         assert field["label"] in text
-    assert 'action=' not in text  # POST-less
+    assert "action=" not in text  # POST-less
     assert "font-family: system-ui" in text  # embedded CSS, system stack
     assert "@media print" in text  # print-friendly
 
@@ -457,10 +513,13 @@ def test_form_build_radio_and_select_options(tmp_path: Path):
 
 
 def test_form_build_escapes_html(tmp_path: Path):
-    spec = write_spec(tmp_path, {
-        "title": "T <script>alert(1)</script>",
-        "fields": [{"name": "a", "label": 'x "<b>&', "type": "text"}],
-    })
+    spec = write_spec(
+        tmp_path,
+        {
+            "title": "T <script>alert(1)</script>",
+            "fields": [{"name": "a", "label": 'x "<b>&', "type": "text"}],
+        },
+    )
     out = tmp_path / "form.html"
     run("form", "build", str(spec), "-o", str(out))
     text = out.read_text()
@@ -486,8 +545,14 @@ def test_form_build_bad_specs_exit_4(tmp_path: Path):
         {"fields": [{"name": "x", "type": "hologram"}]},
         {"fields": [{"name": "x", "type": "select"}]},  # options missing
     ):
-        run("form", "build", str(write_spec(tmp_path, bad)),
-            "-o", str(tmp_path / "o.html"), expect=4)
+        run(
+            "form",
+            "build",
+            str(write_spec(tmp_path, bad)),
+            "-o",
+            str(tmp_path / "o.html"),
+            expect=4,
+        )
 
 
 def test_form_fields_lists_acroform(fixtures: Path):
@@ -529,15 +594,29 @@ def test_form_fill_checkbox_false_stays_off(tmp_copy, tmp_path: Path):
 def test_form_fill_no_acroform_exits_4(tmp_copy, tmp_path: Path):
     data = tmp_path / "data.json"
     data.write_text("{}")
-    run("form", "fill", str(tmp_copy("text+image.pdf")), str(data),
-        "-o", str(tmp_path / "o.pdf"), expect=4)
+    run(
+        "form",
+        "fill",
+        str(tmp_copy("text+image.pdf")),
+        str(data),
+        "-o",
+        str(tmp_path / "o.pdf"),
+        expect=4,
+    )
 
 
 def test_form_fill_non_object_data_exits_4(tmp_copy, tmp_path: Path):
     data = tmp_path / "data.json"
     data.write_text("[1, 2, 3]")
-    run("form", "fill", str(tmp_copy("form.pdf")), str(data),
-        "-o", str(tmp_path / "o.pdf"), expect=4)
+    run(
+        "form",
+        "fill",
+        str(tmp_copy("form.pdf")),
+        str(data),
+        "-o",
+        str(tmp_path / "o.pdf"),
+        expect=4,
+    )
 
 
 # ===================================================================== plumbing
@@ -545,8 +624,10 @@ def test_form_fill_non_object_data_exits_4(tmp_copy, tmp_path: Path):
 
 def test_help_for_all_commands_and_subcommands():
     run("redact", "--help")
-    for group, subs in (("sign", ("stamp", "manifest", "verify")),
-                        ("form", ("build", "fields", "fill"))):
+    for group, subs in (
+        ("sign", ("stamp", "manifest", "verify")),
+        ("form", ("build", "fields", "fill")),
+    ):
         result = run(group, "--help")
         for sub in subs:
             assert sub in result.output
@@ -554,7 +635,14 @@ def test_help_for_all_commands_and_subcommands():
 
 
 def test_json_output_is_single_document(tmp_copy, tmp_path: Path):
-    result = run("--json", "redact", str(tmp_copy("sample.txt")),
-                 "--builtin", "email", "-o", str(tmp_path / "o.txt"))
+    result = run(
+        "--json",
+        "redact",
+        str(tmp_copy("sample.txt")),
+        "--builtin",
+        "email",
+        "-o",
+        str(tmp_path / "o.txt"),
+    )
     record = json.loads(result.output)  # raises if anything but one JSON doc
     assert record["matches"]["email"] == 2

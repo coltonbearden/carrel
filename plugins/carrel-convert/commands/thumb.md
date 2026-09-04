@@ -23,4 +23,4 @@ If `carrel thumb --help` reports that the command does not exist, the installed 
 
 Interpret the JSON result: report each `{src, thumb, w, h}` record and where the files landed. Exit code 3 means an optional binary (e.g. pdftoppm) is missing — relay the install hint from stderr.
 
-**Requires the carrel CLI on PATH.** If `carrel` is not found, tell the user to install it with `uv tool install <path-to-carrel-repo>` (see the repo's INSTALL notes), or run it as `uv run carrel ...` from the carrel repo root.
+**Requires the carrel CLI on PATH.** If `carrel` is not found, tell the user to install it with `uv tool install carrel` (see the repo's INSTALL notes), or run it as `uv run carrel ...` from the carrel repo root.

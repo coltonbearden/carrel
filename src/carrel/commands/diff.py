@@ -16,8 +16,9 @@ import json as jsonlib
 import sys
 import xml.etree.ElementTree as ET
 from collections import Counter
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import click
 
@@ -49,6 +50,7 @@ def _handled(fn: Callable) -> Callable:
 # mode resolution
 # ---------------------------------------------------------------------------
 
+
 def _resolve_mode(ta: FileType, tb: FileType) -> str:
     if ta.is_image and tb.is_image:
         return "image"
@@ -68,6 +70,7 @@ def _resolve_mode(ta: FileType, tb: FileType) -> str:
 # text + pdf
 # ---------------------------------------------------------------------------
 
+
 def _read_text(path: Path, ftype: FileType) -> str:
     if ftype is FileType.PDF:
         return extract_text(path)
@@ -77,13 +80,14 @@ def _read_text(path: Path, ftype: FileType) -> str:
 
 
 def _unified(a_text: str, b_text: str, a: Path, b: Path) -> dict[str, Any]:
-    lines = list(difflib.unified_diff(
-        a_text.splitlines(), b_text.splitlines(),
-        fromfile=str(a), tofile=str(b), lineterm=""))
+    lines = list(
+        difflib.unified_diff(
+            a_text.splitlines(), b_text.splitlines(), fromfile=str(a), tofile=str(b), lineterm=""
+        )
+    )
     added = sum(1 for ln in lines if ln.startswith("+") and not ln.startswith("+++"))
     removed = sum(1 for ln in lines if ln.startswith("-") and not ln.startswith("---"))
-    return {"identical": not lines, "diff": "\n".join(lines),
-            "added": added, "removed": removed}
+    return {"identical": not lines, "diff": "\n".join(lines), "added": added, "removed": removed}
 
 
 def _page_count(path: Path) -> int | None:
@@ -107,6 +111,7 @@ def _diff_pdf(a: Path, b: Path) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # struct (json / csv / xml)
 # ---------------------------------------------------------------------------
+
 
 def _flatten_json(value: Any, prefix: str, out: dict[str, Any]) -> None:
     if isinstance(value, dict) and value:
@@ -165,10 +170,15 @@ def _xml_leaves(path: Path) -> dict[str, Any]:
 def _leaf_diff(la: dict[str, Any], lb: dict[str, Any]) -> dict[str, Any]:
     added = sorted(k for k in lb if k not in la)
     removed = sorted(k for k in la if k not in lb)
-    changed = [{"path": k, "a": la[k], "b": lb[k]}
-               for k in sorted(la.keys() & lb.keys()) if la[k] != lb[k]]
-    return {"identical": not (added or removed or changed),
-            "added": added, "removed": removed, "changed": changed}
+    changed = [
+        {"path": k, "a": la[k], "b": lb[k]} for k in sorted(la.keys() & lb.keys()) if la[k] != lb[k]
+    ]
+    return {
+        "identical": not (added or removed or changed),
+        "added": added,
+        "removed": removed,
+        "changed": changed,
+    }
 
 
 def _read_csv(path: Path) -> list[list[str]]:
@@ -203,14 +213,18 @@ def _diff_csv(a: Path, b: Path) -> dict[str, Any]:
             vb = data_b[r][idx_b[c]] if idx_b[c] < len(data_b[r]) else ""
             if va != vb:
                 changed.append({"row": r + 1, "column": c, "a": va, "b": vb})
-    rows_added = list(range(len(data_a) + 1, len(data_b) + 1))    # only in b
+    rows_added = list(range(len(data_a) + 1, len(data_b) + 1))  # only in b
     rows_removed = list(range(len(data_b) + 1, len(data_a) + 1))  # only in a
     return {
-        "identical": not (changed or rows_added or rows_removed
-                          or columns_added or columns_removed),
-        "columns_added": columns_added, "columns_removed": columns_removed,
-        "rows_a": len(data_a), "rows_b": len(data_b),
-        "rows_added": rows_added, "rows_removed": rows_removed,
+        "identical": not (
+            changed or rows_added or rows_removed or columns_added or columns_removed
+        ),
+        "columns_added": columns_added,
+        "columns_removed": columns_removed,
+        "rows_a": len(data_a),
+        "rows_b": len(data_b),
+        "rows_added": rows_added,
+        "rows_removed": rows_removed,
         "changed": changed,
     }
 
@@ -227,6 +241,7 @@ def _diff_struct(a: Path, b: Path, ftype: FileType) -> dict[str, Any]:
 # image (Pillow only)
 # ---------------------------------------------------------------------------
 
+
 def _diff_image(a: Path, b: Path, out: Path | None) -> dict[str, Any]:
     from PIL import Image, ImageChops, ImageOps, ImageStat
 
@@ -238,7 +253,8 @@ def _diff_image(a: Path, b: Path, out: Path | None) -> dict[str, Any]:
     mismatch = size_a != size_b
     canvas = (max(size_a[0], size_b[0]), max(size_a[1], size_b[1]))
     if mismatch:  # pad both onto a common transparent canvas, anchored top-left
-        def _pad(img: "Image.Image") -> "Image.Image":
+
+        def _pad(img: Image.Image) -> Image.Image:
             padded = Image.new("RGBA", canvas, (0, 0, 0, 0))
             padded.paste(img, (0, 0))
             return padded
@@ -246,24 +262,26 @@ def _diff_image(a: Path, b: Path, out: Path | None) -> dict[str, Any]:
         img_a, img_b = _pad(img_a), _pad(img_b)
 
     diff = ImageChops.difference(img_a, img_b)
-    magnitude = None  # per-pixel max delta across channels
-    for band in diff.split():
-        magnitude = band if magnitude is None else ImageChops.lighter(magnitude, band)
+    bands = diff.split()
+    magnitude = bands[0]  # per-pixel max delta across channels
+    for band in bands[1:]:
+        magnitude = ImageChops.lighter(magnitude, band)
     total = canvas[0] * canvas[1]
     pixels_changed = total - magnitude.histogram()[0]
     means = ImageStat.Stat(diff).mean  # per-channel mean abs delta (r,g,b,a)
 
     result: dict[str, Any] = {
         "identical": not mismatch and pixels_changed == 0,
-        "size_a": list(size_a), "size_b": list(size_b),
-        "size_mismatch": mismatch, "canvas": list(canvas),
+        "size_a": list(size_a),
+        "size_b": list(size_b),
+        "size_mismatch": mismatch,
+        "canvas": list(canvas),
         "pixels_changed": pixels_changed,
         "pixel_diff_percent": round(pixels_changed / total * 100, 4),
-        "mean_channel_delta": {c: round(m, 4) for c, m in zip("rgba", means)},
+        "mean_channel_delta": {c: round(m, 4) for c, m in zip("rgba", means, strict=False)},
     }
     if out is not None:
-        heat = ImageOps.colorize(magnitude, black="#000000", white="#ffff00",
-                                 mid="#ff0000")
+        heat = ImageOps.colorize(magnitude, black="#000000", white="#ffff00", mid="#ff0000")
         heat.save(out, "PNG")
         result["heatmap"] = str(out)
     return result
@@ -273,8 +291,10 @@ def _diff_image(a: Path, b: Path, out: Path | None) -> dict[str, Any]:
 # library entry point
 # ---------------------------------------------------------------------------
 
-def diff_files(a: Path | str, b: Path | str, mode: str = "auto",
-               out: Path | str | None = None) -> dict[str, Any]:
+
+def diff_files(
+    a: Path | str, b: Path | str, mode: str = "auto", out: Path | str | None = None
+) -> dict[str, Any]:
     """Compare two files; returns a dict that always includes "identical".
 
     mode "auto" resolves by type pair: images → image, PDFs → pdf, matching
@@ -292,19 +312,18 @@ def diff_files(a: Path | str, b: Path | str, mode: str = "auto",
 
     if resolved == "image":
         if not (ta.is_image and tb.is_image):
-            raise CarrelInputError(
-                f"--mode image needs two images, got {ta.value} vs {tb.value}")
+            raise CarrelInputError(f"--mode image needs two images, got {ta.value} vs {tb.value}")
         result = _diff_image(a, b, Path(out) if out is not None else None)
     elif resolved == "pdf":
         if not (ta is FileType.PDF and tb is FileType.PDF):
-            raise CarrelInputError(
-                f"--mode pdf needs two PDFs, got {ta.value} vs {tb.value}")
+            raise CarrelInputError(f"--mode pdf needs two PDFs, got {ta.value} vs {tb.value}")
         result = _diff_pdf(a, b)
     elif resolved == "struct":
         if ta is not tb or ta not in _STRUCT_TYPES:
             raise CarrelInputError(
                 "--mode struct needs two files of the same structured type "
-                f"(json/csv/xml), got {ta.value} vs {tb.value}")
+                f"(json/csv/xml), got {ta.value} vs {tb.value}"
+            )
         result = _diff_struct(a, b, ta)
     else:  # text
         result = _unified(_read_text(a, ta), _read_text(b, tb), a, b)
@@ -316,8 +335,7 @@ def diff_files(a: Path | str, b: Path | str, mode: str = "auto",
 # CLI
 # ---------------------------------------------------------------------------
 
-_DIFF_COLORS = (("+++", "green"), ("---", "red"), ("+", "green"),
-                ("-", "red"), ("@@", "cyan"))
+_DIFF_COLORS = (("+++", "green"), ("---", "red"), ("+", "green"), ("-", "red"), ("@@", "cyan"))
 
 
 def _echo_diff(text: str) -> None:
@@ -341,31 +359,26 @@ def _render(data: dict[str, Any]) -> None:
         _echo_diff(data["diff"])
     elif mode == "struct":
         if "columns_added" in data:  # csv
-            for key in ("columns_added", "columns_removed",
-                        "rows_added", "rows_removed"):
+            for key in ("columns_added", "columns_removed", "rows_added", "rows_removed"):
                 if data[key]:
-                    click.echo(f"{key.replace('_', ' ')}: "
-                               f"{', '.join(str(x) for x in data[key])}")
+                    click.echo(f"{key.replace('_', ' ')}: {', '.join(str(x) for x in data[key])}")
             for ch in data["changed"]:
-                click.echo(f"row {ch['row']}, {ch['column']}: "
-                           f"{ch['a']!r} -> {ch['b']!r}")
+                click.echo(f"row {ch['row']}, {ch['column']}: {ch['a']!r} -> {ch['b']!r}")
         else:  # json / xml
             for p in data["removed"]:
                 click.secho(f"- {p}", fg="red")
             for p in data["added"]:
                 click.secho(f"+ {p}", fg="green")
             for ch in data["changed"]:
-                click.secho(f"~ {ch['path']}: {ch['a']!r} -> {ch['b']!r}",
-                            fg="yellow")
+                click.secho(f"~ {ch['path']}: {ch['a']!r} -> {ch['b']!r}", fg="yellow")
     else:  # image
-        click.echo(f"size: {data['size_a']} vs {data['size_b']}"
-                   + (" (MISMATCH — padded to common canvas)"
-                      if data["size_mismatch"] else ""))
-        click.echo(f"pixels changed: {data['pixels_changed']} "
-                   f"({data['pixel_diff_percent']}%)")
+        click.echo(
+            f"size: {data['size_a']} vs {data['size_b']}"
+            + (" (MISMATCH — padded to common canvas)" if data["size_mismatch"] else "")
+        )
+        click.echo(f"pixels changed: {data['pixels_changed']} ({data['pixel_diff_percent']}%)")
         deltas = data["mean_channel_delta"]
-        click.echo("mean channel delta: "
-                   + " ".join(f"{c}={v}" for c, v in deltas.items()))
+        click.echo("mean channel delta: " + " ".join(f"{c}={v}" for c, v in deltas.items()))
         if data.get("heatmap"):
             click.echo(f"heatmap written: {data['heatmap']}")
 
@@ -374,14 +387,21 @@ def _render(data: dict[str, Any]) -> None:
 @click.argument("a", type=click.Path(path_type=Path))
 @click.argument("b", type=click.Path(path_type=Path))
 @click.option("--json", "as_json", is_flag=True, help="Machine-readable JSON output.")
-@click.option("--mode", type=click.Choice(MODES), default="auto", show_default=True,
-              help="Comparison strategy; auto picks by type pair.")
-@click.option("--out", type=click.Path(dir_okay=False, path_type=Path),
-              help="Image mode: write a per-pixel delta heatmap PNG here.")
+@click.option(
+    "--mode",
+    type=click.Choice(MODES),
+    default="auto",
+    show_default=True,
+    help="Comparison strategy; auto picks by type pair.",
+)
+@click.option(
+    "--out",
+    type=click.Path(dir_okay=False, path_type=Path),
+    help="Image mode: write a per-pixel delta heatmap PNG here.",
+)
 @click.pass_context
 @_handled
-def cmd(ctx: click.Context, a: Path, b: Path, as_json: bool, mode: str,
-        out: Path | None) -> None:
+def cmd(ctx: click.Context, a: Path, b: Path, as_json: bool, mode: str, out: Path | None) -> None:
     """Compare two files A and B.
 
     Modes: text (unified diff), struct (json: dotted-path added/removed/changed;

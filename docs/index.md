@@ -9,7 +9,7 @@ It treats AI agents as first-class users of the desk: every data-producing comma
 ## Start here
 
 ```sh
-uv tool install git+https://github.com/FirstCastSolutions423/carrel
+uv tool install carrel   # or: pipx install carrel
 carrel doctor    # what can your desk do today? (+ install hints for the rest)
 ```
 

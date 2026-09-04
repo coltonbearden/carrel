@@ -12,8 +12,9 @@ from __future__ import annotations
 import functools
 import html
 import json as jsonlib
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import click
 
@@ -85,7 +86,7 @@ def _load_spec(spec_path: Path) -> dict[str, Any]:
     try:
         spec = jsonlib.loads(spec_path.read_text(encoding="utf-8"))
     except (ValueError, UnicodeDecodeError) as e:
-        raise CarrelInputError(f"{spec_path} is not valid JSON: {e}")
+        raise CarrelInputError(f"{spec_path} is not valid JSON: {e}") from e
     if not isinstance(spec, dict) or not isinstance(spec.get("fields"), list):
         raise CarrelInputError(f'{spec_path}: spec must be {{"title", "fields": [...]}}')
     for i, field in enumerate(spec["fields"]):
@@ -95,7 +96,8 @@ def _load_spec(spec_path: Path) -> dict[str, Any]:
         ftype = field.get("type", "text")
         if ftype not in FIELD_TYPES:
             raise CarrelInputError(
-                f"{where}: unknown type {ftype!r} (expected one of: {', '.join(FIELD_TYPES)})")
+                f"{where}: unknown type {ftype!r} (expected one of: {', '.join(FIELD_TYPES)})"
+            )
         if ftype in ("select", "radio") and not field.get("options"):
             raise CarrelInputError(f"{where}: type {ftype!r} needs a non-empty 'options' list")
     return spec
@@ -114,27 +116,39 @@ def _render_field(field: dict[str, Any]) -> str:
     req_mark = ' <span class="req">*</span>' if required else ""
 
     if ftype == "checkbox":
-        control = (f'<label class="inline"><input type="checkbox" id="{name}" '
-                   f'name="{name}" value="yes"{req_attr}/>{label}{req_mark}</label>')
+        control = (
+            f'<label class="inline"><input type="checkbox" id="{name}" '
+            f'name="{name}" value="yes"{req_attr}/>{label}{req_mark}</label>'
+        )
     elif ftype == "radio":
         options = "\n      ".join(
             f'<label class="inline"><input type="radio" name="{name}" '
             f'value="{_esc(opt)}"{req_attr}/>{_esc(opt)}</label>'
-            for opt in field["options"])
-        control = (f"<fieldset>\n      <legend>{label}{req_mark}</legend>\n"
-                   f"      {options}\n    </fieldset>")
+            for opt in field["options"]
+        )
+        control = (
+            f"<fieldset>\n      <legend>{label}{req_mark}</legend>\n"
+            f"      {options}\n    </fieldset>"
+        )
     elif ftype == "select":
         options = "\n        ".join(
-            f'<option value="{_esc(opt)}">{_esc(opt)}</option>' for opt in field["options"])
-        control = (f'<label class="main" for="{name}">{label}{req_mark}</label>\n'
-                   f'      <select id="{name}" name="{name}"{req_attr}>\n'
-                   f'        <option value=""></option>\n        {options}\n      </select>')
+            f'<option value="{_esc(opt)}">{_esc(opt)}</option>' for opt in field["options"]
+        )
+        control = (
+            f'<label class="main" for="{name}">{label}{req_mark}</label>\n'
+            f'      <select id="{name}" name="{name}"{req_attr}>\n'
+            f'        <option value=""></option>\n        {options}\n      </select>'
+        )
     elif ftype == "textarea":
-        control = (f'<label class="main" for="{name}">{label}{req_mark}</label>\n'
-                   f'      <textarea id="{name}" name="{name}" rows="4"{req_attr}></textarea>')
+        control = (
+            f'<label class="main" for="{name}">{label}{req_mark}</label>\n'
+            f'      <textarea id="{name}" name="{name}" rows="4"{req_attr}></textarea>'
+        )
     else:  # text / date / email / number
-        control = (f'<label class="main" for="{name}">{label}{req_mark}</label>\n'
-                   f'      <input type="{ftype}" id="{name}" name="{name}"{req_attr}/>')
+        control = (
+            f'<label class="main" for="{name}">{label}{req_mark}</label>\n'
+            f'      <input type="{ftype}" id="{name}" name="{name}"{req_attr}/>'
+        )
     return f'    <div class="field">\n      {control}\n    </div>'
 
 
@@ -165,15 +179,17 @@ def _render_html(spec: dict[str, Any]) -> str:
 
 @cmd.command("build")
 @click.argument("spec_path", metavar="SPEC.JSON", type=click.Path(path_type=Path))
-@click.option("-o", "--out", type=click.Path(path_type=Path),
-              help="Output HTML file. Default: SPEC stem + .html.")
-@click.option("--pdf", "to_pdf", is_flag=True,
-              help="Also render the HTML to PDF (weasyprint).")
+@click.option(
+    "-o",
+    "--out",
+    type=click.Path(path_type=Path),
+    help="Output HTML file. Default: SPEC stem + .html.",
+)
+@click.option("--pdf", "to_pdf", is_flag=True, help="Also render the HTML to PDF (weasyprint).")
 @click.option("--force", is_flag=True, help="Allow overwriting existing output files.")
 @click.pass_context
 @_handled
-def build(ctx: click.Context, spec_path: Path, out: Path | None, to_pdf: bool,
-          force: bool) -> None:
+def build(ctx: click.Context, spec_path: Path, out: Path | None, to_pdf: bool, force: bool) -> None:
     """Render a JSON form spec into clean, standalone, print-friendly HTML."""
     spec = _load_spec(spec_path)
     dest = out or spec_path.with_suffix(".html")
@@ -188,7 +204,8 @@ def build(ctx: click.Context, spec_path: Path, out: Path | None, to_pdf: bool,
         proc = adapters.run("weasyprint", str(dest), str(pdf_dest), timeout=300)
         if proc.returncode != 0 or not pdf_dest.is_file():
             raise CarrelError(
-                f"weasyprint failed (rc={proc.returncode}): {(proc.stderr or '').strip()}")
+                f"weasyprint failed (rc={proc.returncode}): {(proc.stderr or '').strip()}"
+            )
 
     record = {
         "action": "form-build",
@@ -197,9 +214,14 @@ def build(ctx: click.Context, spec_path: Path, out: Path | None, to_pdf: bool,
         "html": str(dest),
         "pdf": str(pdf_dest) if pdf_dest else None,
     }
-    emit(ctx, record, human=lambda r: click.echo(
-        f"form: {r['fields']} field(s) → {r['html']}"
-        + (f"\n  pdf: {r['pdf']}" if r["pdf"] else "")))
+    emit(
+        ctx,
+        record,
+        human=lambda r: click.echo(
+            f"form: {r['fields']} field(s) → {r['html']}"
+            + (f"\n  pdf: {r['pdf']}" if r["pdf"] else "")
+        ),
+    )
 
 
 # --------------------------------------------------------------------- fields
@@ -220,12 +242,15 @@ def _acroform_fields(src: Path) -> dict[str, Any]:
 def fields(ctx: click.Context, src: Path) -> None:
     """List a PDF's AcroForm fields (name, type, current value)."""
     found = _acroform_fields(src)
-    rows = [{
-        "name": name,
-        "type": _PDF_FIELD_TYPES.get(str(fld.field_type), str(fld.field_type)),
-        "value": None if fld.value is None else str(fld.value),
-        "states": [str(s) for s in fld.get("/_States_", [])] or None,
-    } for name, fld in found.items()]
+    rows = [
+        {
+            "name": name,
+            "type": _PDF_FIELD_TYPES.get(str(fld.field_type), str(fld.field_type)),
+            "value": None if fld.value is None else str(fld.value),
+            "states": [str(s) for s in fld.get("/_States_", [])] or None,
+        }
+        for name, fld in found.items()
+    ]
 
     def human(data: list[dict[str, Any]]) -> None:
         if not data:
@@ -262,8 +287,7 @@ def _coerce(value: Any, fld: Any) -> str:
 @cmd.command("fill")
 @click.argument("src", type=click.Path(path_type=Path))
 @click.argument("data_path", metavar="DATA.JSON", type=click.Path(path_type=Path))
-@click.option("-o", "--out", required=True, type=click.Path(path_type=Path),
-              help="Output PDF.")
+@click.option("-o", "--out", required=True, type=click.Path(path_type=Path), help="Output PDF.")
 @click.option("--force", is_flag=True, help="Allow overwriting an existing output file.")
 @click.pass_context
 @_handled
@@ -279,7 +303,7 @@ def fill(ctx: click.Context, src: Path, data_path: Path, out: Path, force: bool)
     try:
         data = jsonlib.loads(data_path.read_text(encoding="utf-8"))
     except (ValueError, UnicodeDecodeError) as e:
-        raise CarrelInputError(f"{data_path} is not valid JSON: {e}")
+        raise CarrelInputError(f"{data_path} is not valid JSON: {e}") from e
     if not isinstance(data, dict):
         raise CarrelInputError(f"{data_path}: top-level JSON must be an object of field values")
     if out.exists() and not force:

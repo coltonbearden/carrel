@@ -21,4 +21,4 @@ If `carrel dedupe --help` reports that the command does not exist, the installed
 
 Interpret the JSON `[{hash, files, kept, deleted}]`: show each duplicate group, which copy would be kept, and the reclaimable bytes. Then ask before any destructive re-run.
 
-**Requires the carrel CLI on PATH.** If `carrel` is not found, tell the user to install it with `uv tool install <path-to-carrel-repo>` (see the repo's INSTALL notes), or run it as `uv run carrel ...` from the carrel repo root.
+**Requires the carrel CLI on PATH.** If `carrel` is not found, tell the user to install it with `uv tool install carrel` (see the repo's INSTALL notes), or run it as `uv run carrel ...` from the carrel repo root.

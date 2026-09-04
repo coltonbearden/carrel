@@ -16,16 +16,16 @@ import json as jsonlib
 import re
 import tempfile
 import xml.etree.ElementTree as ET
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import click
 
 from carrel.core import adapters
 from carrel.core.filetypes import FileType, detect_or_die
-from carrel.core.output import (CarrelError, CarrelInputError, ExitCode, emit,
-                                fail, progress)
+from carrel.core.output import CarrelError, CarrelInputError, ExitCode, emit, fail, progress
 
 RASTER_DPI = 200
 BOX_PAD = 2  # px of padding around each blacked-out word box
@@ -56,8 +56,10 @@ BUILTINS: dict[str, tuple[str, Callable[[re.Match], bool] | None]] = {
     "email": (r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", None),
     "phone": (r"(?<!\d)(?:\+?1[-. ])?(?:\(\d{3}\)[-. ]?|\d{3}[-. ])\d{3}[-. ]\d{4}(?!\d)", None),
     "ssn": (r"(?<!\d)\d{3}-\d{2}-\d{4}(?!\d)", None),
-    "ipv4": (r"(?<!\d)(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)(?!\d)",
-             None),
+    "ipv4": (
+        r"(?<!\d)(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)(?!\d)",
+        None,
+    ),
     "cc": (r"(?<!\d)\d(?:[ -]?\d){12,18}(?!\d)", _cc_valid),
 }
 
@@ -69,8 +71,7 @@ class Rule:
     validator: Callable[[re.Match], bool] | None = None
 
     def hits(self, text: str) -> list[re.Match]:
-        return [m for m in self.regex.finditer(text)
-                if self.validator is None or self.validator(m)]
+        return [m for m in self.regex.finditer(text) if self.validator is None or self.validator(m)]
 
 
 def _compile_rules(patterns: tuple[str, ...], builtin_csv: str | None) -> list[Rule]:
@@ -79,14 +80,15 @@ def _compile_rules(patterns: tuple[str, ...], builtin_csv: str | None) -> list[R
         for name in (n.strip() for n in builtin_csv.split(",") if n.strip()):
             if name not in BUILTINS:
                 raise click.UsageError(
-                    f"unknown --builtin {name!r} (choose from: {', '.join(BUILTINS)})")
+                    f"unknown --builtin {name!r} (choose from: {', '.join(BUILTINS)})"
+                )
             pattern, validator = BUILTINS[name]
             rules.append(Rule(name, re.compile(pattern), validator))
     for pattern in patterns:
         try:
             rules.append(Rule(pattern, re.compile(pattern)))
         except re.error as e:
-            raise click.UsageError(f"bad --pattern {pattern!r}: {e}")
+            raise click.UsageError(f"bad --pattern {pattern!r}: {e}") from e
     if not rules:
         raise click.UsageError("nothing to redact: pass --pattern REGEX and/or --builtin LIST")
     return rules
@@ -100,7 +102,7 @@ def _redact_text(content: str, rules: list[Rule], replacement: str) -> tuple[str
     for rule in rules:
         n = 0
 
-        def repl(m: re.Match) -> str:
+        def repl(m: re.Match[str], rule: Rule = rule) -> str:
             nonlocal n
             if rule.validator is not None and not rule.validator(m):
                 return m.group(0)
@@ -123,7 +125,8 @@ def _check_still_parses(text: str, ftype: FileType, replacement: str) -> None:
         raise CarrelError(
             f"redaction would break {ftype.value} syntax ({e}); "
             f"pick a --replacement without structural characters "
-            f"(current: {replacement!r})")
+            f"(current: {replacement!r})"
+        ) from e
 
 
 # ---------------------------------------------------------------- pdf redact
@@ -158,8 +161,8 @@ def _tsv_lines(png: Path) -> list[_Line]:
     proc = adapters.run("tesseract", str(png), "stdout", "tsv", timeout=300)
     if proc.returncode != 0:
         raise CarrelError(
-            f"tesseract failed on {png.name} (rc={proc.returncode}): "
-            f"{(proc.stderr or '').strip()}")
+            f"tesseract failed on {png.name} (rc={proc.returncode}): {(proc.stderr or '').strip()}"
+        )
     lines: dict[tuple[str, ...], _Line] = {}
     for row in proc.stdout.splitlines()[1:]:
         cols = row.split("\t")
@@ -174,8 +177,9 @@ def _tsv_lines(png: Path) -> list[_Line]:
     return list(lines.values())
 
 
-def _redact_pdf(src: Path, dest: Path, rules: list[Rule],
-                ctx: click.Context | None) -> dict[str, Any]:
+def _redact_pdf(
+    src: Path, dest: Path, rules: list[Rule], ctx: click.Context | None
+) -> dict[str, Any]:
     from PIL import Image, ImageDraw
 
     adapters.require("tesseract")  # exit 3 before any work if OCR is unavailable
@@ -184,11 +188,13 @@ def _redact_pdf(src: Path, dest: Path, rules: list[Rule],
 
     with tempfile.TemporaryDirectory(prefix="carrel-redact-") as td:
         prefix = Path(td) / "page"
-        proc = adapters.run("pdftoppm", "-r", str(RASTER_DPI), "-png", str(src), str(prefix),
-                            timeout=600)
+        proc = adapters.run(
+            "pdftoppm", "-r", str(RASTER_DPI), "-png", str(src), str(prefix), timeout=600
+        )
         if proc.returncode != 0:
             raise CarrelError(
-                f"pdftoppm failed (rc={proc.returncode}): {(proc.stderr or '').strip()}")
+                f"pdftoppm failed (rc={proc.returncode}): {(proc.stderr or '').strip()}"
+            )
         pngs = sorted(Path(td).glob("page-*.png"))
         if not pngs:
             raise CarrelInputError(f"{src}: pdftoppm produced no pages — empty or corrupt PDF?")
@@ -205,17 +211,23 @@ def _redact_pdf(src: Path, dest: Path, rules: list[Rule],
                     for m in rule.hits(text):
                         counts[rule.name] += 1
                         page_counts[str(page_no)] = page_counts.get(str(page_no), 0) + 1
-                        hit_boxes += [w.box for a, b, w in spans
-                                      if a < m.end() and b > m.start()]
+                        hit_boxes += [w.box for a, b, w in spans if a < m.end() and b > m.start()]
             for left, top, width, height in hit_boxes:
-                draw.rectangle((max(0, left - BOX_PAD), max(0, top - BOX_PAD),
-                                left + width + BOX_PAD, top + height + BOX_PAD),
-                               fill=(0, 0, 0))
+                draw.rectangle(
+                    (
+                        max(0, left - BOX_PAD),
+                        max(0, top - BOX_PAD),
+                        left + width + BOX_PAD,
+                        top + height + BOX_PAD,
+                    ),
+                    fill=(0, 0, 0),
+                )
             pages.append(img)
 
         dest.parent.mkdir(parents=True, exist_ok=True)
-        pages[0].save(dest, format="PDF", resolution=float(RASTER_DPI),
-                      save_all=True, append_images=pages[1:])
+        pages[0].save(
+            dest, format="PDF", resolution=float(RASTER_DPI), save_all=True, append_images=pages[1:]
+        )
 
     verified: bool | None = None
     if adapters.have("pdftotext"):
@@ -225,7 +237,8 @@ def _redact_pdf(src: Path, dest: Path, rules: list[Rule],
         if leftovers:
             raise CarrelError(
                 f"redaction verification failed: {dest} still matches "
-                f"{', '.join(leftovers)} via pdftotext")
+                f"{', '.join(leftovers)} via pdftotext"
+            )
         verified = True
 
     return {"matches": counts, "pages": page_counts, "verified": verified}
@@ -266,20 +279,42 @@ def _human(record: dict[str, Any]) -> None:
 
 @click.command(name="redact")
 @click.argument("src", type=click.Path(path_type=Path))
-@click.option("--pattern", "patterns", multiple=True, metavar="REGEX",
-              help="Custom regex to redact (repeatable).")
-@click.option("--builtin", "builtin_csv", metavar="LIST",
-              help=f"Comma-separated builtins: {', '.join(BUILTINS)}.")
-@click.option("--replacement", default="█", show_default=True,
-              help="Replacement text for matches (text files only).")
-@click.option("-o", "--out", type=click.Path(path_type=Path),
-              help="Output file. Default: SRC.redacted.<ext>.")
+@click.option(
+    "--pattern",
+    "patterns",
+    multiple=True,
+    metavar="REGEX",
+    help="Custom regex to redact (repeatable).",
+)
+@click.option(
+    "--builtin",
+    "builtin_csv",
+    metavar="LIST",
+    help=f"Comma-separated builtins: {', '.join(BUILTINS)}.",
+)
+@click.option(
+    "--replacement",
+    default="█",
+    show_default=True,
+    help="Replacement text for matches (text files only).",
+)
+@click.option(
+    "-o", "--out", type=click.Path(path_type=Path), help="Output file. Default: SRC.redacted.<ext>."
+)
 @click.option("--fail-empty", is_flag=True, help="Exit 5 when nothing matched.")
 @click.option("--force", is_flag=True, help="Allow overwriting an existing output file.")
 @click.pass_context
 @_handled
-def cmd(ctx: click.Context, src: Path, patterns: tuple[str, ...], builtin_csv: str | None,
-        replacement: str, out: Path | None, fail_empty: bool, force: bool) -> None:
+def cmd(
+    ctx: click.Context,
+    src: Path,
+    patterns: tuple[str, ...],
+    builtin_csv: str | None,
+    replacement: str,
+    out: Path | None,
+    fail_empty: bool,
+    force: bool,
+) -> None:
     """Redact sensitive strings from a text file or PDF.
 
     Text files get regex replacement (JSON/XML are re-parsed afterwards so
@@ -290,8 +325,7 @@ def cmd(ctx: click.Context, src: Path, patterns: tuple[str, ...], builtin_csv: s
     rules = _compile_rules(patterns, builtin_csv)
     ftype = detect_or_die(src)
     if ftype is not FileType.PDF and not ftype.is_text:
-        raise CarrelInputError(
-            f"redact supports text files and PDFs, got {ftype.value}: {src}")
+        raise CarrelInputError(f"redact supports text files and PDFs, got {ftype.value}: {src}")
 
     dest = out or src.with_name(f"{src.stem}.redacted{src.suffix}")
     if dest.exists() and not force:
@@ -304,7 +338,7 @@ def cmd(ctx: click.Context, src: Path, patterns: tuple[str, ...], builtin_csv: s
         try:
             content = src.read_text(encoding="utf-8")
         except UnicodeDecodeError as e:
-            raise CarrelInputError(f"{src} is not valid UTF-8 text: {e}")
+            raise CarrelInputError(f"{src} is not valid UTF-8 text: {e}") from e
         redacted, counts = _redact_text(content, rules, replacement)
         _check_still_parses(redacted, ftype, replacement)
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -314,4 +348,4 @@ def cmd(ctx: click.Context, src: Path, patterns: tuple[str, ...], builtin_csv: s
     record["total"] = sum(record["matches"].values())
     emit(ctx, record, human=_human)
     if fail_empty and record["total"] == 0:
-        raise SystemExit(int(ExitCode.EMPTY))
+        fail("no matches for the requested patterns (--fail-empty)", ExitCode.EMPTY)

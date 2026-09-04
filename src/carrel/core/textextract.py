@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import csv
-import io
 import json
 import tempfile
 from html.parser import HTMLParser
 from pathlib import Path
+from typing import ClassVar
 
 from carrel.core import adapters
 from carrel.core.filetypes import FileType, detect_or_die
@@ -15,28 +15,42 @@ from carrel.core.output import CarrelInputError
 
 
 class _HTMLTextParser(HTMLParser):
-    _SKIP = {"script", "style", "head"}
-    _BLOCK = {"p", "div", "br", "li", "tr", "h1", "h2", "h3", "h4", "h5", "h6",
-              "section", "article", "table"}
+    _SKIP: ClassVar[set[str]] = {"script", "style", "head"}
+    _BLOCK: ClassVar[set[str]] = {
+        "p",
+        "div",
+        "br",
+        "li",
+        "tr",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "section",
+        "article",
+        "table",
+    }
 
     def __init__(self) -> None:
         super().__init__()
         self.parts: list[str] = []
         self._skipping = 0
 
-    def handle_starttag(self, tag, attrs):
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag in self._SKIP:
             self._skipping += 1
         elif tag in self._BLOCK:
             self.parts.append("\n")
 
-    def handle_endtag(self, tag):
+    def handle_endtag(self, tag: str) -> None:
         if tag in self._SKIP and self._skipping:
             self._skipping -= 1
         elif tag in self._BLOCK:
             self.parts.append("\n")
 
-    def handle_data(self, data):
+    def handle_data(self, data: str) -> None:
         if not self._skipping:
             self.parts.append(data)
 
@@ -56,7 +70,7 @@ def html_to_text(html: str) -> str:
     return "\n".join(out).strip() + "\n"
 
 
-def _flatten_json(value, prefix="") -> list[str]:
+def _flatten_json(value: object, prefix: str = "") -> list[str]:
     lines = []
     if isinstance(value, dict):
         for k, v in value.items():
@@ -75,7 +89,9 @@ def pdf_text(path: Path, ocr: bool = False) -> str:
     if ocr and len(text.strip()) < 20 and adapters.have("ocrmypdf"):
         with tempfile.TemporaryDirectory() as td:
             ocred = Path(td) / "ocr.pdf"
-            proc = adapters.run("ocrmypdf", "--skip-text", "--quiet", str(path), str(ocred), timeout=600)
+            proc = adapters.run(
+                "ocrmypdf", "--skip-text", "--quiet", str(path), str(ocred), timeout=600
+            )
             if proc.returncode in (0, 10) and ocred.exists():  # 10 = ocrmypdf "done with warnings"
                 proc2 = adapters.run("pdftotext", "-layout", str(ocred), "-")
                 if proc2.returncode == 0:

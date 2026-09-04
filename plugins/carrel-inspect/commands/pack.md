@@ -26,4 +26,4 @@ carrel pack PATHS... [-o FILE] [--format md|xml|json] [--include GLOB] [--exclud
 
 Workflow: for an unfamiliar or large folder, run `--stats` or `--tree-only` first to gauge size, then pack with an appropriate `--chunk`/`--exclude`. Afterwards report the output path(s) and the token estimate, and consult the `context-packing` skill of this plugin for budgeting guidance.
 
-**Requires the carrel CLI on PATH.** If `carrel` is not found, tell the user to install it with `uv tool install <path-to-carrel-repo>` (see the repo's INSTALL notes), or run it as `uv run carrel ...` from the carrel repo root.
+**Requires the carrel CLI on PATH.** If `carrel` is not found, tell the user to install it with `uv tool install carrel` (see the repo's INSTALL notes), or run it as `uv run carrel ...` from the carrel repo root.

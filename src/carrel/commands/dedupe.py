@@ -13,9 +13,9 @@ from __future__ import annotations
 
 import functools
 from collections import defaultdict
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import click
 
@@ -66,12 +66,12 @@ def dhash(path: Path) -> int:
     from PIL import Image
 
     with Image.open(path) as img:
-        gray = img.convert("L").resize((9, 8), Image.LANCZOS)
-    px = gray.load()
+        gray = img.convert("L").resize((9, 8), Image.Resampling.LANCZOS)
+    px = gray.tobytes()  # mode L: one byte per pixel, row-major
     bits = 0
     for y in range(8):
         for x in range(8):
-            bits = (bits << 1) | (1 if px[x, y] > px[x + 1, y] else 0)
+            bits = (bits << 1) | (1 if px[y * 9 + x] > px[y * 9 + x + 1] else 0)
     return bits
 
 
@@ -91,7 +91,7 @@ def _cluster_near(hashes: dict[Path, int]) -> list[list[Path]]:
         return p
 
     for i, a in enumerate(paths):
-        for b in paths[i + 1:]:
+        for b in paths[i + 1 :]:
             if hamming(hashes[a], hashes[b]) <= NEAR_HAMMING_MAX:
                 parent[find(a)] = find(b)
 
@@ -115,8 +115,7 @@ def _exact_groups(files: list[Path]) -> list[tuple[str, list[Path]]]:
         by_hash: dict[str, list[Path]] = defaultdict(list)
         for f in same_size:
             by_hash[file_hash(f)].append(f)
-        groups.extend((h, members) for h, members in by_hash.items()
-                      if len(members) > 1)
+        groups.extend((h, members) for h, members in by_hash.items() if len(members) > 1)
     return groups
 
 
@@ -129,8 +128,7 @@ def _near_groups(files: list[Path]) -> list[tuple[str, list[Path]]]:
             hashes[f] = dhash(f)
         except Exception as e:  # noqa: BLE001 — unreadable image: warn + skip
             click.echo(f"warning: cannot hash {f}: {e}", err=True)
-    return [(f"dhash:{hashes[members[0]]:016x}", members)
-            for members in _cluster_near(hashes)]
+    return [(f"dhash:{hashes[members[0]]:016x}", members) for members in _cluster_near(hashes)]
 
 
 def _human_report(reclaimable: int, applied: bool) -> Callable[[list[dict]], None]:
@@ -141,35 +139,45 @@ def _human_report(reclaimable: int, applied: bool) -> Callable[[list[dict]], Non
         for group in groups:
             click.echo(f"{group['hash']}  ({len(group['files'])} files)")
             for f in group["files"]:
-                marker = ("keep " if f == group["kept"]
-                          else "DEL  " if f in group["deleted"] else "dup  ")
+                marker = (
+                    "keep " if f == group["kept"] else "DEL  " if f in group["deleted"] else "dup  "
+                )
                 click.echo(f"  {marker} {f}")
         verb = "reclaimed" if applied else "reclaimable"
-        click.echo(f"{len(groups)} group(s); {verb}: {reclaimable} bytes"
-                   + ("" if applied else
-                      " (report only — use --delete newest|oldest --apply "
-                      "to remove)"))
+        click.echo(
+            f"{len(groups)} group(s); {verb}: {reclaimable} bytes"
+            + ("" if applied else " (report only — use --delete newest|oldest --apply to remove)")
+        )
 
     return _print
 
 
 @click.command(name="dedupe")
 @click.argument("dirs", nargs=-1, required=True, type=click.Path(path_type=Path))
-@click.option("--near", is_flag=True,
-              help="Perceptual matching for images (64-bit dHash, Hamming "
-                   "distance <= 8) instead of exact content hashing. "
-                   "Non-image files are ignored in this mode.")
-@click.option("--delete", "delete_", type=click.Choice(["newest", "oldest"]),
-              default=None,
-              help="Which duplicates to delete per group (by mtime); the "
-                   "other end of the range is kept. Requires --apply to "
-                   "actually remove files.")
-@click.option("--apply", "apply_", is_flag=True,
-              help="Actually delete (only together with --delete).")
+@click.option(
+    "--near",
+    is_flag=True,
+    help="Perceptual matching for images (64-bit dHash, Hamming "
+    "distance <= 8) instead of exact content hashing. "
+    "Non-image files are ignored in this mode.",
+)
+@click.option(
+    "--delete",
+    "delete_",
+    type=click.Choice(["newest", "oldest"]),
+    default=None,
+    help="Which duplicates to delete per group (by mtime); the "
+    "other end of the range is kept. Requires --apply to "
+    "actually remove files.",
+)
+@click.option(
+    "--apply", "apply_", is_flag=True, help="Actually delete (only together with --delete)."
+)
 @click.pass_context
 @_handled
-def cmd(ctx: click.Context, dirs: tuple[Path, ...], near: bool,
-        delete_: str | None, apply_: bool) -> None:
+def cmd(
+    ctx: click.Context, dirs: tuple[Path, ...], near: bool, delete_: str | None, apply_: bool
+) -> None:
     """Report duplicate files under DIRS (recursively; hidden entries skipped).
 
     Default is report-only. Deletion needs BOTH --delete newest|oldest AND
@@ -196,17 +204,22 @@ def cmd(ctx: click.Context, dirs: tuple[Path, ...], near: bool,
         ordered = sorted(members, key=lambda p: (p.stat().st_mtime, str(p)))
         kept = ordered[-1] if delete_ == "oldest" else ordered[0]
         doomed = [p for p in ordered if p != kept] if delete_ else []
-        reclaimable += sum(p.stat().st_size for p in doomed) if doomed else \
-            sum(p.stat().st_size for p in ordered[1:])
+        reclaimable += (
+            sum(p.stat().st_size for p in doomed)
+            if doomed
+            else sum(p.stat().st_size for p in ordered[1:])
+        )
         if apply_:
             for p in doomed:
                 p.unlink()
-        result.append({
-            "hash": digest,
-            "files": [str(p) for p in ordered],
-            "kept": str(kept),
-            "deleted": [str(p) for p in doomed],
-        })
+        result.append(
+            {
+                "hash": digest,
+                "files": [str(p) for p in ordered],
+                "kept": str(kept),
+                "deleted": [str(p) for p in doomed],
+            }
+        )
     result.sort(key=lambda g: g["files"])
 
     emit(ctx, result, human=_human_report(reclaimable, applied=apply_))

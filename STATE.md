@@ -1,25 +1,36 @@
 # STATE
 
-> Live status of the build. A brand-new session should be able to resume from this file alone.
-> Directive: the original build prompt (mission, phases, Definition of Done) — key points mirrored in docs/BUILD_PLAN.md once written. Approved plan copy: (local Claude Code plan file — path generalized).
+> Live status of the project. A brand-new session should be able to resume from this file alone.
+> Build history: docs/HOW_THIS_WAS_BUILT.md. Decisions: docs/DECISIONS.md. Release steps: docs/RELEASING.md.
 
 ## Now
 
-- **Phase:** 7 — DONE. finalize.sh tested (dry + real + rename round-trip, suite green post-rename). BUILD COMPLETE.
-- **Next:** nothing — run scripts/finalize.sh when ready to relocate/publish.
+- **Status:** published. Repo `coltonbearden/carrel` (moved from `FirstCastSolutions423/carrel`
+  in August 2026), docs at https://coltonbearden.github.io/carrel/, PyPI package `carrel`
+  (v0.1.1 live; v0.1.2 prepared — see Next).
+- **Next:** cut v0.1.2. Requires the PyPI Trusted Publisher to be re-pointed at
+  owner `coltonbearden` first (docs/RELEASING.md), then `gh release create v0.1.2`.
 
 ## Done
 
-- git init (branch `main`)
-- CLAUDE.md, STATE.md, docs/DECISIONS.md created
-- Plugin marketplace schema verified against live docs (2026-07-16) — see docs/DECISIONS.md D-001
+- Build phases 0–7 complete (2026-07-16); v0.1.0 tagged.
+- v0.1.1 on PyPI via Trusted Publishing (2026-08-12).
+- 2026-09-03 hardening: owner rename, version SoT fix, `--json` everywhere, timeouts,
+  ruff/mypy CI gate, SHA-pinned workflows, Dependabot, branch/tag rulesets, secret
+  scanning + push protection, CodeQL (docs/REPO_SETTINGS.md).
 
 ## Open issues
 
-- (none yet)
+- PyPI Trusted Publisher still registered for the old owner until the user updates it
+  (blocks the v0.1.2 publish job, nothing else).
 
 ## Key facts for a fresh session
 
-- Stack: Python + uv (decided, see DECISIONS.md). Flagship: Textual TUI.
-- Product: **carrel** (product.json is the SoT). Tagline: "A library desk for your files — and your agents."
-- Marketplace install flow to validate in Phase 5: `claude plugin validate .` → `claude plugin marketplace add <path>` → `claude plugin install <plugin>@<marketplace>`.
+- Stack: Python ≥3.12 + uv; click CLI; Textual TUI (`carrel desk`); hatchling build.
+- Product identity: `product.json` is the SoT. Bump there, run `scripts/sync_product.py`,
+  never edit `pyproject.toml` version / `_product.py` / manifest versions by hand.
+- `main` is protected: changes land via PR with green `lint`, `test`, `test-minimal` checks.
+  Repo admin can bypass in an emergency. Do not run `scripts/finalize.sh` — it relocates the
+  tree and creates a new repo; it was for the original hand-off only.
+- Marketplace: `claude plugin validate .` → `claude plugin marketplace add coltonbearden/carrel`
+  → `claude plugin install <plugin>@carrel`.

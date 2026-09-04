@@ -25,9 +25,9 @@ def test_md(fixtures):
 def test_html(fixtures):
     text = extract_text(fixtures / "sample.html")
     assert "Carrel Sample Page" in text
-    assert "Zephyr Atlas" in text        # table cell survives
-    assert "<h1>" not in text            # tags stripped
-    assert "font-family" not in text     # <style> content dropped
+    assert "Zephyr Atlas" in text  # table cell survives
+    assert "<h1>" not in text  # tags stripped
+    assert "font-family" not in text  # <style> content dropped
 
 
 def test_json(fixtures):

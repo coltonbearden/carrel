@@ -17,8 +17,9 @@ list of profiles actually present.
 from __future__ import annotations
 
 import functools
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import click
 
@@ -41,6 +42,7 @@ def _handled(fn: Callable) -> Callable:
 
     return wrapper
 
+
 #: per-channel delta (0-255) above which a pixel counts as "changed"
 CHANGE_THRESHOLD = 8
 
@@ -61,7 +63,7 @@ class MissingLcmsError(CarrelError):
     exit_code = ExitCode.MISSING_DEP
 
 
-def load_image_cms():
+def load_image_cms() -> Any:
     """PIL.ImageCms, or MissingLcmsError (exit 3) when LCMS is unavailable."""
     try:
         from PIL import ImageCms
@@ -69,7 +71,8 @@ def load_image_cms():
         raise MissingLcmsError(
             "Pillow's ImageCms (LittleCMS) is unavailable — color management "
             "needs it.\n  install: uv pip install --force-reinstall pillow "
-            "(official wheels bundle LittleCMS)") from e
+            "(official wheels bundle LittleCMS)"
+        ) from e
     return ImageCms
 
 
@@ -105,7 +108,8 @@ def resolve_profile(spec: str) -> Path:
     if candidates is None:
         raise CarrelInputError(
             f"unknown profile '{spec}' — pass a .icc file path or one of the "
-            f"builtin aliases: {', '.join(sorted(BUILTIN_PROFILES))}")
+            f"builtin aliases: {', '.join(sorted(BUILTIN_PROFILES))}"
+        )
     found = installed_profiles()
     for name in candidates:
         if name in found:
@@ -116,31 +120,39 @@ def resolve_profile(spec: str) -> Path:
         f"(looked for: {', '.join(candidates)}).\n"
         f"  searched: {', '.join(str(d) for d in _profile_dirs()) or 'no profile dirs exist'}\n"
         f"  profiles found: {listing}\n"
-        "  install: sudo apt install ghostscript icc-profiles-free")
+        "  install: sudo apt install ghostscript icc-profiles-free"
+    )
 
 
 def _deltas(before: bytes, after: bytes) -> tuple[float, int, float]:
     """(mean abs channel delta, max delta, % pixels with any channel delta > threshold)."""
-    diffs = [abs(a - b) for a, b in zip(before, after)]
+    diffs = [abs(a - b) for a, b in zip(before, after, strict=False)]
     n_px = len(diffs) // 3
-    changed = sum(1 for i in range(0, n_px * 3, 3)
-                  if max(diffs[i], diffs[i + 1], diffs[i + 2]) > CHANGE_THRESHOLD)
-    return (sum(diffs) / len(diffs) if diffs else 0.0,
-            max(diffs, default=0),
-            100.0 * changed / n_px if n_px else 0.0)
+    changed = sum(
+        1
+        for i in range(0, n_px * 3, 3)
+        if max(diffs[i], diffs[i + 1], diffs[i + 2]) > CHANGE_THRESHOLD
+    )
+    return (
+        sum(diffs) / len(diffs) if diffs else 0.0,
+        max(diffs, default=0),
+        100.0 * changed / n_px if n_px else 0.0,
+    )
 
 
-def proof_file(src: Path | str, profile: str, out: Path | str | None = None,
-               intent: str = "perceptual") -> dict[str, Any]:
+def proof_file(
+    src: Path | str, profile: str, out: Path | str | None = None, intent: str = "perceptual"
+) -> dict[str, Any]:
     """Soft-proof one image; writes the proofed copy and returns the report."""
-    ImageCms = load_image_cms()
+    ImageCms = load_image_cms()  # noqa: N806 — module alias
     from PIL import Image
 
     src = Path(src)
     ftype = detect_or_die(src)
     if not ftype.is_image:
-        raise CarrelInputError(f"proof needs a raster image (png/jpg/ico), got "
-                               f"{ftype.value}: {src}")
+        raise CarrelInputError(
+            f"proof needs a raster image (png/jpg/ico), got {ftype.value}: {src}"
+        )
     profile_path = resolve_profile(profile)
     out = Path(out) if out else src.with_name(f"{src.stem}.proof.png")
 
@@ -150,8 +162,14 @@ def proof_file(src: Path | str, profile: str, out: Path | str | None = None,
     target = ImageCms.getOpenProfile(str(profile_path))
     try:
         transform = ImageCms.buildProofTransform(
-            srgb, srgb, target, "RGB", "RGB",
-            renderingIntent=INTENTS[intent], proofRenderingIntent=INTENTS[intent])
+            srgb,
+            srgb,
+            target,
+            "RGB",
+            "RGB",
+            renderingIntent=INTENTS[intent],
+            proofRenderingIntent=INTENTS[intent],
+        )
         proofed = ImageCms.applyTransform(rgb, transform)
     except ImageCms.PyCMSError as e:
         raise CarrelInputError(f"cannot soft-proof against {profile_path.name}: {e}") from e
@@ -177,24 +195,36 @@ def _human(report: dict[str, Any]) -> None:
     click.echo(f"{report['src']} -> {report['out']}")
     click.echo(f"  profile: {report['profile_name']} ({report['profile']})")
     click.echo(f"  intent:  {report['intent']}")
-    click.echo(f"  mean delta {report['mean_delta']}, max {report['max_delta']}, "
-               f"{report['pct_pixels_changed']}% of pixels shifted more than "
-               f"{report['change_threshold']}/255")
+    click.echo(
+        f"  mean delta {report['mean_delta']}, max {report['max_delta']}, "
+        f"{report['pct_pixels_changed']}% of pixels shifted more than "
+        f"{report['change_threshold']}/255"
+    )
 
 
 @click.command(name="proof")
 @click.argument("src", type=click.Path(path_type=Path))
-@click.option("--profile", required=True, metavar="PROFILE",
-              help="Path to a .icc file, or builtin alias: "
-                   + ", ".join(sorted(BUILTIN_PROFILES)) + ".")
-@click.option("--out", type=click.Path(dir_okay=False, path_type=Path),
-              help="Proofed image path [default: <SRC>.proof.png].")
-@click.option("--intent", type=click.Choice(sorted(INTENTS)), default="perceptual",
-              show_default=True, help="Rendering intent.")
+@click.option(
+    "--profile",
+    required=True,
+    metavar="PROFILE",
+    help="Path to a .icc file, or builtin alias: " + ", ".join(sorted(BUILTIN_PROFILES)) + ".",
+)
+@click.option(
+    "--out",
+    type=click.Path(dir_okay=False, path_type=Path),
+    help="Proofed image path [default: <SRC>.proof.png].",
+)
+@click.option(
+    "--intent",
+    type=click.Choice(sorted(INTENTS)),
+    default="perceptual",
+    show_default=True,
+    help="Rendering intent.",
+)
 @click.pass_context
 @_handled
-def cmd(ctx: click.Context, src: Path, profile: str, out: Path | None,
-        intent: str) -> None:
+def cmd(ctx: click.Context, src: Path, profile: str, out: Path | None, intent: str) -> None:
     """Soft-proof SRC against an ICC PROFILE (simulate print/display output).
 
     Writes the proofed image and reports the color shift: mean/max

@@ -8,7 +8,7 @@ by what's installed on your `PATH`. This page documents the few knobs that
 
 Related docs: [Install](INSTALL.md) · [Quickstart](QUICKSTART.md) ·
 [Reference](REFERENCE.md) · [Troubleshooting](TROUBLESHOOTING.md) ·
-[README](https://github.com/FirstCastSolutions423/carrel/blob/main/README.md)
+[README](https://github.com/coltonbearden/carrel/blob/main/README.md)
 
 ## The desk root: `--root` and `.carrel/`
 

@@ -73,8 +73,7 @@ def test_boot_and_tree_renders(desk_root: Path) -> None:
             assert app.query_one("#search", Input)
             await wait_for(pilot, tree_ready(app), what="tree children")
             tree = app.query_one("#tree", FilteredDirectoryTree)
-            names = {Path(str(child.data.path)).name
-                     for child in tree.root.children}
+            names = {Path(str(child.data.path)).name for child in tree.root.children}
             assert names == {"notes.txt", "sample.png"}  # .carrel is hidden
 
     asyncio.run(scenario())
@@ -88,8 +87,9 @@ def test_selection_populates_inspector(desk_root: Path) -> None:
             # cursor: root → first child (notes.txt sorts before sample.png)
             await pilot.press("down", "enter")
             expected = (desk_root / "notes.txt").resolve()
-            await wait_for(pilot, lambda: app.inspected_path == expected,
-                           what="inspector to load notes.txt")
+            await wait_for(
+                pilot, lambda: app.inspected_path == expected, what="inspector to load notes.txt"
+            )
             meta = static_text(app, "#meta")
             assert "notes.txt" in meta
             assert "txt" in meta
@@ -110,15 +110,15 @@ def test_search_returns_preindexed_hit(desk_root: Path) -> None:
             assert isinstance(app.focused, Input)
             await pilot.press(*SEARCH_WORD, "enter")
             results = app.query_one("#results", OptionList)
-            await wait_for(pilot, lambda: results.option_count > 0,
-                           what="search results")
+            await wait_for(pilot, lambda: results.option_count > 0, what="search results")
             assert results.display
             assert app._result_paths == ["notes.txt"]
             # results list took focus; enter opens the hit in the inspector
             await pilot.press("enter")
             expected = (desk_root / "notes.txt").resolve()
-            await wait_for(pilot, lambda: app.inspected_path == expected,
-                           what="result to open in inspector")
+            await wait_for(
+                pilot, lambda: app.inspected_path == expected, what="result to open in inspector"
+            )
             assert "notes.txt" in static_text(app, "#meta")
 
     asyncio.run(scenario())
@@ -130,13 +130,12 @@ def test_thumbnail_action_writes_to_carrel_out(desk_root: Path) -> None:
         async with app.run_test(size=(120, 40)) as pilot:
             await wait_for(pilot, tree_ready(app), what="tree children")
             app.show_file(desk_root / "sample.png")
-            await wait_for(pilot,
-                           lambda: app.inspected_path == desk_root / "sample.png",
-                           what="png inspector")
+            await wait_for(
+                pilot, lambda: app.inspected_path == desk_root / "sample.png", what="png inspector"
+            )
             # actions pane offers the per-type actions for a png
             actions = app.query_one("#actions", OptionList)
-            ids = [actions.get_option_at_index(i).id
-                   for i in range(actions.option_count)]
+            ids = [actions.get_option_at_index(i).id for i in range(actions.option_count)]
             assert "thumb" in ids
             assert "ocr" in ids
             assert "convert:pdf" in ids

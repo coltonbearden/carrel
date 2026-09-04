@@ -9,9 +9,10 @@ success.
 from __future__ import annotations
 
 import functools
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import click
 
@@ -70,10 +71,13 @@ def add(ctx: click.Context, path: Path, text: str) -> None:
     with DeskDB(_root_of(ctx)) as db:
         note_id = db.add_note(path, text)
         newest = db.notes_of(path)[0]
-        data = {"path": db.rel(path), "id": note_id,
-                "created": _iso(newest["created"]), "body": text}
-    emit(ctx, data, human=lambda d: click.echo(
-        f"note {d['id']} on {d['path']} @ {d['created']}"))
+        data = {
+            "path": db.rel(path),
+            "id": note_id,
+            "created": _iso(newest["created"]),
+            "body": text,
+        }
+    emit(ctx, data, human=lambda d: click.echo(f"note {d['id']} on {d['path']} @ {d['created']}"))
 
 
 @cmd.command("ls")
@@ -87,8 +91,7 @@ def ls(ctx: click.Context, path: Path) -> None:
     notes: list[dict[str, str]] = []
     if DeskDB.exists(root):
         with DeskDB(root) as db:
-            notes = [{"created": _iso(r["created"]), "body": r["body"]}
-                     for r in db.notes_of(path)]
+            notes = [{"created": _iso(r["created"]), "body": r["body"]} for r in db.notes_of(path)]
 
     def human(items: list[dict[str, str]]) -> None:
         if not items:
@@ -102,7 +105,7 @@ def ls(ctx: click.Context, path: Path) -> None:
 # --------------------------------------------------------- pdf annotations
 
 
-def _read_pdf(path: Path):
+def _read_pdf(path: Path) -> Any:
     from pypdf import PdfReader
     from pypdf.errors import PdfReadError
 
@@ -121,8 +124,13 @@ def _pdf_annotations(path: Path) -> list[dict[str, Any]]:
             if subtype == "Link":  # navigation plumbing, not a note
                 continue
             contents = obj.get("/Contents")
-            found.append({"page": page_no, "subtype": subtype,
-                          "contents": str(contents) if contents is not None else ""})
+            found.append(
+                {
+                    "page": page_no,
+                    "subtype": subtype,
+                    "contents": str(contents) if contents is not None else "",
+                }
+            )
     return found
 
 
@@ -148,21 +156,30 @@ def pdf(ctx: click.Context, path: Path) -> None:
 @cmd.command("pdf-add")
 @click.argument("path", type=click.Path(path_type=Path))
 @click.argument("text")
-@click.option("--page", default=1, show_default=True, type=int,
-              help="1-based page to annotate.")
-@click.option("--pos", default="72,72", show_default=True, metavar="X,Y",
-              help="Lower-left corner of the note box in PDF points.")
-@click.option("-o", "--out", type=click.Path(dir_okay=False, path_type=Path),
-              help="Output PDF (default: PATH with an .annotated.pdf suffix; "
-                   "pass PATH itself to annotate in place).")
+@click.option("--page", default=1, show_default=True, type=int, help="1-based page to annotate.")
+@click.option(
+    "--pos",
+    default="72,72",
+    show_default=True,
+    metavar="X,Y",
+    help="Lower-left corner of the note box in PDF points.",
+)
+@click.option(
+    "-o",
+    "--out",
+    type=click.Path(dir_okay=False, path_type=Path),
+    help="Output PDF (default: PATH with an .annotated.pdf suffix; "
+    "pass PATH itself to annotate in place).",
+)
 @click.pass_context
 @_handled
-def pdf_add(ctx: click.Context, path: Path, text: str, page: int, pos: str,
-            out: Path | None) -> None:
+def pdf_add(
+    ctx: click.Context, path: Path, text: str, page: int, pos: str, out: Path | None
+) -> None:
     """Add TEXT as a FreeText annotation to a PDF page.
 
     The result is verified by reading the output back with pypdf and checking
-    the annotation is listed (same reader `carrel note pdf` uses).
+    the annotation is listed (same reader the `pdf` subcommand uses).
     """
     from pypdf import PdfWriter
     from pypdf.annotations import FreeText
@@ -181,21 +198,33 @@ def pdf_add(ctx: click.Context, path: Path, text: str, page: int, pos: str,
 
     out = (out or path.with_name(f"{path.stem}.annotated.pdf")).resolve()
     writer = PdfWriter(clone_from=str(path))
-    annotation = FreeText(text=text, rect=(x, y, x + 240, y + 48),
-                          font="Helvetica", font_size="12pt",
-                          font_color="000000", border_color="000000",
-                          background_color="ffffff")
+    annotation = FreeText(
+        text=text,
+        rect=(x, y, x + 240, y + 48),
+        font="Helvetica",
+        font_size="12pt",
+        font_color="000000",
+        border_color="000000",
+        background_color="ffffff",
+    )
     writer.add_annotation(page_number=page - 1, annotation=annotation)
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("wb") as fh:
         writer.write(fh)
 
-    listed = [a for a in _pdf_annotations(out)
-              if a["page"] == page and a["contents"] == text]
+    listed = [a for a in _pdf_annotations(out) if a["page"] == page and a["contents"] == text]
     if not listed:
         raise CarrelError(f"wrote {out} but could not read the annotation back")
 
-    data = {"input": str(path), "output": str(out), "page": page,
-            "subtype": listed[0]["subtype"], "contents": text}
-    emit(ctx, data, human=lambda d: click.echo(
-        f"annotated p{d['page']} of {d['input']} -> {d['output']}"))
+    data = {
+        "input": str(path),
+        "output": str(out),
+        "page": page,
+        "subtype": listed[0]["subtype"],
+        "contents": text,
+    }
+    emit(
+        ctx,
+        data,
+        human=lambda d: click.echo(f"annotated p{d['page']} of {d['input']} -> {d['output']}"),
+    )

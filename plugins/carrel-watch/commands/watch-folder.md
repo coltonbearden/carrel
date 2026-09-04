@@ -23,4 +23,4 @@ If `carrel watch --help` reports that the command does not exist, the installed 
 
 Important: **this is a long-running foreground process.** Run it via Bash in the background (or with `--timeout`/`--once` for a bounded demo), tell the user how it will keep running and that Ctrl-C/`kill` stops it cleanly. Suggest recipes from this plugin's `watch-automation` skill (auto-thumb, auto-index, auto-convert drop folders). Report the watch config back: directory, events, glob, action(s).
 
-**Requires the carrel CLI on PATH.** If `carrel` is not found, tell the user to install it with `uv tool install <path-to-carrel-repo>` (see the repo's INSTALL notes), or run it as `uv run carrel ...` from the carrel repo root.
+**Requires the carrel CLI on PATH.** If `carrel` is not found, tell the user to install it with `uv tool install carrel` (see the repo's INSTALL notes), or run it as `uv run carrel ...` from the carrel repo root.

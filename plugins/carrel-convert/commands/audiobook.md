@@ -22,4 +22,4 @@ Note: `--json` is a **global** flag and must come before the subcommand.
 
 Interpret the JSON result `{src, outputs, engine, duration_s, chars}`: tell the user which engine spoke, the output file(s), and the duration. Exit code 3 means a TTS engine or ffmpeg is missing — relay the install hint from stderr (espeak-ng is the minimal engine: `sudo apt install espeak-ng`; suggest `--format wav` when ffmpeg is absent).
 
-**Requires the carrel CLI on PATH.** If `carrel` is not found, tell the user to install it with `uv tool install <path-to-carrel-repo>` (see the repo's INSTALL notes), or run it as `uv run carrel ...` from the carrel repo root.
+**Requires the carrel CLI on PATH.** If `carrel` is not found, tell the user to install it with `uv tool install carrel` (see the repo's INSTALL notes), or run it as `uv run carrel ...` from the carrel repo root.

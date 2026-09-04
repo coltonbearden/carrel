@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 
 from carrel.core.output import CarrelInputError
 
 
-class FileType(str, Enum):
+class FileType(StrEnum):
     PDF = "pdf"
     MD = "md"
     JPG = "jpg"
@@ -27,16 +27,31 @@ class FileType(str, Enum):
 
     @property
     def is_text(self) -> bool:
-        return self in (FileType.MD, FileType.TXT, FileType.HTML, FileType.JSON,
-                        FileType.XML, FileType.CSV)
+        return self in (
+            FileType.MD,
+            FileType.TXT,
+            FileType.HTML,
+            FileType.JSON,
+            FileType.XML,
+            FileType.CSV,
+        )
 
 
 _EXT_MAP = {
-    ".pdf": FileType.PDF, ".md": FileType.MD, ".markdown": FileType.MD,
-    ".jpg": FileType.JPG, ".jpeg": FileType.JPG, ".png": FileType.PNG,
-    ".ico": FileType.ICO, ".txt": FileType.TXT, ".text": FileType.TXT,
-    ".html": FileType.HTML, ".htm": FileType.HTML, ".json": FileType.JSON,
-    ".xml": FileType.XML, ".csv": FileType.CSV,
+    ".pdf": FileType.PDF,
+    ".md": FileType.MD,
+    ".markdown": FileType.MD,
+    ".jpg": FileType.JPG,
+    ".jpeg": FileType.JPG,
+    ".png": FileType.PNG,
+    ".ico": FileType.ICO,
+    ".txt": FileType.TXT,
+    ".text": FileType.TXT,
+    ".html": FileType.HTML,
+    ".htm": FileType.HTML,
+    ".json": FileType.JSON,
+    ".xml": FileType.XML,
+    ".csv": FileType.CSV,
 }
 
 _MAGIC = [

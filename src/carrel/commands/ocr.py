@@ -11,16 +11,17 @@ from __future__ import annotations
 
 import functools
 import shutil
+import subprocess
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import click
 
 from carrel.core import adapters
 from carrel.core.filetypes import FileType, detect_or_die
-from carrel.core.output import (CarrelError, CarrelInputError, ExitCode, emit,
-                                fail, progress)
+from carrel.core.output import CarrelError, CarrelInputError, ExitCode, emit, fail, progress
 
 TARGETS = ("txt", "pdf", "md")
 
@@ -32,8 +33,11 @@ _OCRMYPDF_PRIOR_TEXT = 6  # input already carries a text layer
 #   tesseract: "Failed loading language 'xyz'"
 #   ocrmypdf : "OCR engine does not have language data for the following
 #               requested languages: xyz"
-_LANG_ERR_MARKERS = ("failed loading language", "requested languages",
-                     "does not have language data")
+_LANG_ERR_MARKERS = (
+    "failed loading language",
+    "requested languages",
+    "does not have language data",
+)
 
 
 class LanguagePackError(CarrelError):
@@ -45,12 +49,13 @@ class LanguagePackError(CarrelError):
 # ------------------------------------------------------------------ engines
 
 
-def _engine_error(engine: str, proc, lang: str) -> CarrelError:
+def _engine_error(engine: str, proc: subprocess.CompletedProcess[str], lang: str) -> CarrelError:
     detail = (proc.stderr or proc.stdout or "").strip()
     msg = f"{engine} failed (rc={proc.returncode}): {detail}"
     if any(marker in detail.lower() for marker in _LANG_ERR_MARKERS):
-        hints = "\n".join(f"  hint: sudo apt install tesseract-ocr-{code}"
-                          for code in lang.split("+"))
+        hints = "\n".join(
+            f"  hint: sudo apt install tesseract-ocr-{code}" for code in lang.split("+")
+        )
         return LanguagePackError(f"{msg}\n{hints}")
     return CarrelError(msg)
 
@@ -65,8 +70,7 @@ def _tesseract_text(src: Path, lang: str) -> str:
 def _tesseract_pdf(src: Path, dest: Path, lang: str) -> None:
     with tempfile.TemporaryDirectory(prefix="carrel-ocr-") as td:
         base = Path(td) / "ocr"  # tesseract appends .pdf itself
-        proc = adapters.run("tesseract", str(src), str(base), "-l", lang, "pdf",
-                            timeout=300)
+        proc = adapters.run("tesseract", str(src), str(base), "-l", lang, "pdf", timeout=300)
         if proc.returncode != 0:
             raise _engine_error("tesseract", proc, lang)
         shutil.move(f"{base}.pdf", dest)
@@ -74,12 +78,13 @@ def _tesseract_pdf(src: Path, dest: Path, lang: str) -> None:
 
 def _ocrmypdf(src: Path, dest: Path, lang: str, redo: bool) -> None:
     mode = "--force-ocr" if redo else "--skip-text"
-    proc = adapters.run("ocrmypdf", mode, "-l", lang, "--output-type", "pdf",
-                        str(src), str(dest), timeout=600)
+    proc = adapters.run(
+        "ocrmypdf", mode, "-l", lang, "--output-type", "pdf", str(src), str(dest), timeout=600
+    )
     if proc.returncode == _OCRMYPDF_PRIOR_TEXT:
         raise CarrelError(
-            f"{src} already has a text layer — nothing to OCR "
-            f"(pass --redo to re-OCR it anyway)")
+            f"{src} already has a text layer — nothing to OCR (pass --redo to re-OCR it anyway)"
+        )
     if proc.returncode not in _OCRMYPDF_OK:
         raise _engine_error("ocrmypdf", proc, lang)
 
@@ -101,8 +106,13 @@ def default_dest(src: Path, to: str) -> Path:
     return dest if dest != src else src.with_name(f"{src.stem}.ocr.{to}")
 
 
-def ocr_file(src: Path | str, dest: Path | str | None = None, lang: str = "eng",
-             to: str = "txt", redo: bool = False) -> dict[str, Any]:
+def ocr_file(
+    src: Path | str,
+    dest: Path | str | None = None,
+    lang: str = "eng",
+    to: str = "txt",
+    redo: bool = False,
+) -> dict[str, Any]:
     """OCR `src` (pdf/jpg/png) into `dest`; returns the result record.
 
     Record shape: {"src", "dest", "engine": "ocrmypdf"|"tesseract",
@@ -115,7 +125,8 @@ def ocr_file(src: Path | str, dest: Path | str | None = None, lang: str = "eng",
     src = Path(src)
     if to not in TARGETS:
         raise CarrelInputError(
-            f"unsupported OCR target {to!r} (expected one of: {', '.join(TARGETS)})")
+            f"unsupported OCR target {to!r} (expected one of: {', '.join(TARGETS)})"
+        )
     ftype = detect_or_die(src)
     if ftype not in (FileType.PDF, FileType.JPG, FileType.PNG):
         raise CarrelInputError(f"ocr supports pdf/jpg/png input, got {ftype.value}: {src}")
@@ -136,7 +147,8 @@ def ocr_file(src: Path | str, dest: Path | str | None = None, lang: str = "eng",
                 if proc.returncode != 0:
                     raise CarrelError(
                         f"pdftotext failed on the OCRed pdf (rc={proc.returncode}): "
-                        f"{(proc.stderr or '').strip()}")
+                        f"{(proc.stderr or '').strip()}"
+                    )
                 dest.write_text(proc.stdout, encoding="utf-8")
                 chars = len(proc.stdout)
     else:
@@ -180,21 +192,38 @@ def _human(record: dict[str, Any]) -> None:
 
 @click.command(name="ocr")
 @click.argument("src", type=click.Path(path_type=Path))
-@click.option("-o", "--out", type=click.Path(path_type=Path),
-              help="Output file. Default: SRC with the target extension "
-                   "(SRC.ocr.pdf for pdf → pdf).")
-@click.option("--lang", default="eng", show_default=True, metavar="LANG",
-              help="OCR language(s), tesseract codes, e.g. eng or eng+deu.")
-@click.option("--to", type=click.Choice(TARGETS), default="txt", show_default=True,
-              help="Output: extracted text (txt/md) or a searchable PDF.")
-@click.option("--redo", is_flag=True,
-              help="Re-OCR PDF pages even if they already have text "
-                   "(ocrmypdf --force-ocr; default skips them).")
+@click.option(
+    "-o",
+    "--out",
+    type=click.Path(path_type=Path),
+    help="Output file. Default: SRC with the target extension (SRC.ocr.pdf for pdf → pdf).",
+)
+@click.option(
+    "--lang",
+    default="eng",
+    show_default=True,
+    metavar="LANG",
+    help="OCR language(s), tesseract codes, e.g. eng or eng+deu.",
+)
+@click.option(
+    "--to",
+    type=click.Choice(TARGETS),
+    default="txt",
+    show_default=True,
+    help="Output: extracted text (txt/md) or a searchable PDF.",
+)
+@click.option(
+    "--redo",
+    is_flag=True,
+    help="Re-OCR PDF pages even if they already have text "
+    "(ocrmypdf --force-ocr; default skips them).",
+)
 @click.option("--force", is_flag=True, help="Allow overwriting an existing output file.")
 @click.pass_context
 @_handled
-def cmd(ctx: click.Context, src: Path, out: Path | None, lang: str, to: str,
-        redo: bool, force: bool) -> None:
+def cmd(
+    ctx: click.Context, src: Path, out: Path | None, lang: str, to: str, redo: bool, force: bool
+) -> None:
     """OCR an image or PDF into text (txt/md) or a searchable PDF.
 
     Images (jpg/png) run through tesseract; PDFs through ocrmypdf, which

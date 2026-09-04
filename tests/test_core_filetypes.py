@@ -93,13 +93,24 @@ def test_detect_or_die_unsupported(tmp_path):
 def test_type_properties():
     assert FileType.PNG.is_image and FileType.JPG.is_image and FileType.ICO.is_image
     assert not FileType.PDF.is_image
-    for t in (FileType.MD, FileType.TXT, FileType.HTML, FileType.JSON,
-              FileType.XML, FileType.CSV):
+    for t in (FileType.MD, FileType.TXT, FileType.HTML, FileType.JSON, FileType.XML, FileType.CSV):
         assert t.is_text
     assert not FileType.PDF.is_text and not FileType.PNG.is_text
 
 
 def test_supported_extensions_registry():
-    for ext in (".pdf", ".md", ".jpg", ".jpeg", ".png", ".ico", ".txt",
-                ".html", ".htm", ".json", ".xml", ".csv"):
+    for ext in (
+        ".pdf",
+        ".md",
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".ico",
+        ".txt",
+        ".html",
+        ".htm",
+        ".json",
+        ".xml",
+        ".csv",
+    ):
         assert ext in SUPPORTED_EXTENSIONS

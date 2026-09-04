@@ -7,7 +7,7 @@ traceback instead of the one-line error.
 
 Related docs: [Install](INSTALL.md) · [Quickstart](QUICKSTART.md) ·
 [Reference](REFERENCE.md) · [Configuration](CONFIGURATION.md) ·
-[README](https://github.com/FirstCastSolutions423/carrel/blob/main/README.md)
+[README](https://github.com/coltonbearden/carrel/blob/main/README.md)
 
 ## Exit code 3: a tool is missing
 

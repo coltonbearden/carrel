@@ -1,7 +1,7 @@
 {
   "name": "carrel-agent",
   "description": "Agentic file librarian for carrel desks: file-librarian agent, agent-workflows skill, carrel MCP server (search/pack/inspect), and a PostToolUse hook that re-indexes files Claude writes.",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "author": { "name": "Colton Bearden" },
   "license": "MIT",
   "keywords": ["agent", "mcp", "index", "search", "hooks", "librarian"]

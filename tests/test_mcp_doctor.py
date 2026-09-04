@@ -21,10 +21,10 @@ from carrel.commands.doctor import CAPABILITIES, build_report
 from carrel.commands.mcp import TOOLS, serve
 from carrel.core.db import DeskDB
 
-
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
+
 
 def make_tree(root: Path) -> None:
     """Synthesize a small mixed-type input tree (no shared fixtures)."""
@@ -41,9 +41,7 @@ def make_tree(root: Path) -> None:
 
 def rpc(lines: list[dict | str], root: Path | str = ".") -> list[dict]:
     """Drive serve() in-process; accepts dicts or raw (possibly malformed) lines."""
-    raw = "".join(
-        (line if isinstance(line, str) else json.dumps(line)) + "\n" for line in lines
-    )
+    raw = "".join((line if isinstance(line, str) else json.dumps(line)) + "\n" for line in lines)
     out = io.StringIO()
     serve(io.StringIO(raw), out, default_root=root)
     return [json.loads(ln) for ln in out.getvalue().splitlines()]
@@ -52,8 +50,14 @@ def rpc(lines: list[dict | str], root: Path | str = ".") -> list[dict]:
 def call_tool(name: str, arguments: dict, root: Path | str = ".") -> dict:
     """tools/call round-trip; returns {'isError': bool, 'payload': parsed-json}."""
     (resp,) = rpc(
-        [{"jsonrpc": "2.0", "id": 1, "method": "tools/call",
-          "params": {"name": name, "arguments": arguments}}],
+        [
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {"name": name, "arguments": arguments},
+            }
+        ],
         root=root,
     )
     result = resp["result"]
@@ -66,6 +70,7 @@ def call_tool(name: str, arguments: dict, root: Path | str = ".") -> dict:
 # doctor
 # ---------------------------------------------------------------------------
 
+
 class TestDoctor:
     def test_human_output_exit_zero(self):
         result = CliRunner().invoke(cli, ["doctor"])
@@ -77,8 +82,9 @@ class TestDoctor:
         result = CliRunner().invoke(cli, ["doctor", "--json"])
         assert result.exit_code == 0
         report = json.loads(result.output)
-        assert {"product", "python", "adapters", "commands",
-                "icc_dirs", "tesseract_langs"} <= set(report)
+        assert {"product", "python", "adapters", "commands", "icc_dirs", "tesseract_langs"} <= set(
+            report
+        )
 
     def test_json_flag_global(self):
         result = CliRunner().invoke(cli, ["--json", "doctor"])
@@ -113,11 +119,23 @@ class TestDoctor:
 # mcp: protocol behavior (in-process)
 # ---------------------------------------------------------------------------
 
+
 class TestMcpProtocol:
     def test_initialize_echoes_client_protocol_version(self):
-        (resp,) = rpc([{"jsonrpc": "2.0", "id": 1, "method": "initialize",
-                        "params": {"protocolVersion": "2024-11-05",
-                                   "capabilities": {}, "clientInfo": {"name": "t"}}}])
+        (resp,) = rpc(
+            [
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "initialize",
+                    "params": {
+                        "protocolVersion": "2024-11-05",
+                        "capabilities": {},
+                        "clientInfo": {"name": "t"},
+                    },
+                }
+            ]
+        )
         assert resp["id"] == 1
         assert resp["result"]["protocolVersion"] == "2024-11-05"
         assert resp["result"]["capabilities"] == {"tools": {}}
@@ -128,10 +146,12 @@ class TestMcpProtocol:
         assert resp["result"]["protocolVersion"] == "2025-06-18"
 
     def test_initialized_notification_is_ignored(self):
-        responses = rpc([
-            {"jsonrpc": "2.0", "method": "notifications/initialized"},
-            {"jsonrpc": "2.0", "id": 2, "method": "ping"},
-        ])
+        responses = rpc(
+            [
+                {"jsonrpc": "2.0", "method": "notifications/initialized"},
+                {"jsonrpc": "2.0", "id": 2, "method": "ping"},
+            ]
+        )
         assert len(responses) == 1  # nothing emitted for the notification
         assert responses[0] == {"jsonrpc": "2.0", "id": 2, "result": {}}
 
@@ -146,19 +166,23 @@ class TestMcpProtocol:
         assert tools == TOOLS
 
     def test_unknown_method_errors_and_server_keeps_serving(self):
-        responses = rpc([
-            {"jsonrpc": "2.0", "id": 1, "method": "resources/list"},
-            {"jsonrpc": "2.0", "id": 2, "method": "ping"},
-        ])
+        responses = rpc(
+            [
+                {"jsonrpc": "2.0", "id": 1, "method": "resources/list"},
+                {"jsonrpc": "2.0", "id": 2, "method": "ping"},
+            ]
+        )
         assert responses[0]["error"]["code"] == -32601
         assert "resources/list" in responses[0]["error"]["message"]
         assert responses[1]["result"] == {}
 
     def test_malformed_line_errors_and_server_keeps_serving(self):
-        responses = rpc([
-            "{this is not json",
-            {"jsonrpc": "2.0", "id": 2, "method": "ping"},
-        ])
+        responses = rpc(
+            [
+                "{this is not json",
+                {"jsonrpc": "2.0", "id": 2, "method": "ping"},
+            ]
+        )
         assert responses[0]["error"]["code"] == -32700
         assert responses[0]["id"] is None
         assert responses[1]["result"] == {}
@@ -168,8 +192,16 @@ class TestMcpProtocol:
         assert resp["error"]["code"] == -32600
 
     def test_unknown_tool_errors(self):
-        (resp,) = rpc([{"jsonrpc": "2.0", "id": 1, "method": "tools/call",
-                        "params": {"name": "carrel_nope", "arguments": {}}}])
+        (resp,) = rpc(
+            [
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {"name": "carrel_nope", "arguments": {}},
+                }
+            ]
+        )
         assert resp["error"]["code"] == -32602
 
     def test_blank_lines_ignored_eof_clean(self):
@@ -181,6 +213,7 @@ class TestMcpProtocol:
 # ---------------------------------------------------------------------------
 # mcp: tool bodies
 # ---------------------------------------------------------------------------
+
 
 class TestMcpTools:
     def test_inspect_txt(self, tmp_path):
@@ -272,8 +305,7 @@ class TestMcpTools:
             for name in ("notes.txt", "doc.md"):
                 fid = db.upsert_file(tmp_path / name, ftype="txt")
                 db.set_content(fid, tmp_path / name, "shared common token here")
-        res = call_tool("carrel_search",
-                        {"query": "common", "root": str(tmp_path), "limit": 1})
+        res = call_tool("carrel_search", {"query": "common", "root": str(tmp_path), "limit": 1})
         assert res["payload"]["count"] == 1
 
 
@@ -281,26 +313,44 @@ class TestMcpTools:
 # mcp: real subprocess over stdio pipes
 # ---------------------------------------------------------------------------
 
+
 class TestMcpSubprocess:
     def test_stdio_handshake_and_tool_call(self, tmp_path):
         make_tree(tmp_path)
         lines = [
-            {"jsonrpc": "2.0", "id": 1, "method": "initialize",
-             "params": {"protocolVersion": "2025-06-18", "capabilities": {},
-                        "clientInfo": {"name": "pytest", "version": "0"}}},
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2025-06-18",
+                    "capabilities": {},
+                    "clientInfo": {"name": "pytest", "version": "0"},
+                },
+            },
             {"jsonrpc": "2.0", "method": "notifications/initialized"},
             {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
-            {"jsonrpc": "2.0", "id": 3, "method": "tools/call",
-             "params": {"name": "carrel_inspect",
-                        "arguments": {"path": str(tmp_path / "notes.txt")}}},
+            {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "tools/call",
+                "params": {
+                    "name": "carrel_inspect",
+                    "arguments": {"path": str(tmp_path / "notes.txt")},
+                },
+            },
             {"jsonrpc": "2.0", "id": 4, "method": "no/such/method"},
         ]
-        proc = subprocess.run(
-            [sys.executable, "-c",
-             "import sys; sys.argv = ['carrel', 'mcp']; "
-             "from carrel.cli import main; main()"],
+        proc = subprocess.run(  # noqa: PLW1510 — tests inspect returncode
+            [
+                sys.executable,
+                "-c",
+                "import sys; sys.argv = ['carrel', 'mcp']; from carrel.cli import main; main()",
+            ],
             input="".join(json.dumps(m) + "\n" for m in lines),
-            capture_output=True, text=True, timeout=60,
+            capture_output=True,
+            text=True,
+            timeout=60,
         )
         assert proc.returncode == 0, proc.stderr  # EOF -> clean exit
         responses = [json.loads(ln) for ln in proc.stdout.splitlines()]

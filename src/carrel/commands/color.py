@@ -11,12 +11,11 @@ A click group with three subcommands:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import click
 
-from carrel.commands.proof import (BUILTIN_PROFILES, _handled, load_image_cms,
-                                   resolve_profile)
+from carrel.commands.proof import BUILTIN_PROFILES, _handled, load_image_cms, resolve_profile
 from carrel.core.filetypes import detect_or_die
 from carrel.core.output import CarrelInputError, emit
 
@@ -35,6 +34,7 @@ def cmd() -> None:
 # --------------------------------------------------------------------------
 # palette
 
+
 def palette_colors(src: Path | str, n: int = 8) -> list[dict[str, Any]]:
     """Dominant colors of an image: [{"hex", "proportion"}], largest first."""
     from PIL import Image
@@ -42,19 +42,20 @@ def palette_colors(src: Path | str, n: int = 8) -> list[dict[str, Any]]:
     src = Path(src)
     ftype = detect_or_die(src)
     if not ftype.is_image:
-        raise CarrelInputError(f"palette needs a raster image (png/jpg/ico), got "
-                               f"{ftype.value}: {src}")
+        raise CarrelInputError(
+            f"palette needs a raster image (png/jpg/ico), got {ftype.value}: {src}"
+        )
     with Image.open(src) as im:
         rgb = im.convert("RGB")
     quantized = rgb.quantize(colors=n)
-    palette = quantized.getpalette()
+    palette = quantized.getpalette() or []
     counts = quantized.getcolors(maxcolors=n) or []
     total = sum(count for count, _ in counts)
     entries = []
     for count, index in sorted(counts, reverse=True):
-        r, g, b = palette[3 * index: 3 * index + 3]
-        entries.append({"hex": f"#{r:02x}{g:02x}{b:02x}",
-                        "proportion": round(count / total, 4)})
+        i = cast("int", index)  # getcolors() on a "P" image yields palette indices
+        r, g, b = palette[3 * i : 3 * i + 3]
+        entries.append({"hex": f"#{r:02x}{g:02x}{b:02x}", "proportion": round(count / total, 4)})
     return entries
 
 
@@ -68,8 +69,13 @@ def _palette_human(entries: list[dict[str, Any]]) -> None:
 
 @cmd.command(name="palette")
 @click.argument("src", type=click.Path(path_type=Path))
-@click.option("--n", type=click.IntRange(1, 256), default=8, show_default=True,
-              help="Number of colors to extract.")
+@click.option(
+    "--n",
+    type=click.IntRange(1, 256),
+    default=8,
+    show_default=True,
+    help="Number of colors to extract.",
+)
 @click.pass_context
 @_handled
 def palette(ctx: click.Context, src: Path, n: int) -> None:
@@ -84,32 +90,37 @@ def palette(ctx: click.Context, src: Path, n: int) -> None:
 # --------------------------------------------------------------------------
 # convert
 
-def convert_profile(src: Path | str, to_profile: str,
-                    out: Path | str | None = None) -> dict[str, Any]:
+
+def convert_profile(
+    src: Path | str, to_profile: str, out: Path | str | None = None
+) -> dict[str, Any]:
     """Convert src into the target ICC profile and embed it in the output."""
-    ImageCms = load_image_cms()
+    ImageCms = load_image_cms()  # noqa: N806 — module alias
     from PIL import Image
 
     src = Path(src)
     ftype = detect_or_die(src)
     if not ftype.is_image:
-        raise CarrelInputError(f"color convert needs a raster image (png/jpg/ico), "
-                               f"got {ftype.value}: {src}")
+        raise CarrelInputError(
+            f"color convert needs a raster image (png/jpg/ico), got {ftype.value}: {src}"
+        )
     profile_path = resolve_profile(to_profile)
     target = ImageCms.getOpenProfile(str(profile_path))
     space = target.profile.xcolor_space.strip()
     if space not in _SPACE_MODES:
-        raise CarrelInputError(f"unsupported profile color space '{space}' in "
-                               f"{profile_path.name} (supported: RGB, CMYK, GRAY)")
+        raise CarrelInputError(
+            f"unsupported profile color space '{space}' in "
+            f"{profile_path.name} (supported: RGB, CMYK, GRAY)"
+        )
     mode, default_ext = _SPACE_MODES[space]
 
-    label = to_profile.lower() if to_profile.lower() in BUILTIN_PROFILES \
-        else profile_path.stem
+    label = to_profile.lower() if to_profile.lower() in BUILTIN_PROFILES else profile_path.stem
     out = Path(out) if out else src.with_name(f"{src.stem}.{label}{default_ext}")
     if mode == "CMYK" and out.suffix.lower() not in (".jpg", ".jpeg", ".tif", ".tiff"):
         raise CarrelInputError(
             f"CMYK output cannot be saved as {out.suffix or out.name} — "
-            "use a .jpg or .tif output path")
+            "use a .jpg or .tif output path"
+        )
 
     with Image.open(src) as im:
         rgb = im.convert("RGB")
@@ -120,23 +131,37 @@ def convert_profile(src: Path | str, to_profile: str,
         raise CarrelInputError(f"cannot convert to {profile_path.name}: {e}") from e
     out.parent.mkdir(parents=True, exist_ok=True)
     converted.save(out, icc_profile=profile_path.read_bytes())
-    return {"src": str(src), "out": str(out), "profile": str(profile_path),
-            "profile_name": ImageCms.getProfileName(target).strip(),
-            "mode": mode, "ok": True}
+    return {
+        "src": str(src),
+        "out": str(out),
+        "profile": str(profile_path),
+        "profile_name": ImageCms.getProfileName(target).strip(),
+        "mode": mode,
+        "ok": True,
+    }
 
 
 def _convert_human(result: dict[str, Any]) -> None:
-    click.echo(f"{result['src']} -> {result['out']}  "
-               f"[{result['mode']}, {result['profile_name']}]")
+    click.echo(f"{result['src']} -> {result['out']}  [{result['mode']}, {result['profile_name']}]")
 
 
 @cmd.command(name="convert")
 @click.argument("src", type=click.Path(path_type=Path))
-@click.option("--to-profile", "to_profile", required=True, metavar="P",
-              help="Target ICC profile: .icc path or builtin alias ("
-                   + ", ".join(sorted(BUILTIN_PROFILES)) + ").")
-@click.option("-o", "--out", type=click.Path(dir_okay=False, path_type=Path),
-              help="Output path [default: <SRC>.<profile>.png/.jpg].")
+@click.option(
+    "--to-profile",
+    "to_profile",
+    required=True,
+    metavar="P",
+    help="Target ICC profile: .icc path or builtin alias ("
+    + ", ".join(sorted(BUILTIN_PROFILES))
+    + ").",
+)
+@click.option(
+    "-o",
+    "--out",
+    type=click.Path(dir_okay=False, path_type=Path),
+    help="Output path [default: <SRC>.<profile>.png/.jpg].",
+)
 @click.pass_context
 @_handled
 def convert(ctx: click.Context, src: Path, to_profile: str, out: Path | None) -> None:
@@ -149,6 +174,7 @@ def convert(ctx: click.Context, src: Path, to_profile: str, out: Path | None) ->
 
 # --------------------------------------------------------------------------
 # check
+
 
 def _parse_hex(color: str) -> tuple[int, int, int]:
     digits = color.strip().lstrip("#")
@@ -181,10 +207,10 @@ def contrast_ratio(fg: str, bg: str) -> float:
 def _check_human(result: dict[str, Any]) -> None:
     verdict = {True: "PASS", False: "fail"}
     click.echo(f"{result['fg']} on {result['bg']}: contrast {result['ratio']}:1")
-    click.echo(f"  AA  normal {verdict[result['aa_normal']]}   "
-               f"large {verdict[result['aa_large']]}")
-    click.echo(f"  AAA normal {verdict[result['aaa_normal']]}   "
-               f"large {verdict[result['aaa_large']]}")
+    click.echo(f"  AA  normal {verdict[result['aa_normal']]}   large {verdict[result['aa_large']]}")
+    click.echo(
+        f"  AAA normal {verdict[result['aaa_normal']]}   large {verdict[result['aaa_large']]}"
+    )
 
 
 @cmd.command(name="check")

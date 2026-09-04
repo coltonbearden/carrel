@@ -25,7 +25,7 @@ from carrel.core.filetypes import FileType
 from carrel.core.output import CarrelError, CarrelInputError
 
 
-def run(*args: str) -> "CliRunner.Result":
+def run(*args: str) -> CliRunner.Result:
     return CliRunner().invoke(cli, list(args))
 
 
@@ -37,6 +37,7 @@ def all_output(res) -> str:
 
 
 # ------------------------------------------------------------------ helpers
+
 
 def test_normalize_target_aliases():
     assert normalize_target(".PDF") is FileType.PDF
@@ -59,6 +60,7 @@ def test_help_lists_supported_pairs():
 
 
 # ------------------------------------------------------- text conversions
+
 
 @needs("pandoc")
 def test_md_to_html_pandoc(tmp_copy, tmp_path: Path):
@@ -116,6 +118,7 @@ def test_txt_to_html_pre_wrapped(tmp_copy):
 
 
 # ------------------------------------------------------------ pdf pipeline
+
 
 @needs("weasyprint")
 def test_md_to_html_to_pdf_chain(tmp_copy, tmp_path: Path):
@@ -201,6 +204,7 @@ def test_pdf_to_jpg_all_pages(tmp_copy):
 
 # ---------------------------------------------------------------- images
 
+
 def test_png_to_ico_to_png_roundtrip(tmp_copy):
     """Acceptance: png→ico→png roundtrip."""
     src = tmp_copy("sample.png")
@@ -246,6 +250,7 @@ def test_image_to_pdf(tmp_copy):
 
 
 # ---------------------------------------------------------- data formats
+
 
 def test_json_csv_json_roundtrip_preserves_flat_data(tmp_copy, tmp_path: Path):
     """Acceptance: json→csv→json preserves flat list-of-objects data."""
@@ -321,6 +326,7 @@ def test_xml_to_json(tmp_copy):
 
 # ------------------------------------------------- overwrite / bad input
 
+
 def test_overwrite_refused_without_force(tmp_copy):
     """Acceptance: refuse overwrite without --force (exit 1)."""
     src = tmp_copy("sample.txt")
@@ -364,6 +370,7 @@ def test_unknown_target_type_is_usage_error(tmp_copy):
 
 # ------------------------------------------------------- multi-src / -o
 
+
 def test_multiple_src_requires_out_dir(tmp_copy):
     a, b = tmp_copy("sample.txt"), tmp_copy("sample.md")
     res = run("convert", str(a), str(b), "--to", "html")
@@ -373,19 +380,26 @@ def test_multiple_src_requires_out_dir(tmp_copy):
 
 def test_output_and_out_dir_mutually_exclusive(tmp_copy, tmp_path: Path):
     src = tmp_copy("sample.txt")
-    res = run("convert", str(src), "--to", "html",
-              "-o", str(tmp_path / "x.html"), "--out-dir", str(tmp_path))
+    res = run(
+        "convert",
+        str(src),
+        "--to",
+        "html",
+        "-o",
+        str(tmp_path / "x.html"),
+        "--out-dir",
+        str(tmp_path),
+    )
     assert res.exit_code == 2
 
 
 def test_multiple_src_with_out_dir(tmp_copy, tmp_path: Path):
     a, b = tmp_copy("sample.txt"), tmp_copy("sample.csv", "books.csv")
     out = tmp_path / "outputs"
-    res = run("--json", "convert", str(a), str(b), "--to", "html",
-              "--out-dir", str(out))
+    res = run("--json", "convert", str(a), str(b), "--to", "html", "--out-dir", str(out))
     assert res.exit_code == 0, all_output(res)
     assert (out / "sample.html").exists()  # from sample.txt
-    assert (out / "books.html").exists()   # from books.csv
+    assert (out / "books.html").exists()  # from books.csv
     results = json.loads(res.stdout)
     assert len(results) == 2 and all(r["ok"] for r in results)
 
@@ -393,8 +407,7 @@ def test_multiple_src_with_out_dir(tmp_copy, tmp_path: Path):
 def test_batch_continues_after_one_failure(tmp_copy, tmp_path: Path):
     good, bad = tmp_copy("sample.csv"), tmp_copy("sample.png")
     out = tmp_path / "outputs"
-    res = run("--json", "convert", str(bad), str(good), "--to", "json",
-              "--out-dir", str(out))
+    res = run("--json", "convert", str(bad), str(good), "--to", "json", "--out-dir", str(out))
     assert res.exit_code == 4  # first failure's code
     results = json.loads(res.stdout)
     assert [r["ok"] for r in results] == [False, True]
@@ -413,6 +426,7 @@ def test_explicit_output_path(tmp_copy, tmp_path: Path):
 
 # ------------------------------------------------------------ library API
 
+
 def test_convert_file_library_api(tmp_copy, tmp_path: Path):
     src = tmp_copy("sample.txt")
     dest = tmp_path / "out.md"
@@ -427,14 +441,27 @@ def test_convert_file_library_api(tmp_copy, tmp_path: Path):
 
 # ------------------------------------------------------------- subprocess
 
+
 @needs("pdftotext")
 def test_subprocess_real_cli(tmp_copy, tmp_path: Path):
     src = tmp_copy("text+image.pdf")
     dest = tmp_path / "out.txt"
-    proc = subprocess.run(
-        [sys.executable, "-m", "carrel.cli", "--json", "convert", str(src),
-         "--to", "txt", "-o", str(dest)],
-        capture_output=True, text=True, timeout=120,
+    proc = subprocess.run(  # noqa: PLW1510 — tests inspect returncode
+        [
+            sys.executable,
+            "-m",
+            "carrel.cli",
+            "--json",
+            "convert",
+            str(src),
+            "--to",
+            "txt",
+            "-o",
+            str(dest),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
     )
     assert proc.returncode == 0, proc.stderr
     rec = json.loads(proc.stdout)[0]

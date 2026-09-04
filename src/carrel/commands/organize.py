@@ -17,9 +17,10 @@ from __future__ import annotations
 
 import functools
 import os
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import click
 
@@ -28,9 +29,15 @@ from carrel.core.output import CarrelError, CarrelInputError, emit, fail
 
 TYPE_DIRS: dict[FileType, str] = {
     FileType.PDF: "pdf",
-    FileType.JPG: "images", FileType.PNG: "images", FileType.ICO: "images",
-    FileType.JSON: "data", FileType.XML: "data", FileType.CSV: "data",
-    FileType.MD: "docs", FileType.TXT: "docs", FileType.HTML: "docs",
+    FileType.JPG: "images",
+    FileType.PNG: "images",
+    FileType.ICO: "images",
+    FileType.JSON: "data",
+    FileType.XML: "data",
+    FileType.CSV: "data",
+    FileType.MD: "docs",
+    FileType.TXT: "docs",
+    FileType.HTML: "docs",
 }
 TYPE_CATEGORIES = ("pdf", "images", "data", "docs")
 
@@ -102,14 +109,14 @@ def _uncollide(dest: Path, taken: set[Path]) -> Path:
 def _build_plan(directory: Path, by: str, into: dict[str, str]) -> list[dict[str, Any]]:
     plan: list[dict[str, Any]] = []
     taken: set[Path] = set()
-    files = sorted((p for p in directory.iterdir()
-                    if p.is_file() and not p.name.startswith(".")),
-                   key=lambda p: p.name)
+    files = sorted(
+        (p for p in directory.iterdir() if p.is_file() and not p.name.startswith(".")),
+        key=lambda p: p.name,
+    )
     for src in files:
         subdir, reason = _bucket(src, by, into)
         if subdir is None:
-            plan.append({"src": str(src), "dest": None, "action": "skip",
-                         "reason": reason})
+            plan.append({"src": str(src), "dest": None, "action": "skip", "reason": reason})
             continue
         dest = _uncollide(directory / subdir / src.name, taken)
         taken.add(dest)
@@ -130,31 +137,42 @@ def _human_plan(applied: bool) -> Callable[[list[dict[str, Any]]], None]:
         if applied:
             click.echo(f"{moves} file(s) moved.")
         else:
-            click.echo(f"dry-run: {moves} move(s) planned — re-run with "
-                       "--apply to execute.")
+            click.echo(f"dry-run: {moves} move(s) planned — re-run with --apply to execute.")
 
     return _print
 
 
 @click.command(name="organize")
 @click.argument("directory", type=click.Path(path_type=Path))
-@click.option("--by", "by", type=click.Choice(["type", "date", "exif-date"]),
-              default="type", show_default=True,
-              help="Grouping: 'type' -> pdf/, images/ (jpg, png, ico), "
-                   "data/ (json, xml, csv), docs/ (md, txt, html); "
-                   "'date' -> YYYY/MM from mtime; 'exif-date' -> YYYY/MM from "
-                   "EXIF DateTimeOriginal, mtime fallback (images only; other "
-                   "files are skipped).")
-@click.option("--into", "into_", multiple=True, metavar="CATEGORY=DIR",
-              help="Override a type category's destination subdir, e.g. "
-                   "--into images=pics (only with --by type; repeatable).")
-@click.option("--apply/--dry-run", "apply_", default=False,
-              help="Execute the moves. Default is a dry-run that only prints "
-                   "the plan.")
+@click.option(
+    "--by",
+    "by",
+    type=click.Choice(["type", "date", "exif-date"]),
+    default="type",
+    show_default=True,
+    help="Grouping: 'type' -> pdf/, images/ (jpg, png, ico), "
+    "data/ (json, xml, csv), docs/ (md, txt, html); "
+    "'date' -> YYYY/MM from mtime; 'exif-date' -> YYYY/MM from "
+    "EXIF DateTimeOriginal, mtime fallback (images only; other "
+    "files are skipped).",
+)
+@click.option(
+    "--into",
+    "into_",
+    multiple=True,
+    metavar="CATEGORY=DIR",
+    help="Override a type category's destination subdir, e.g. "
+    "--into images=pics (only with --by type; repeatable).",
+)
+@click.option(
+    "--apply/--dry-run",
+    "apply_",
+    default=False,
+    help="Execute the moves. Default is a dry-run that only prints the plan.",
+)
 @click.pass_context
 @_handled
-def cmd(ctx: click.Context, directory: Path, by: str, into_: tuple[str, ...],
-        apply_: bool) -> None:
+def cmd(ctx: click.Context, directory: Path, by: str, into_: tuple[str, ...], apply_: bool) -> None:
     """Plan (default) or perform (--apply) sorting DIRECTORY's files.
 
     Only files directly inside DIRECTORY are considered; subdirectories and
@@ -172,7 +190,8 @@ def cmd(ctx: click.Context, directory: Path, by: str, into_: tuple[str, ...],
         if not sep or not dest or category not in TYPE_CATEGORIES:
             raise click.UsageError(
                 f"--into expects CATEGORY=DIR with CATEGORY one of "
-                f"{', '.join(TYPE_CATEGORIES)} (got: {spec!r})")
+                f"{', '.join(TYPE_CATEGORIES)} (got: {spec!r})"
+            )
         into[category] = dest
     if into and by != "type":
         raise click.UsageError("--into only applies to --by type")
@@ -183,9 +202,9 @@ def cmd(ctx: click.Context, directory: Path, by: str, into_: tuple[str, ...],
         for entry in plan:
             if entry["action"] != "move":
                 continue
-            dest = Path(entry["dest"])
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            os.replace(entry["src"], dest)
+            dest_path = Path(entry["dest"])
+            dest_path.parent.mkdir(parents=True, exist_ok=True)
+            os.replace(entry["src"], dest_path)
             entry["action"] = "moved"
 
     emit(ctx, plan, human=_human_plan(applied=apply_))

@@ -2,20 +2,20 @@
 
 Two distinct casts:
 
-1. **Builder agents** in [`.claude/agents/`](https://github.com/FirstCastSolutions423/carrel/tree/main/.claude/agents/) — Claude Code subagents
+1. **Builder agents** in [`.claude/agents/`](https://github.com/coltonbearden/carrel/tree/main/.claude/agents/) — Claude Code subagents
    that built this repo, wave by wave. They stay useful for maintenance.
-2. **Shipped agents & skills** in [`plugins/`](https://github.com/FirstCastSolutions423/carrel/tree/main/plugins/) — what users get when they
+2. **Shipped agents & skills** in [`plugins/`](https://github.com/coltonbearden/carrel/tree/main/plugins/) — what users get when they
    install the marketplace plugins ([MARKETPLACE.md](MARKETPLACE.md)).
 
 ## The five builder agents
 
 | Agent | Role | Ground rule that keeps it honest |
 |---|---|---|
-| [`module-builder`](https://github.com/FirstCastSolutions423/carrel/blob/main/.claude/agents/module-builder.md) | Implements exactly one spec from `specs/` — command module + its tests | Touches only the paths its spec's **Owns** line lists; must paste real pytest output; no stubs/TODOs |
-| [`test-engineer`](https://github.com/FirstCastSolutions423/carrel/blob/main/.claude/agents/test-engineer.md) | Fixtures, integration tests, cookbook validation | Fixtures generated programmatically (`tests/fixtures/generate.py`), never hand-crafted binaries; drives the real CLI, no fs mocking |
-| [`integration-reviewer`](https://github.com/FirstCastSolutions423/carrel/blob/main/.claude/agents/integration-reviewer.md) | Adversarial cross-module review | Verifies by **execution**, not by reading reports — runs `--help`, fixture invocations, `--json | python -m json.tool`, failure paths; reports, never fixes |
-| [`doc-smith`](https://github.com/FirstCastSolutions423/carrel/blob/main/.claude/agents/doc-smith.md) | Reference docs, guides, cookbook recipes | Never documents a flag it didn't see in real `--help` output; runs every recipe before writing it down |
-| [`design-artist`](https://github.com/FirstCastSolutions423/carrel/blob/main/.claude/agents/design-artist.md) | Visual identity: SVG logo/banner, palette, README/TUI theming | Original hand-authored SVG only; palette defined once in `docs/BRAND.md` |
+| [`module-builder`](https://github.com/coltonbearden/carrel/blob/main/.claude/agents/module-builder.md) | Implements exactly one spec from `specs/` — command module + its tests | Touches only the paths its spec's **Owns** line lists; must paste real pytest output; no stubs/TODOs |
+| [`test-engineer`](https://github.com/coltonbearden/carrel/blob/main/.claude/agents/test-engineer.md) | Fixtures, integration tests, cookbook validation | Fixtures generated programmatically (`tests/fixtures/generate.py`), never hand-crafted binaries; drives the real CLI, no fs mocking |
+| [`integration-reviewer`](https://github.com/coltonbearden/carrel/blob/main/.claude/agents/integration-reviewer.md) | Adversarial cross-module review | Verifies by **execution**, not by reading reports — runs `--help`, fixture invocations, `--json | python -m json.tool`, failure paths; reports, never fixes |
+| [`doc-smith`](https://github.com/coltonbearden/carrel/blob/main/.claude/agents/doc-smith.md) | Reference docs, guides, cookbook recipes | Never documents a flag it didn't see in real `--help` output; runs every recipe before writing it down |
+| [`design-artist`](https://github.com/coltonbearden/carrel/blob/main/.claude/agents/design-artist.md) | Visual identity: SVG logo/banner, palette, README/TUI theming | Original hand-authored SVG only; palette defined once in `docs/BRAND.md` |
 
 ### How they actually built carrel: waves
 
@@ -109,5 +109,5 @@ those instead of Bash for search/pack/inspect. Details in
 ## See also
 
 - [PLUGIN_AUTHORING.md](PLUGIN_AUTHORING.md) — ship your own agent/skill in a plugin.
-- [`examples/cookbook/`](https://github.com/FirstCastSolutions423/carrel/tree/main/examples/cookbook/) — executable versions of these
+- [`examples/cookbook/`](https://github.com/coltonbearden/carrel/tree/main/examples/cookbook/) — executable versions of these
   pipelines (02 = watch loop, 08 = pack-for-Claude).

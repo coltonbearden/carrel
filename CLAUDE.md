@@ -10,7 +10,7 @@ The product name, tagline, and version live ONLY in `product.json` at the repo r
 
 - Python ≥3.12 (dev box: 3.14), managed by **uv** (`pyproject.toml`, `uv run`, `uv sync`).
 - Core library in `src/<pkg>/`; umbrella CLI entry in `pyproject.toml [project.scripts]`.
-- All external binaries are called through the single adapter layer `src/<pkg>/adapters.py` — never `subprocess` directly from command modules. Adapters do capability detection.
+- All external binaries are called through the single adapter layer `src/<pkg>/core/adapters.py` — never `subprocess` directly from command modules. Adapters do capability detection and convert timeouts into a clean error. One documented exception: `commands/watch.py` runs user-authored `--run` shell actions itself (shell-quoted substitutions, `--action-timeout`).
 - Repo root doubles as a Claude Code plugin marketplace: `.claude-plugin/marketplace.json` + `plugins/<name>/`.
 
 ## Coding standards
@@ -23,7 +23,7 @@ The product name, tagline, and version live ONLY in `product.json` at the repo r
 ## Exit code convention
 
 - `0` success
-- `1` general/unexpected error (message to stderr, no traceback unless `--debug`)
+- `1` general/unexpected error (message to stderr, no traceback unless `--debug`); `diff` reuses 1 to mean "inputs differ" (documented in its `--help`)
 - `2` bad usage/arguments (argparse-style)
 - `3` missing optional dependency (message names the binary + install hint)
 - `4` input file not found / unreadable / unsupported type
@@ -38,7 +38,11 @@ The product name, tagline, and version live ONLY in `product.json` at the repo r
 
 Subagents: read your spec in `specs/`, respect your write boundary exactly, and report: files touched, tests written+run (with real output), deviations from spec, open issues. Claims are verified by execution — write tests that actually run.
 
+## Versioning
+
+`product.json` is the only place a version is typed by hand. Bump it, run `scripts/sync_product.py` (regenerates `_product.py`, `pyproject.toml`, plugin/marketplace manifests, `CITATION.cff`), add a `CHANGELOG.md` entry; `tests/test_product_sync.py` fails otherwise. Release steps: `docs/RELEASING.md`.
+
 ## Git
 
-- Branch `main`. Commits at phase gates `phase(N): ...` and waves `wave(N): ...`.
+- Branch `main` is protected by a ruleset: changes land through a PR with green `lint`/`test`/`test-minimal` checks (admin bypass for emergencies only). Historical commits used `phase(N): ...` / `wave(N): ...`; use conventional prefixes (`fix:`, `feat:`, `docs:`, `ci:`) now.
 - Never commit generated junk (see .gitignore); fixtures ARE committed once generated.

@@ -43,14 +43,14 @@ def file_hash(path: Path, algo: str = "blake2b") -> str:
 class DeskDB:
     """Context-managed handle on the desk database under `root`."""
 
-    def __init__(self, root: Path | str = "."):
+    def __init__(self, root: Path | str = ".") -> None:
         self.root = Path(root).resolve()
         self.dir = self.root / ".carrel"
         self.path = self.dir / "carrel.db"
         self._conn: sqlite3.Connection | None = None
 
     # -- lifecycle ---------------------------------------------------------
-    def __enter__(self) -> "DeskDB":
+    def __enter__(self) -> DeskDB:
         self.dir.mkdir(exist_ok=True)
         self._conn = sqlite3.connect(self.path)
         self._conn.row_factory = sqlite3.Row
@@ -58,15 +58,17 @@ class DeskDB:
         self._conn.execute("PRAGMA foreign_keys=ON")
         return self
 
-    def __exit__(self, *exc) -> None:
-        assert self._conn
+    def __exit__(self, *exc: object) -> None:
+        if self._conn is None:
+            return
         self._conn.commit()
         self._conn.close()
         self._conn = None
 
     @property
     def conn(self) -> sqlite3.Connection:
-        assert self._conn, "DeskDB must be used as a context manager"
+        if self._conn is None:
+            raise RuntimeError("DeskDB must be used as a context manager")
         return self._conn
 
     @staticmethod
@@ -95,9 +97,7 @@ class DeskDB:
         return cur.fetchone()[0]
 
     def get_file(self, path: Path | str) -> sqlite3.Row | None:
-        return self.conn.execute(
-            "SELECT * FROM files WHERE path=?", (self.rel(path),)
-        ).fetchone()
+        return self.conn.execute("SELECT * FROM files WHERE path=?", (self.rel(path),)).fetchone()
 
     def is_fresh(self, path: Path) -> bool:
         row = self.get_file(path)
@@ -113,9 +113,7 @@ class DeskDB:
             "INSERT INTO docs (rowid, content, path) VALUES (?,?,?)",
             (file_id, content, self.rel(path)),
         )
-        self.conn.execute(
-            "UPDATE files SET indexed_at=? WHERE id=?", (time.time(), file_id)
-        )
+        self.conn.execute("UPDATE files SET indexed_at=? WHERE id=?", (time.time(), file_id))
 
     def fts_search(self, query: str, limit: int = 20) -> list[sqlite3.Row]:
         return self.conn.execute(
@@ -128,7 +126,8 @@ class DeskDB:
 
     def prune(self) -> int:
         gone = [
-            row["id"] for row in self.conn.execute("SELECT id, path FROM files")
+            row["id"]
+            for row in self.conn.execute("SELECT id, path FROM files")
             if not (self.root / row["path"]).exists()
         ]
         for fid in gone:
@@ -166,17 +165,25 @@ class DeskDB:
         row = self.get_file(path)
         if not row:
             return []
-        return [r["tag"] for r in self.conn.execute(
-            "SELECT tag FROM tags WHERE file_id=? ORDER BY tag", (row["id"],))]
+        return [
+            r["tag"]
+            for r in self.conn.execute(
+                "SELECT tag FROM tags WHERE file_id=? ORDER BY tag", (row["id"],)
+            )
+        ]
 
     def find_by_tags(self, tags: list[str]) -> list[str]:
         tags = [t.strip().lower() for t in tags]
         marks = ",".join("?" for _ in tags)
-        return [r["path"] for r in self.conn.execute(
-            f"""SELECT f.path FROM files f JOIN tags t ON t.file_id=f.id
+        return [
+            r["path"]
+            for r in self.conn.execute(
+                f"""SELECT f.path FROM files f JOIN tags t ON t.file_id=f.id
                 WHERE t.tag IN ({marks})
-                GROUP BY f.id HAVING COUNT(DISTINCT t.tag)=? ORDER BY f.path""",
-            (*tags, len(tags)))]
+                GROUP BY f.id HAVING COUNT(DISTINCT t.tag)=? ORDER BY f.path""",  # noqa: S608 — only `?` marks are interpolated
+                (*tags, len(tags)),
+            )
+        ]
 
     def add_note(self, path: Path, body: str) -> int:
         fid = self.ensure_file(path)

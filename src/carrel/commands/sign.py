@@ -14,16 +14,16 @@ import getpass
 import hashlib
 import io
 import re
+from collections.abc import Callable
 from datetime import date
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import click
 
 from carrel.core import adapters
 from carrel.core.filetypes import FileType, detect_or_die
-from carrel.core.output import (CarrelError, CarrelInputError, ExitCode, emit,
-                                fail, progress)
+from carrel.core.output import CarrelError, CarrelInputError, ExitCode, emit, fail, progress
 
 MARGIN = 36.0  # pt
 FONT, FONT_SIZE = "Helvetica", 12.0
@@ -68,14 +68,15 @@ def _parse_page(spec: str, total: int) -> int:
     try:
         number = int(spec)
     except ValueError:
-        raise click.UsageError(f"bad --page {spec!r} (expected 'first', 'last' or a number)")
+        raise click.UsageError(
+            f"bad --page {spec!r} (expected 'first', 'last' or a number)"
+        ) from None
     if not 1 <= number <= total:
         raise CarrelInputError(f"--page {number} out of range: document has {total} page(s)")
     return number - 1
 
 
-def _overlay_pdf(page_w: float, page_h: float, text: str, image: Path | None,
-                 pos: str) -> bytes:
+def _overlay_pdf(page_w: float, page_h: float, text: str, image: Path | None, pos: str) -> bytes:
     """One-page PDF with the stamp block anchored at a page corner."""
     from reportlab.lib.utils import ImageReader
     from reportlab.pdfbase.pdfmetrics import stringWidth
@@ -102,8 +103,14 @@ def _overlay_pdf(page_w: float, page_h: float, text: str, image: Path | None,
     c.setFont(FONT, FONT_SIZE)
     c.drawString(x_for(text_w), y_base, text)
     if image is not None:
-        c.drawImage(ImageReader(str(image)), x_for(img_w), y_base + FONT_SIZE + GAP,
-                    width=img_w, height=img_h, mask="auto")
+        c.drawImage(
+            ImageReader(str(image)),
+            x_for(img_w),
+            y_base + FONT_SIZE + GAP,
+            width=img_w,
+            height=img_h,
+            mask="auto",
+        )
     c.showPage()
     c.save()
     return buf.getvalue()
@@ -111,21 +118,48 @@ def _overlay_pdf(page_w: float, page_h: float, text: str, image: Path | None,
 
 @cmd.command("stamp")
 @click.argument("src", type=click.Path(path_type=Path))
-@click.option("--text", "stamp_text", metavar="TEXT",
-              help='Stamp text. Default: "Signed by <user> on <ISO date>".')
-@click.option("--image", type=click.Path(path_type=Path),
-              help="Signature image (png/jpg) drawn above the text.")
-@click.option("--page", "page_spec", default="last", show_default=True, metavar="PAGE",
-              help="Page to stamp: 'first', 'last' or a 1-based number.")
-@click.option("--pos", type=click.Choice(POSITIONS), default="bottom-right",
-              show_default=True, help="Page corner for the stamp.")
-@click.option("-o", "--out", type=click.Path(path_type=Path),
-              help="Output file. Default: SRC.signed.pdf.")
+@click.option(
+    "--text",
+    "stamp_text",
+    metavar="TEXT",
+    help='Stamp text. Default: "Signed by <user> on <ISO date>".',
+)
+@click.option(
+    "--image",
+    type=click.Path(path_type=Path),
+    help="Signature image (png/jpg) drawn above the text.",
+)
+@click.option(
+    "--page",
+    "page_spec",
+    default="last",
+    show_default=True,
+    metavar="PAGE",
+    help="Page to stamp: 'first', 'last' or a 1-based number.",
+)
+@click.option(
+    "--pos",
+    type=click.Choice(POSITIONS),
+    default="bottom-right",
+    show_default=True,
+    help="Page corner for the stamp.",
+)
+@click.option(
+    "-o", "--out", type=click.Path(path_type=Path), help="Output file. Default: SRC.signed.pdf."
+)
 @click.option("--force", is_flag=True, help="Allow overwriting an existing output file.")
 @click.pass_context
 @_handled
-def stamp(ctx: click.Context, src: Path, stamp_text: str | None, image: Path | None,
-          page_spec: str, pos: str, out: Path | None, force: bool) -> None:
+def stamp(
+    ctx: click.Context,
+    src: Path,
+    stamp_text: str | None,
+    image: Path | None,
+    page_spec: str,
+    pos: str,
+    out: Path | None,
+    force: bool,
+) -> None:
     """Stamp a visible signature block onto a PDF page."""
     from pypdf import PdfReader, PdfWriter
 
@@ -160,8 +194,13 @@ def stamp(ctx: click.Context, src: Path, stamp_text: str | None, image: Path | N
         "text": text,
         "image": str(image) if image else None,
     }
-    emit(ctx, record, human=lambda r: click.echo(
-        f"stamped page {r['page']} ({r['pos']}): {r['text']!r}\n  wrote: {r['dest']}"))
+    emit(
+        ctx,
+        record,
+        human=lambda r: click.echo(
+            f"stamped page {r['page']} ({r['pos']}): {r['text']!r}\n  wrote: {r['dest']}"
+        ),
+    )
 
 
 # ------------------------------------------------------------------- manifest
@@ -206,29 +245,45 @@ def _gpg_sign(manifest: Path, key: str | None) -> Path:
     proc = adapters.run("gpg", *args)
     if proc.returncode != 0:
         raise CarrelError(
-            f"gpg signing failed (rc={proc.returncode}): {(proc.stderr or '').strip()}")
+            f"gpg signing failed (rc={proc.returncode}): {(proc.stderr or '').strip()}"
+        )
     return asc
 
 
 @cmd.command("manifest")
 @click.argument("paths", nargs=-1, required=True, type=click.Path(path_type=Path))
-@click.option("-o", "--out", type=click.Path(path_type=Path),
-              default=Path("MANIFEST.sha256"), show_default=True,
-              help="Manifest file to write (sha256sum format).")
-@click.option("--gpg", "with_gpg", is_flag=True,
-              help="Also write a detached armored signature (OUT.asc).")
+@click.option(
+    "-o",
+    "--out",
+    type=click.Path(path_type=Path),
+    default=Path("MANIFEST.sha256"),
+    show_default=True,
+    help="Manifest file to write (sha256sum format).",
+)
+@click.option(
+    "--gpg", "with_gpg", is_flag=True, help="Also write a detached armored signature (OUT.asc)."
+)
 @click.option("--key", metavar="ID", help="gpg key id/email to sign with (implies --gpg).")
 @click.option("--force", is_flag=True, help="Allow overwriting an existing manifest.")
 @click.pass_context
 @_handled
-def manifest(ctx: click.Context, paths: tuple[Path, ...], out: Path, with_gpg: bool,
-             key: str | None, force: bool) -> None:
+def manifest(
+    ctx: click.Context,
+    paths: tuple[Path, ...],
+    out: Path,
+    with_gpg: bool,
+    key: str | None,
+    force: bool,
+) -> None:
     """Write a sha256 manifest for PATHS (directories recurse)."""
     if out.exists() and not force:
         raise CarrelError(f"refusing to overwrite existing file: {out} (pass --force)")
     out_abs = out.resolve()
-    files = [f for f in _collect_files(paths)
-             if f.resolve() not in (out_abs, out_abs.with_suffix(out_abs.suffix + ".asc"))]
+    files = [
+        f
+        for f in _collect_files(paths)
+        if f.resolve() not in (out_abs, out_abs.with_suffix(out_abs.suffix + ".asc"))
+    ]
     out.parent.mkdir(parents=True, exist_ok=True)
     lines = [f"{_sha256(f)}  {_manifest_entry_path(f, out.parent)}" for f in files]
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -244,9 +299,14 @@ def manifest(ctx: click.Context, paths: tuple[Path, ...], out: Path, with_gpg: b
         "files": len(files),
         "signature": str(asc) if asc else None,
     }
-    emit(ctx, record, human=lambda r: click.echo(
-        f"manifest: {r['files']} file(s) → {r['manifest']}"
-        + (f"\n  signature: {r['signature']}" if r["signature"] else "")))
+    emit(
+        ctx,
+        record,
+        human=lambda r: click.echo(
+            f"manifest: {r['files']} file(s) → {r['manifest']}"
+            + (f"\n  signature: {r['signature']}" if r["signature"] else "")
+        ),
+    )
 
 
 # --------------------------------------------------------------------- verify
