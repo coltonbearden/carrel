@@ -15,7 +15,7 @@ from PIL import Image
 from pypdf import PdfReader, PdfWriter
 
 from carrel.cli import cli
-from carrel.core.adapters import have
+from conftest import needs
 
 # ------------------------------------------------------------------ helpers
 
@@ -134,7 +134,7 @@ def test_pdf_default_output_name(tmp_path: Path):
     assert (tmp_path / "doc.edited.pdf").exists()
 
 
-@pytest.mark.skipif(not have("qpdf"), reason="qpdf not installed")
+@needs("qpdf")
 def test_pdf_decrypt_with_qpdf(tmp_path: Path):
     src = make_pdf(tmp_path / "locked.pdf", 2, password="hunter2")
     assert PdfReader(src).is_encrypted
@@ -145,7 +145,7 @@ def test_pdf_decrypt_with_qpdf(tmp_path: Path):
     assert not reader.is_encrypted and len(reader.pages) == 2
 
 
-@pytest.mark.skipif(not have("qpdf"), reason="qpdf not installed")
+@needs("qpdf")
 def test_pdf_linearize_with_qpdf(tmp_path: Path):
     from carrel.core import adapters
 

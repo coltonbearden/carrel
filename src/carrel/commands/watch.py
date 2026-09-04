@@ -78,8 +78,10 @@ class _Watcher:
     """Event sink + action runner shared between the handler and the loop."""
 
     def __init__(self, *, on: set[str], glob: str | None, debounce_ms: int,
-                 runs: tuple[str, ...], json_lines: bool):
+                 runs: tuple[str, ...], json_lines: bool,
+                 action_timeout: float | None = 300.0):
         self.on = on
+        self.action_timeout = action_timeout
         self.glob = glob
         self.debounce_ms = debounce_ms
         self.runs = runs
@@ -114,9 +116,18 @@ class _Watcher:
         try:
             for template in self.runs:
                 rendered = _render(template, path)
-                proc = subprocess.run(  # noqa: S602 — user-authored action
-                    rendered, shell=True, capture_output=True, text=True,
-                )
+                try:
+                    proc = subprocess.run(  # noqa: S602 — user-authored action
+                        rendered, shell=True, capture_output=True, text=True,
+                        timeout=self.action_timeout, check=False,
+                    )
+                except subprocess.TimeoutExpired as e:
+                    proc = subprocess.CompletedProcess(
+                        rendered, returncode=124,
+                        stdout=_as_text(e.stdout),
+                        stderr=_as_text(e.stderr)
+                        + f"\naction timed out after {self.action_timeout:g}s (rc=124)",
+                    )
                 self._log(event_type, path, rendered, proc)
         finally:
             with self.lock:
@@ -135,6 +146,12 @@ class _Watcher:
                 click.echo(proc.stdout.rstrip())
         if proc.stderr.strip():
             click.echo(proc.stderr.rstrip(), err=True)
+
+
+def _as_text(data: bytes | str | None) -> str:
+    if data is None:
+        return ""
+    return data.decode(errors="replace") if isinstance(data, bytes) else data
 
 
 def _make_handler(watcher: _Watcher):
@@ -171,14 +188,17 @@ def _make_handler(watcher: _Watcher):
               help="Exit after the first triggered action batch.")
 @click.option("--timeout", "timeout_", type=click.FloatRange(min_open=True, min=0),
               default=None, metavar="SECS", help="Hard stop after SECS seconds.")
+@click.option("--action-timeout", type=click.FloatRange(min_open=True, min=0),
+              default=300.0, show_default=True, metavar="SECS",
+              help="Kill an action that runs longer than SECS (logged as rc=124).")
 @click.option("--json-lines", is_flag=True,
               help="Log one JSON object per action to stdout instead of "
-                   "human lines.")
+                   "human lines (--json implies this).")
 @click.pass_context
 @_handled
 def cmd(ctx: click.Context, directory: Path, on_: str, glob_: str | None,
         runs: tuple[str, ...], debounce: int, once: bool,
-        timeout_: float | None, json_lines: bool) -> None:
+        timeout_: float | None, action_timeout: float, json_lines: bool) -> None:
     """Watch DIRECTORY (non-recursive) and run shell actions on file events.
 
     Events for files an action is currently producing are suppressed via an
@@ -187,6 +207,7 @@ def cmd(ctx: click.Context, directory: Path, on_: str, glob_: str | None,
     watched directory WILL re-trigger — write outputs elsewhere or use
     --glob to narrow matches. Ctrl-C exits cleanly.
     """
+    json_lines = json_lines or bool(ctx.obj and ctx.obj.get("json"))
     directory = directory.resolve()
     if not directory.is_dir():
         raise CarrelInputError(f"no such directory: {directory}")
@@ -200,7 +221,7 @@ def cmd(ctx: click.Context, directory: Path, on_: str, glob_: str | None,
     from watchdog.observers import Observer
 
     watcher = _Watcher(on=on, glob=glob_, debounce_ms=debounce, runs=runs,
-                       json_lines=json_lines)
+                       json_lines=json_lines, action_timeout=action_timeout)
     observer = Observer()
     observer.schedule(_make_handler(watcher), str(directory), recursive=False)
     click.echo(f"watching {directory} (on: {', '.join(sorted(on))}"

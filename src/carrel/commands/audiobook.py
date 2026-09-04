@@ -176,7 +176,7 @@ def pdf_chapters(src: Path) -> list[tuple[str, str]] | None:
     try:
         reader = PdfReader(str(src))
         outline = reader.outline
-    except Exception:
+    except Exception:  # noqa: BLE001 — pypdf raises assorted errors on odd outlines; fall back to whole-document
         return None
 
     entries: list[tuple[str, int]] = []
@@ -189,7 +189,7 @@ def pdf_chapters(src: Path) -> list[tuple[str, str]] | None:
                 continue
             try:
                 page = reader.get_destination_page_number(item)
-            except Exception:
+            except Exception:  # noqa: BLE001 — unresolvable destination: skip this entry, keep the rest
                 continue
             title = str(getattr(item, "title", "") or "").strip()
             entries.append((title or f"Section {len(entries) + 1}", page))

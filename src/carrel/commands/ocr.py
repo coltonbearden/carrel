@@ -9,6 +9,8 @@ overwrite policy and output plumbing.
 
 from __future__ import annotations
 
+import subprocess
+
 import functools
 import shutil
 import tempfile
@@ -45,7 +47,7 @@ class LanguagePackError(CarrelError):
 # ------------------------------------------------------------------ engines
 
 
-def _engine_error(engine: str, proc, lang: str) -> CarrelError:
+def _engine_error(engine: str, proc: subprocess.CompletedProcess[str], lang: str) -> CarrelError:
     detail = (proc.stderr or proc.stdout or "").strip()
     msg = f"{engine} failed (rc={proc.returncode}): {detail}"
     if any(marker in detail.lower() for marker in _LANG_ERR_MARKERS):

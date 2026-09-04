@@ -314,4 +314,4 @@ def cmd(ctx: click.Context, src: Path, patterns: tuple[str, ...], builtin_csv: s
     record["total"] = sum(record["matches"].values())
     emit(ctx, record, human=_human)
     if fail_empty and record["total"] == 0:
-        raise SystemExit(int(ExitCode.EMPTY))
+        fail("no matches for the requested patterns (--fail-empty)", ExitCode.EMPTY)

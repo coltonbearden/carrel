@@ -283,6 +283,6 @@ def serve(stdin: TextIO, stdout: TextIO, default_root: Path | str = ".") -> None
 @click.command(name="mcp")
 @click.pass_context
 def cmd(ctx: click.Context) -> None:
-    """Serve carrel as an MCP server on stdio (search/pack/inspect tools)."""
+    """Serve the desk as an MCP server on stdio (search/pack/inspect tools)."""
     ctx.ensure_object(dict)
     serve(sys.stdin, sys.stdout, default_root=ctx.obj.get("root", "."))

@@ -15,6 +15,8 @@ from typing import Any, Callable
 
 import click
 
+from carrel._product import PRODUCT
+
 from carrel.core.db import DeskDB
 from carrel.core.filetypes import FileType
 from carrel.core.output import CarrelError, ExitCode, emit, fail
@@ -84,13 +86,14 @@ def cmd(ctx: click.Context, query: str, limit: int, types_csv: str | None,
 
     Matched terms are bracketed in the snippet. Filters combine with AND.
     JSON output is a list of {"path", "score", "snippet"} (lower bm25 score =
-    better match). Run `carrel index` first to build the index under --root.
+    better match). Run the `index` command first to build the index under --root.
     """
     if limit < 1:
         raise click.UsageError("--limit must be a positive integer")
     root = _root_of(ctx)
     if not DeskDB.exists(root):
-        raise CarrelError(f"no index under {root} — run `carrel index` there first")
+        raise CarrelError(
+            f"no index under {root} — run `{PRODUCT['cli']} index` there first")
 
     wanted_types = _parse_types(types_csv)
     wanted_tags = {t.strip().lower() for t in tags if t.strip()}

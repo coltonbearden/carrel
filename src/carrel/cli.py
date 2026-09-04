@@ -55,7 +55,29 @@ class LazyGroup(click.Group):
             if "--debug" in sys.argv:
                 click.echo(f"warning: command '{name}' unavailable: {e}", err=True)
             return None
-        return module.cmd
+        return _with_json_flag(module.cmd)
+
+
+def _set_json(ctx: click.Context, _param: click.Parameter, value: bool) -> bool:
+    if value:
+        ctx.ensure_object(dict)
+        ctx.obj["json"] = True
+    return value
+
+
+def _with_json_flag(command: click.Command) -> click.Command:
+    """Accept `--json` after the subcommand too (`carrel pack --json …`).
+
+    Commands that declare their own `--json` keep it; everyone else gets a
+    flag that flips the shared ctx.obj["json"] switch `emit()` reads.
+    """
+    if any("--json" in getattr(p, "opts", ()) for p in command.params):
+        return command
+    command.params.append(click.Option(
+        ["--json", "json_flag_"], is_flag=True, expose_value=False,
+        callback=_set_json, help="Machine-readable JSON output.",
+    ))
+    return command
 
 
 @click.group(cls=LazyGroup, name=PRODUCT["cli"],
@@ -72,11 +94,7 @@ class LazyGroup(click.Group):
               help="Desk root for db-backed commands (default: cwd).")
 @click.pass_context
 def cli(ctx: click.Context, as_json: bool, debug: bool, root: str) -> None:
-    """carrel — a library desk for your files, and your agents.
-
-    Every command supports --help; data-producing commands support --json.
-    Run `carrel doctor` to see what your environment enables.
-    """
+    # help text comes from the group's `help=` above so it tracks product.json
     ctx.ensure_object(dict)
     ctx.obj.update({"json": as_json, "debug": debug, "root": root})
 

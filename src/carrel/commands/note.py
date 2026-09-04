@@ -162,7 +162,7 @@ def pdf_add(ctx: click.Context, path: Path, text: str, page: int, pos: str,
     """Add TEXT as a FreeText annotation to a PDF page.
 
     The result is verified by reading the output back with pypdf and checking
-    the annotation is listed (same reader `carrel note pdf` uses).
+    the annotation is listed (same reader the `pdf` subcommand uses).
     """
     from pypdf import PdfWriter
     from pypdf.annotations import FreeText

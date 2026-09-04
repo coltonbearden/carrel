@@ -21,7 +21,7 @@ import click
 from carrel.core.adapters import MissingDependencyError
 from carrel.core.db import DeskDB
 from carrel.core.filetypes import FileType, detect
-from carrel.core.output import CarrelError, CarrelInputError, emit, fail, progress
+from carrel.core.output import CarrelError, CarrelInputError, ExitCode, emit, fail, progress
 from carrel.core.textextract import extract_text
 
 
@@ -74,8 +74,11 @@ def _index_file(db: DeskDB, path: Path, *, ocr: bool, counts: dict[str, int],
     progress(f"indexing {rel}", ctx)
     try:
         text = extract_text(path, ocr=ocr)
-    except (CarrelInputError, MissingDependencyError) as e:
-        errors.append({"path": rel, "error": str(e)})
+    except MissingDependencyError as e:
+        errors.append({"path": rel, "error": str(e), "kind": "missing_dependency"})
+        return
+    except CarrelInputError as e:
+        errors.append({"path": rel, "error": str(e), "kind": "bad_input"})
         return
     fid = db.upsert_file(path, ftype=detect(path).value)
     db.set_content(fid, path, text)
@@ -149,3 +152,8 @@ def cmd(ctx: click.Context, paths: tuple[Path, ...], ocr: bool, prune: bool,
             counts["pruned"] = db.prune()
 
     emit(ctx, {**counts, "errors": errors}, human=_human_summary)
+    missing = [e for e in errors if e.get("kind") == "missing_dependency"]
+    if missing and counts["indexed"] == 0 and len(missing) == len(errors):
+        # every candidate needed a binary we don't have: that is exit 3, not success
+        fail(f"nothing indexed — {len(missing)} file(s) need a missing tool:\n"
+             f"{missing[0]['error']}", ExitCode.MISSING_DEP)

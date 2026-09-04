@@ -15,6 +15,7 @@ import click
 
 from carrel._product import PRODUCT
 from carrel.core import adapters
+from carrel.core.output import CarrelError
 from carrel.core.output import emit
 
 # ---------------------------------------------------------------------------
@@ -77,7 +78,7 @@ def _tesseract_langs() -> list[str]:
         return []
     try:
         proc = adapters.run("tesseract", "--list-langs", timeout=15)
-    except Exception:
+    except (CarrelError, OSError):
         return []
     # header line ends with ':'; langs follow, one per line (older builds use stderr)
     out = (proc.stdout or "") + (proc.stderr or "")

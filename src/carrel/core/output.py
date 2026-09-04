@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import sys
 from enum import IntEnum
-from typing import Any, Callable
+from typing import Any, Callable, NoReturn
 
 import click
 
@@ -44,7 +44,7 @@ def emit(ctx: click.Context | None, data: Any, human: Callable[[Any], None] | No
         rprint(data)
 
 
-def fail(msg: str, code: ExitCode = ExitCode.ERROR) -> None:
+def fail(msg: str, code: ExitCode = ExitCode.ERROR) -> NoReturn:
     click.echo(f"error: {msg}", err=True)
     sys.exit(int(code))
 

@@ -25,6 +25,18 @@ class MissingDependencyError(CarrelError):
         )
 
 
+class ToolTimeoutError(CarrelError):
+    """An external binary exceeded its timeout (exit 1 with the binary named)."""
+
+    def __init__(self, name: str, timeout: float):
+        self.tool = name
+        self.timeout = timeout
+        super().__init__(
+            f"'{name}' timed out after {timeout:g}s — try a smaller input, "
+            "or re-run with --debug to see the command"
+        )
+
+
 @dataclass(frozen=True)
 class Adapter:
     name: str
@@ -103,9 +115,13 @@ def run(name: str, *args: str, input: bytes | str | None = None, timeout: int = 
     text = not binary
     if input is not None and text and isinstance(input, bytes):
         input = input.decode()
-    return subprocess.run(
-        [path, *args], input=input, capture_output=True, text=text, timeout=timeout, check=False
-    )
+    try:
+        return subprocess.run(
+            [path, *args], input=input, capture_output=True, text=text, timeout=timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as e:
+        raise ToolTimeoutError(name, timeout) from e
 
 
 def version_of(name: str) -> str | None:
@@ -114,7 +130,7 @@ def version_of(name: str) -> str | None:
         return None
     try:
         proc = run(name, *adapter.version_args, timeout=15)
-    except Exception:
+    except (CarrelError, OSError, subprocess.SubprocessError):
         return "?"
     out = (proc.stdout or proc.stderr or "").strip().splitlines()
     return out[0][:80] if out else "?"
