@@ -2,7 +2,7 @@
 
 Strategies: `wrap:<tool>` (external binary via adapter) · `lib:<pypi>` · `custom` (pure Python) · `degrade-if-missing` · `stretch`.
 Tiers: **MVP** (must ship before flagship), **v1** (ships this session after MVP), **stretch** (attempted last / cut candidates).
-File types: pdf md jpg jpeg png ico txt html json xml csv.
+File types: pdf md jpg jpeg png ico txt html json xml csv docx odt epub rtf xlsx (xlsm).
 
 | Capability | Command | Strategy | Types | Tier |
 |---|---|---|---|---|
@@ -44,13 +44,25 @@ File types: pdf md jpg jpeg png ico txt html json xml csv.
 | Plugin surface generated from `--help` | 7 plugins (adds `carrel-documents`, `carrel-guard`); `scripts/sync_plugins.py --check` gate | custom; hooks `PreToolUse(Read)` → text conversion, `SessionStart` → capability summary | — | 20 |
 | Drift gates & CI matrix | `scripts/sync_reference.py`; COOKBOOK nav page; macOS required, Windows advisory; coverage floor | custom | — | 21 |
 
+## Office & ebook formats (spec 18, shipped)
+
+Detection is by bytes (`{\rtf` prefix; zip containers probed for `mimetype` / `[Content_Types].xml`), so a mis-named file is still handled. One `core.textextract` branch feeds `index`, `search`, `pack`, `diff` and `audiobook` for every row. Word-processor and ebook reads/writes go through pandoc (`degrade-if-missing` → exit 3 with `sudo apt install pandoc`); xlsx reads use openpyxl from the `office` extra (`uv tool install 'carrel[office]'`; exit 3 with that hint when absent). Spreadsheet *writing* is out of scope for this release.
+
+| Format | Detect | Text (`extract_text`) | `convert` from | `convert` to | `inspect` detail |
+|---|---|---|---|---|---|
+| docx | `.docx`; zip with `[Content_Types].xml` + `word/` | wrap:pandoc `-t plain` | md html txt pdf (pandoc → weasyprint) epub | from md html txt (pandoc), from epub | paragraphs, words, title/author/created (`docProps/core.xml`) |
+| odt | `.odt`; zip `mimetype` = `application/vnd.oasis.opendocument.text` | wrap:pandoc | md html txt pdf | from md html txt | words |
+| epub | `.epub`; zip `mimetype` = `application/epub+zip` | wrap:pandoc | md html txt pdf docx | from docx | title, creator, language, spine_items (OPF), words |
+| rtf | `.rtf`; `{\rtf` header | wrap:pandoc | md html txt pdf | — | words |
+| xlsx | `.xlsx` `.xlsm`; zip with `[Content_Types].xml` + `xl/` | lib:openpyxl (`# sheet` heading + CSV rows) | csv (`--sheet NAME\|N\|all`) json (`{sheet: [row objects]}`) | — | sheets: [{name, rows, cols}] |
+
 ## Explicit scope notes
 
 - **PDF redaction** is true redaction (rasterization destroys the text layer) — documented tradeoff; searchability restorable via `carrel ocr` afterwards.
 - **html thumbnails** go through weasyprint→pdf→pdftoppm; if weasyprint missing, degrade with hint.
 - **Near-dupe** uses a dependency-free dHash (no numpy/imagehash) to keep install light.
 - **Token estimates** in `pack` use a chars/3.6 heuristic labeled as estimate; exact tokenizers are out of scope (no network, no heavy deps).
-- **Office formats** (docx/xlsx) are out of scope — not in the required type list; libreoffice absent.
+- **Spreadsheets** are read-only (xlsx → csv/json); writing xlsx and reading legacy `.xls`/`.doc` are out of scope.
 
 ## Cuts (running log — updated through the build)
 

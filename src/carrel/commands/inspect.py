@@ -16,6 +16,7 @@ import hashlib
 import json as jsonlib
 import mimetypes
 import xml.etree.ElementTree as ET
+import zipfile
 from collections.abc import Callable
 from datetime import datetime
 from html.parser import HTMLParser
@@ -24,11 +25,18 @@ from typing import Any, ClassVar
 
 import click
 
-from carrel.core import adapters
+from carrel.core import adapters, textextract
 from carrel.core.filetypes import FileType, detect_or_die
-from carrel.core.output import CarrelError, emit, fail
+from carrel.core.output import CarrelError, CarrelInputError, emit, fail
 
 _SHA256_CAP = 512 * 1024 * 1024  # skip hashing files >= 512 MB
+
+# XML namespaces inside office/ebook containers
+_NS_DC = "{http://purl.org/dc/elements/1.1/}"
+_NS_DCTERMS = "{http://purl.org/dc/terms/}"
+_NS_W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+_NS_OPF = "{http://www.idpf.org/2007/opf}"
+_NS_CONTAINER = "{urn:oasis:names:tc:opendocument:xmlns:container}"
 
 
 def _handled(fn: Callable) -> Callable:
@@ -262,11 +270,99 @@ def _txt_detail(path: Path) -> dict[str, Any]:
     return {"lines": len(text.splitlines()), "words": len(text.split()), "chars": len(text)}
 
 
+def _zip_xml(path: Path, member: str) -> ET.Element | None:
+    """Parsed XML member of a zip container, or None when absent/unreadable."""
+    try:
+        with zipfile.ZipFile(path) as zf:
+            return ET.fromstring(zf.read(member))
+    except Exception:  # noqa: BLE001 — inspection degrades, never crashes
+        return None
+
+
+def _document_words(path: Path, ftype: FileType) -> int | None:
+    """Word count via pandoc; None (never exit 3) when pandoc is missing or fails."""
+    if not adapters.have("pandoc"):
+        return None
+    try:
+        return len(textextract.document_text(path, ftype).split())
+    except CarrelError:
+        return None
+
+
+def _docx_detail(path: Path) -> dict[str, Any]:
+    detail: dict[str, Any] = {
+        "paragraphs": None,
+        "words": _document_words(path, FileType.DOCX),
+        "title": None,
+        "author": None,
+        "created": None,
+    }
+    body = _zip_xml(path, "word/document.xml")
+    if body is not None:
+        detail["paragraphs"] = sum(1 for _ in body.iter(f"{_NS_W}p"))
+    core = _zip_xml(path, "docProps/core.xml")
+    if core is not None:
+        detail["title"] = core.findtext(f"{_NS_DC}title") or None
+        detail["author"] = core.findtext(f"{_NS_DC}creator") or None
+        detail["created"] = core.findtext(f"{_NS_DCTERMS}created") or None
+    return detail
+
+
+def _epub_detail(path: Path) -> dict[str, Any]:
+    detail: dict[str, Any] = {
+        "title": None,
+        "creator": None,
+        "language": None,
+        "spine_items": None,
+        "words": _document_words(path, FileType.EPUB),
+    }
+    container = _zip_xml(path, "META-INF/container.xml")
+    rootfile = container.find(f".//{_NS_CONTAINER}rootfile") if container is not None else None
+    opf_path = rootfile.get("full-path") if rootfile is not None else None
+    opf = _zip_xml(path, opf_path) if opf_path else None
+    if opf is None:
+        detail["error"] = "no readable OPF package document"
+        return detail
+    detail["title"] = opf.findtext(f".//{_NS_DC}title") or None
+    detail["creator"] = opf.findtext(f".//{_NS_DC}creator") or None
+    detail["language"] = opf.findtext(f".//{_NS_DC}language") or None
+    detail["spine_items"] = len(opf.findall(f".//{_NS_OPF}spine/{_NS_OPF}itemref"))
+    return detail
+
+
+def _document_detail(path: Path, ftype: FileType) -> dict[str, Any]:
+    """odt / rtf: word count only (size is a top-level field)."""
+    return {"words": _document_words(path, ftype)}
+
+
+def _xlsx_detail(path: Path) -> dict[str, Any]:
+    try:
+        sheets = textextract.xlsx_rows(path)
+    except adapters.MissingDependencyError as e:
+        return {"sheets": None, "error": f"openpyxl not installed — {e.adapter.install_hint}"}
+    except CarrelInputError as e:
+        return {"sheets": None, "error": str(e)}
+    return {
+        "sheets": [
+            {"name": name, "rows": len(rows), "cols": max((len(r) for r in rows), default=0)}
+            for name, rows in sheets.items()
+        ]
+    }
+
+
 def _type_detail(path: Path, ftype: FileType) -> dict[str, Any]:
     if ftype is FileType.PDF:
         return _pdf_detail(path)
     if ftype.is_image:
         return _image_detail(path)
+    if ftype is FileType.DOCX:
+        return _docx_detail(path)
+    if ftype is FileType.EPUB:
+        return _epub_detail(path)
+    if ftype in (FileType.ODT, FileType.RTF):
+        return _document_detail(path, ftype)
+    if ftype is FileType.XLSX:
+        return _xlsx_detail(path)
     if ftype is FileType.JSON:
         return _json_detail(path)
     if ftype is FileType.CSV:
@@ -370,7 +466,10 @@ def cmd(ctx: click.Context, path: Path, as_json: bool, deep: bool) -> None:
     summary), json (shape, key count, depth), csv (dialect, columns, rows),
     xml (root tag, element count, depth), html (title, headings outline,
     link/img counts), md (headings outline, word count), txt
-    (lines/words/chars).
+    (lines/words/chars), docx (paragraphs, words, title/author/created),
+    epub (title, creator, language, spine items, words), odt/rtf (words),
+    xlsx (sheets with row/column counts; needs the `office` extra).
+    Word counts for office/ebook files use pandoc and are null without it.
     """
     ctx.ensure_object(dict)
     if as_json:

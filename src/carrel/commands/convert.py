@@ -17,6 +17,16 @@ Documented conversion shapes (deliberately minimal, honest formats):
                key is not a valid tag name), arrays to repeated <item>.
 - xml → json   attributes become "@name" keys, text becomes "#text" (or
                a plain string for leaf elements); repeated tags → arrays.
+- docx/odt/epub/rtf → md/html/txt   pandoc reads the *detected* type;
+               → pdf goes pandoc-to-html then weasyprint; docx ↔ epub is
+               pandoc on both sides.
+- md/html/txt → docx/odt   pandoc writes; txt is wrapped as escaped HTML
+               paragraphs first so nothing is mistaken for markup.
+- xlsx → csv   one sheet (first, or --sheet NAME|N); --sheet all writes
+               DEST-<sheet>.csv per sheet. Cells render like the CSV
+               flattener (true/false, ISO dates, "" for empty).
+- xlsx → json  {sheet: [row objects keyed by the header row]}; native
+               numbers/bools kept, dates as ISO strings. Never the reverse.
 """
 
 from __future__ import annotations
@@ -42,7 +52,21 @@ from carrel.core.output import CarrelError, CarrelInputError, emit
 ICO_SIZES = (16, 32, 48, 64, 128, 256)
 PDF_RASTER_DPI = "150"
 
-_TARGET_ALIASES = {"jpeg": "jpg", "htm": "html", "markdown": "md", "text": "txt"}
+_TARGET_ALIASES = {
+    "jpeg": "jpg",
+    "htm": "html",
+    "markdown": "md",
+    "text": "txt",
+    "xlsm": "xlsx",
+}
+_SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
+
+# pandoc reader per *source* type (documents come from textextract; text types here)
+_PANDOC_FROM: dict[FileType, str] = {
+    **textextract.PANDOC_READERS,
+    FileType.MD: "markdown",
+    FileType.HTML: "html",
+}
 _XML_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9._-]*\Z")
 _INT = re.compile(r"[+-]?\d+\Z")
 _FLOAT = re.compile(r"[+-]?(\d+\.\d*|\.\d+|\d+)([eE][+-]?\d+)?\Z")
@@ -428,6 +452,122 @@ def _xml_to_json(src: Path, dest: Path, opts: dict) -> dict:
     return {"via": "builtin"}
 
 
+# ---- office & ebook documents (pandoc) -------------------------------------
+
+
+def _pandoc_reader(src: Path) -> str:
+    """pandoc `-f` name for the detected source type (bytes, never the extension)."""
+    src_type = detect_or_die(src)
+    reader = _PANDOC_FROM.get(src_type)
+    if reader is None:
+        raise CarrelInputError(f"pandoc cannot read {src_type.value}: {src}")
+    return reader
+
+
+def _txt_paragraph_html(text: str) -> str:
+    """Plain text → escaped <p> blocks (blank-line paragraphs, <br> line breaks)."""
+    paras = [p for p in re.split(r"\n\s*\n", text.strip()) if p.strip()]
+    return "\n".join(
+        "<p>" + "<br>\n".join(htmllib.escape(ln) for ln in p.splitlines()) + "</p>" for p in paras
+    )
+
+
+def _pandoc_doc(to_fmt: str, *extra: str) -> Callable[[Path, Path, dict], dict]:
+    """Converter factory: any pandoc-readable source → `to_fmt` (docx/odt/epub/md/html/txt)."""
+
+    def convert(src: Path, dest: Path, opts: dict) -> dict:
+        adapters.require("pandoc")
+        src_type = detect_or_die(src)
+        if src_type is FileType.TXT:  # pandoc has no plain-text reader; wrap first
+            with tempfile.TemporaryDirectory(prefix="carrel-convert-") as td:
+                page = Path(td) / f"{src.stem}.html"
+                body = _txt_paragraph_html(src.read_text(errors="replace"))
+                page.write_text(_html_doc(src.stem, body))
+                _run_pandoc(page, dest, "html", to_fmt, *extra)
+            return {"via": "pandoc"}
+        args = list(extra)
+        if to_fmt == "html":  # standalone page; pandoc wants a title
+            args += ["-s", "--metadata", f"title={src.stem}"]
+        _run_pandoc(src, dest, _pandoc_reader(src), to_fmt, *args)
+        return {"via": "pandoc"}
+
+    return convert
+
+
+_doc_to_md = _pandoc_doc("gfm")
+_doc_to_html = _pandoc_doc("html")
+_doc_to_txt = _pandoc_doc("plain", "--wrap=none")
+_to_docx = _pandoc_doc("docx")
+_to_odt = _pandoc_doc("odt")
+_to_epub = _pandoc_doc("epub")
+
+
+def _doc_to_pdf(src: Path, dest: Path, opts: dict) -> dict:
+    """docx/odt/epub/rtf → pdf: pandoc to HTML, then the weasyprint chain."""
+    adapters.require("pandoc")
+    adapters.require("weasyprint")
+    with tempfile.TemporaryDirectory(prefix="carrel-convert-") as td:
+        page = Path(td) / f"{src.stem}.html"
+        _doc_to_html(src, page, opts)
+        _weasyprint(page, dest)
+    return {"via": "pandoc+weasyprint"}
+
+
+# ---- spreadsheets (openpyxl) -----------------------------------------------
+
+
+def _write_csv_rows(dest: Path, rows: list[list[Any]]) -> None:
+    with dest.open("w", newline="") as fh:
+        writer = csv.writer(fh)
+        for row in rows:
+            writer.writerow([textextract.cell_text(v) for v in row])
+
+
+def _xlsx_to_csv(src: Path, dest: Path, opts: dict) -> dict:
+    sheets = textextract.xlsx_rows(src)
+    which = opts.get("sheet")
+    if which != "all":
+        _write_csv_rows(dest, sheets[textextract.select_sheet(sheets, which)])
+        return {"via": "openpyxl"}
+    if not sheets:
+        raise CarrelInputError(f"workbook has no sheets: {src}")
+    targets = [
+        dest.with_name(f"{dest.stem}-{_SAFE_NAME.sub('_', name)}{dest.suffix}") for name in sheets
+    ]
+    for target in targets:
+        _check_overwrite(target, opts.get("force", False))
+    for rows, target in zip(sheets.values(), targets, strict=True):
+        _write_csv_rows(target, rows)
+    return {"via": "openpyxl", "dest": str(targets[0]), "dests": [str(t) for t in targets]}
+
+
+def _sheet_records(rows: list[list[Any]]) -> list[dict[str, Any]]:
+    """Header row → keys (blank headers become col<N>); remaining rows → objects."""
+    if not rows:
+        return []
+    header = [textextract.cell_text(h) or f"col{i + 1}" for i, h in enumerate(rows[0])]
+    records = []
+    for row in rows[1:]:
+        if all(v is None for v in row):
+            continue
+        rec: dict[str, Any] = {}
+        for key, value in zip(header, row, strict=False):
+            rec[key] = value.isoformat() if hasattr(value, "isoformat") else value
+        records.append(rec)
+    return records
+
+
+def _xlsx_to_json(src: Path, dest: Path, opts: dict) -> dict:
+    sheets = textextract.xlsx_rows(src)
+    which = opts.get("sheet")
+    if which not in (None, "all"):
+        name = textextract.select_sheet(sheets, which)
+        sheets = {name: sheets[name]}
+    data = {name: _sheet_records(rows) for name, rows in sheets.items()}
+    dest.write_text(jsonlib.dumps(data, indent=2, ensure_ascii=False) + "\n")
+    return {"via": "openpyxl"}
+
+
 # --------------------------------------------------------------------------
 # routing table
 
@@ -463,6 +603,18 @@ CONVERTERS: dict[tuple[FileType, FileType], Callable[[Path, Path, dict], dict]] 
     (_F.CSV, _F.MD): _csv_to_md,
     (_F.CSV, _F.HTML): _csv_to_html,
     (_F.XML, _F.JSON): _xml_to_json,
+    # office & ebook documents (pandoc)
+    **{(s, _F.MD): _doc_to_md for s in (_F.DOCX, _F.ODT, _F.EPUB, _F.RTF)},
+    **{(s, _F.HTML): _doc_to_html for s in (_F.DOCX, _F.ODT, _F.EPUB, _F.RTF)},
+    **{(s, _F.TXT): _doc_to_txt for s in (_F.DOCX, _F.ODT, _F.EPUB, _F.RTF)},
+    **{(s, _F.PDF): _doc_to_pdf for s in (_F.DOCX, _F.ODT, _F.EPUB, _F.RTF)},
+    (_F.DOCX, _F.EPUB): _to_epub,
+    (_F.EPUB, _F.DOCX): _to_docx,
+    **{(s, _F.DOCX): _to_docx for s in (_F.MD, _F.HTML, _F.TXT)},
+    **{(s, _F.ODT): _to_odt for s in (_F.MD, _F.HTML, _F.TXT)},
+    # spreadsheets (openpyxl; read-only in this release)
+    (_F.XLSX, _F.CSV): _xlsx_to_csv,
+    (_F.XLSX, _F.JSON): _xlsx_to_json,
 }
 
 
@@ -471,7 +623,12 @@ def supported_targets(src_type: FileType) -> list[str]:
 
 
 def convert_file(
-    src: Path | str, dest: Path | str, force: bool = False, *, pages: str = "first"
+    src: Path | str,
+    dest: Path | str,
+    force: bool = False,
+    *,
+    pages: str = "first",
+    sheet: str | None = None,
 ) -> dict[str, Any]:
     """Convert one file; returns {"src", "dest", "via", "ok", ...}.
 
@@ -480,6 +637,8 @@ def convert_file(
     MissingDependencyError (exit 3) when a needed binary is absent.
     `pages` ("first"|"all") only affects pdf → png/jpg; with "all" the
     outputs are DEST-1.ext..DEST-N.ext, listed under "dests".
+    `sheet` (None|NAME|N|"all") only affects xlsx → csv/json; "all" with
+    csv writes DEST-<sheet>.csv per sheet, listed under "dests".
     """
     src, dest = Path(src), Path(dest)
     src_type = detect_or_die(src)
@@ -497,11 +656,11 @@ def convert_file(
             f"(supported targets for {src_type.value}: "
             f"{', '.join(supported_targets(src_type)) or 'none'})"
         )
-    multi = fn is _pdf_to_image and pages == "all"
+    multi = (fn is _pdf_to_image and pages == "all") or (fn is _xlsx_to_csv and sheet == "all")
     if not multi:
         _check_overwrite(dest, force)
     dest.parent.mkdir(parents=True, exist_ok=True)
-    info = fn(src, dest, {"pages": pages, "force": force})
+    info = fn(src, dest, {"pages": pages, "force": force, "sheet": sheet})
     via = info.pop("via")
     return {"src": str(src), "dest": info.pop("dest", str(dest)), "via": via, "ok": True, **info}
 
@@ -534,7 +693,7 @@ def _human(results: list[dict[str, Any]]) -> None:
     "to",
     required=True,
     metavar="EXT",
-    help="Target type: pdf, md, txt, html, json, xml, csv, png, jpg, ico.",
+    help="Target type: pdf, md, txt, html, json, xml, csv, png, jpg, ico, docx, odt, epub.",
 )
 @click.option(
     "-o",
@@ -555,6 +714,12 @@ def _human(results: list[dict[str, Any]]) -> None:
     show_default=True,
     help="pdf → png/jpg only: rasterize the first page, or every page as DEST-1..N.",
 )
+@click.option(
+    "--sheet",
+    metavar="NAME|N|all",
+    help="xlsx → csv/json only: pick a sheet by name or 1-based number (default: first; "
+    "json defaults to every sheet). 'all' with csv writes DEST-<sheet>.csv per sheet.",
+)
 @click.pass_context
 def cmd(
     ctx: click.Context,
@@ -564,12 +729,18 @@ def cmd(
     out_dir: Path | None,
     force: bool,
     pages: str,
+    sheet: str | None,
 ) -> None:
     """Convert SRC... to another supported type.
 
     By default the output lands next to each SRC with the new extension.
     Existing outputs are never overwritten without --force. With --json,
     prints one JSON array of {"src", "dest", "via", "ok"} records.
+
+    Office and ebook sources (docx, odt, epub, rtf) are read by pandoc and
+    can go to md/html/txt/pdf (pdf also needs weasyprint); md/html/txt can
+    be written as docx or odt, and docx <-> epub round-trips. xlsx reads
+    need the `office` extra (openpyxl) and go to csv or json only.
     """
     dest_type = normalize_target(to)
     if dest_type is None:
@@ -587,7 +758,7 @@ def cmd(
     for src in sources:
         dest = output or ((out_dir or src.parent) / src.name).with_suffix(f".{dest_type.value}")
         try:
-            results.append(convert_file(src, dest, force=force, pages=pages))
+            results.append(convert_file(src, dest, force=force, pages=pages, sheet=sheet))
         except CarrelError as e:
             if ctx.obj and ctx.obj.get("debug"):
                 raise
