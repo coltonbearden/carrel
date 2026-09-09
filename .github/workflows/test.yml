@@ -145,7 +145,7 @@ jobs:
     # advisory until green for one release (BUILD_PLAN scope guard)
     name: test-minimal (windows)
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     continue-on-error: true
     defaults:
       run:
@@ -163,10 +163,8 @@ jobs:
           python-version: "3.12"
           enable-cache: true
       - run: uv sync --group dev
-      # A CLI smoke test, not the suite: the suite still assumes POSIX in
-      # places (os.killpg in watch, UTF-8 console encoding, bin/python venv
-      # layout, executable-bit checks). Native Windows support is tracked as
-      # future work; this job proves the package installs, imports, and runs.
+      # The smoke test runs first so the job proves the package installs,
+      # imports, and runs even while the full suite below is still red.
       - name: CLI smoke test
         run: |
           uv run carrel --version
@@ -175,8 +173,9 @@ jobs:
           uv run carrel inspect tests/fixtures/sample.md --json
           uv run carrel pack tests/fixtures --tree-only
           uv run carrel completion bash > /dev/null
-      - name: Core tests that do not assume POSIX
-        # Modules verified Windows-clean in the full-suite run (33880114130).
-        # The other 13 modules fail there (54 tests) on CRLF assumptions in the
-        # tests, os.killpg, executable-bit checks and path shapes — their own spec.
-        run: uv run pytest tests/test_core_filetypes.py tests/test_office.py -q
+      - name: Full suite (reconnaissance)
+        # D-f: the whole suite runs here so every push records the current
+        # Windows failure list; the per-module table is in docs/BUILD_PLAN.md.
+        # continue-on-error above keeps the job advisory until it has been
+        # green on main for two consecutive weeks (docs/REPO_SETTINGS.md).
+        run: uv run pytest -q
