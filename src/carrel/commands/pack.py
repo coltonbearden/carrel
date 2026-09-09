@@ -36,6 +36,10 @@ from carrel.core import adapters
 from carrel.core.adapters import Adapter, MissingDependencyError
 from carrel.core.db import DeskDB, file_hash
 from carrel.core.filetypes import FileType, detect
+from carrel.core.ignore import IgnoreFile as _IgnoreFile
+from carrel.core.ignore import ancestor_ignores as _ancestor_ignores
+from carrel.core.ignore import ignored as _ignored
+from carrel.core.ignore import load_ignore as _load_ignore
 from carrel.core.output import CarrelError, CarrelInputError, ExitCode, emit, fail
 from carrel.core.textextract import extract_text
 
@@ -144,83 +148,6 @@ def _human_size(n: int) -> str:
             return f"{int(size)} {unit}" if unit == "B" else f"{size:.1f} {unit}"
         size /= 1024
     raise AssertionError("unreachable")
-
-
-# --------------------------------------------------------------------------
-# .gitignore (simple matcher — see cmd docstring for documented limits)
-
-
-@dataclass(frozen=True)
-class _IgnoreRule:
-    pattern: str
-    dir_only: bool
-    negate: bool
-
-
-@dataclass(frozen=True)
-class _IgnoreFile:
-    base: Path
-    rules: tuple[_IgnoreRule, ...]  # in file order; the last matching rule wins
-
-
-def _load_ignore(directory: Path) -> _IgnoreFile | None:
-    gi = directory / ".gitignore"
-    if not gi.is_file():
-        return None
-    rules: list[_IgnoreRule] = []
-    try:
-        lines = gi.read_text(errors="replace").splitlines()
-    except OSError:
-        return None
-    for raw in lines:
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        negate = line.startswith("!")
-        if negate:
-            line = line[1:].strip()
-        elif line.startswith("\\!"):
-            line = line[1:]  # escaped literal "!"
-        dir_only = line.endswith("/")
-        line = line.rstrip("/")
-        if line:
-            rules.append(_IgnoreRule(line, dir_only, negate))
-    return _IgnoreFile(directory, tuple(rules)) if rules else None
-
-
-def _ancestor_ignores(top: Path) -> tuple[_IgnoreFile, ...]:
-    """.gitignore files above `top`, stopping at the repo root (dir with .git)."""
-    found: list[_IgnoreFile] = []
-    for d in top.parents:
-        ig = _load_ignore(d)
-        if ig:
-            found.append(ig)
-        if (d / ".git").exists():
-            break
-    return tuple(reversed(found))
-
-
-def _rule_matches(rule: _IgnoreRule, rel: str, name: str, is_dir: bool) -> bool:
-    if rule.dir_only and not is_dir:
-        return False
-    if "/" in rule.pattern:
-        return fnmatch(rel, rule.pattern.lstrip("/"))
-    return fnmatch(name, rule.pattern)
-
-
-def _ignored(path: Path, is_dir: bool, ignores: tuple[_IgnoreFile, ...]) -> bool:
-    """Git semantics: rules apply in order (outer .gitignore first, then file
-    order); the last matching rule decides, `!pattern` re-includes."""
-    result = False
-    for ig in ignores:
-        try:
-            rel = path.relative_to(ig.base).as_posix()
-        except ValueError:
-            continue
-        for rule in ig.rules:
-            if _rule_matches(rule, rel, path.name, is_dir):
-                result = not rule.negate
-    return result
 
 
 # --------------------------------------------------------------------------

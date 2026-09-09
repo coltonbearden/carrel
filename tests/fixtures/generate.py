@@ -41,6 +41,7 @@ EXIF_DATETIME = "2021:06:15 12:00:00"
 
 # Sentinels (referenced by tests; see specs/14-fixtures.md)
 TXT_SENTINEL = "quixotic zephyr"
+CODE_SENTINEL = "cartulary shelfmark"
 MD_SENTINEL = "melodious cartography"
 PDF_SENTINEL = "palimpsest harbor"
 OCR_TEXT = "CARREL OCR FIXTURE 42"
@@ -116,6 +117,35 @@ Third paragraph, deliberately dull. A quiet desk, a stack of files, and
 one {TXT_SENTINEL} drifting past the window for good measure.
 """
     write("sample.txt", text.encode())
+
+
+def gen_code() -> None:
+    """A source fixture: FileType.CODE has no magic bytes, only an extension."""
+    text = f'''\
+"""Carrel sample source fixture — indexed as FileType.CODE.
+
+Source files carry no signature, so detection is by extension alone. The
+sentinel phrase for source-search tests is: {CODE_SENTINEL}.
+"""
+
+SHELF_CAPACITY = 42
+
+
+def catalogue(title: str, shelf: int = 1) -> dict[str, object]:
+    """Return a catalogue record for one item on the desk."""
+    return {{"title": title, "shelf": shelf, "sentinel": "{CODE_SENTINEL}"}}
+
+
+class ReadingRoom:
+    """A room with a finite number of shelves."""
+
+    def __init__(self, shelves: int = SHELF_CAPACITY) -> None:
+        self.shelves = shelves
+
+    def is_full(self, used: int) -> bool:
+        return used >= self.shelves
+'''
+    write("sample.py", text.encode())
 
 
 def gen_md() -> None:
@@ -540,6 +570,7 @@ def gen_xlsx() -> None:
 def main() -> None:
     print(f"generating fixtures in {FIXDIR}")
     gen_txt()
+    gen_code()
     gen_md()
     gen_html()
     gen_json()

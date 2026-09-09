@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- **Added:** `carrel index` covers plain-text source and config files (`.py`, `.rs`, `.toml`,
+  `.yaml`, `Makefile`, …) as the new type `code`, so `search`, `pack --query`, `tag`, `note`
+  and the MCP `carrel_search` / `carrel_pack` tools reach source trees — closing the "planned
+  follow-up" left open in v0.2.0. `search --type code` filters to them; `--no-source` opts out.
+- **Added:** the `index` walk honours `.gitignore` (`--no-gitignore` opts out), sharing
+  `pack`'s matcher via the new `carrel.core.ignore`. Without it, indexing a repo would pull in
+  `node_modules/`, `build/` and `dist/`.
+- **Fixed:** `DeskDB.rel()` and PDF-manifest entries now use POSIX separators. `files.path` is
+  written verbatim into `carrel catalog export`, so a catalog produced on Windows could not be
+  imported on Linux — the exact portability D-009 exists to provide.
+- **Fixed:** the `carrel-agent` `PostToolUse(Write|Edit)` reindex hook was a silent no-op on
+  source repositories, because the files Claude writes were never an indexable type.
+
 ## v0.2.0 — 2026-09-04
 
 The desk grows up for agents: the whole CLI is reachable over MCP, `pack` can

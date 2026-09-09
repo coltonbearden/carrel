@@ -91,10 +91,26 @@ def test_index_skips_hidden_dirs_and_unsupported_files(desk: Path):
     hidden = desk / ".secrets"
     hidden.mkdir()
     (hidden / "inner.txt").write_text("clandestine gobbledygook")
-    (desk / "script.py").write_text("print('not a supported type')")
+    (desk / "blob.bin").write_bytes(b"\x00\x01\x02not a supported type")
     summary = run_json("--root", str(desk), "index")
     assert summary["indexed"] == 2  # only the two visible supported fixtures
     assert run_json("--root", str(desk), "search", "clandestine") == []
+
+
+def test_index_covers_source_files(desk: Path):
+    """Spec 22: source files are indexed and reachable from search."""
+    (desk / "script.py").write_text("def release():\n    return 'perspicacious'\n")
+    summary = run_json("--root", str(desk), "index")
+    assert summary["indexed"] == 3  # the two fixtures plus the source file
+    hits = run_json("--root", str(desk), "search", "perspicacious")
+    assert [h["path"] for h in hits] == ["script.py"]
+
+
+def test_index_no_source_opts_out(desk: Path):
+    (desk / "script.py").write_text("def release():\n    return 'perspicacious'\n")
+    summary = run_json("--root", str(desk), "index", "--no-source")
+    assert summary["indexed"] == 2
+    assert run_json("--root", str(desk), "search", "perspicacious") == []
 
 
 def test_index_explicit_subpath_only(desk: Path):
@@ -142,8 +158,8 @@ def test_index_update_if_indexed_is_silent_noop_without_db(tmp_path: Path, tmp_c
 
 def test_index_update_skips_unsupported_and_missing_quietly(desk: Path):
     run_json("--root", str(desk), "index")
-    weird = desk / "hook_output.py"
-    weird.write_text("x = 1")
+    weird = desk / "hook_output.bin"
+    weird.write_bytes(b"\x00\x01x = 1")
     summary = run_json(
         "--root", str(desk), "index", "--update", str(weird), str(desk / "ghost.txt")
     )

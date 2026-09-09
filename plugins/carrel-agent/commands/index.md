@@ -15,23 +15,27 @@ Usage: carrel index [OPTIONS] [PATHS]...
 
   Index PATH... (default: the desk root) into .carrel/carrel.db.
 
-  Walks directories for the supported file types, skipping hidden entries (.carrel, .git, dotfiles).
-  Files unchanged since the last run (same size + mtime) are skipped. Text comes from
-  core.textextract; images are registered but only get searchable text with --ocr. Progress goes to
-  stderr; the JSON summary is {"indexed", "skipped", "pruned", "errors"}. `--status` prints the
-  `carrel catalog status` report instead.
+  Walks directories for the supported file types plus plain-text source and config files (.py, .rs,
+  .toml, .yaml, ... — indexed as type `code`, use --no-source to skip them), honoring .gitignore and
+  skipping hidden entries (.carrel, .git, dotfiles). Files unchanged since the last run (same size +
+  mtime) are skipped. Text comes from core.textextract; images are registered but only get
+  searchable text with --ocr. Progress goes to stderr; the JSON summary is {"indexed", "skipped",
+  "pruned", "errors"}. `--status` prints the `carrel catalog status` report instead.
 
 Options:
-  --ocr         OCR images and scanned PDFs (needs tesseract / ocrmypdf).
-  --prune       Remove index rows whose files no longer exist on disk.
-  --update      Treat PATH... as individual files to (re)index — no directory walking; unsupported
-                or missing files are silently skipped.
-  --if-indexed  Exit 0 silently when no desk db exists yet under --root (for hooks: only refresh an
-                index someone already created).
-  --status      Report index health instead of indexing (alias of `carrel catalog status`); other
-                options are ignored. Exit 4 when no desk db exists under --root.
-  --json        Machine-readable JSON output.
-  --help        Show this message and exit.
+  --ocr           OCR images and scanned PDFs (needs tesseract / ocrmypdf).
+  --prune         Remove index rows whose files no longer exist on disk.
+  --update        Treat PATH... as individual files to (re)index — no directory walking; unsupported
+                  or missing files are silently skipped.
+  --if-indexed    Exit 0 silently when no desk db exists yet under --root (for hooks: only refresh
+                  an index someone already created).
+  --no-source     Skip plain-text source and config files (.py, .rs, .toml, .yaml, ...); index only
+                  the document types.
+  --no-gitignore  Do not honor .gitignore files while walking.
+  --status        Report index health instead of indexing (alias of `carrel catalog status`); other
+                  options are ignored. Exit 4 when no desk db exists under --root.
+  --json          Machine-readable JSON output.
+  --help          Show this message and exit.
 ```
 <!-- usage:end -->
 

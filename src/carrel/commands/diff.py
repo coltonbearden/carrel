@@ -62,13 +62,14 @@ def _resolve_mode(ta: FileType, tb: FileType) -> str:
         return "text"
     raise CarrelInputError(
         f"cannot auto-diff {ta.value} vs {tb.value}: need two images, two PDFs, "
-        f"or two text-like files (text formats, documents, workbooks; force one with --mode)"
+        f"or two text-like files (text formats, source files, documents, workbooks; "
+        f"force one with --mode)"
     )
 
 
 def _textlike(t: FileType) -> bool:
-    """Anything `--mode text` can read: text formats plus extractable documents."""
-    return t.is_text or t.is_document or t is FileType.XLSX
+    """Anything `--mode text` can read: text formats, source files, extractable documents."""
+    return t.is_text or t.is_code or t.is_document or t is FileType.XLSX
 
 
 # ---------------------------------------------------------------------------

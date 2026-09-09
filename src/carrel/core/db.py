@@ -110,11 +110,18 @@ class DeskDB:
         return (Path(root).resolve() / ".carrel" / "carrel.db").is_file()
 
     def rel(self, path: Path | str) -> str:
+        """Desk-relative POSIX path — the key every table and export uses.
+
+        Always forward slashes: `files.path` is read straight back out by
+        `export_catalog`, so a native separator here would make a catalog
+        written on one platform unimportable on another (D-009 exists to move
+        tags and notes between machines).
+        """
         p = Path(path).resolve()
         try:
-            return str(p.relative_to(self.root))
+            return p.relative_to(self.root).as_posix()
         except ValueError:
-            return str(p)
+            return p.as_posix()
 
     # -- schema / migrations -------------------------------------------------
     def _migrate(self) -> None:

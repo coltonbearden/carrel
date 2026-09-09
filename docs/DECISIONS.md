@@ -37,3 +37,27 @@ carrel stays config-free (no config file, no dotfile). One environment-variable 
 ## D-009 (2026-09-04) — Desk DB schema is versioned; migrations are the only way to change it
 
 `.carrel/carrel.db` gains `PRAGMA user_version` and an ordered `MIGRATIONS` list in `core/db.py`; version 1 is the v0.1.x schema, and pre-v0.2.0 databases (user_version 0) are stamped 1 on open. Tags and notes — the only data the desk cannot regenerate — become portable through `carrel catalog export/import`. Rationale: later features (page-aware chunks, stored text, embeddings) all need schema changes, and without a version there is no safe path. Consequence: any spec that changes the schema appends a migration and a test that opens the previous version. Spec: `specs/17-catalog.md`.
+
+## D-010 (2026-09-09) — Source files are one `FileType.CODE`, not one type per language
+
+`carrel index` skipped every path `detect()` typed `UNKNOWN`, i.e. every source file, so
+`pack --query`, `search`, and the `carrel-agent` reindex hook were all blind to source trees
+(spec 22). Source files become `FileType.CODE`, with the per-language label kept outside the
+database in `SOURCE_EXTENSIONS`.
+
+One enum member rather than `python`/`rust`/… as stored types, because `desk/app.py` does
+`FileType(info["type"])` on the value `index` wrote: anything that is not an enum member
+crashes the TUI preview. Keeping it a member also makes `search --type code` work for free
+(`_valid_types()` derives from the enum) and leaves `convert`'s `supported_targets` — derived
+from the `CONVERTERS` pair list — correctly empty, so `convert foo.py --to pdf` still exits 4.
+
+`SOURCE_EXTENSIONS` stays separate from `_EXT_MAP` so `.json`/`.xml`/`.csv`/`.md` keep their
+richer types and `detect_or_die`'s "supported:" message does not grow to ~80 entries. No
+schema migration: `files.type` is free-form `TEXT` (D-009's `MIGRATIONS` is untouched).
+
+Consequence: the `.gitignore` matcher moved from `pack.py` to `core/ignore.py` so `index`
+shares it — without it a source tree would drag in `node_modules/` and `build/`. Also folded
+in: `DeskDB.rel()` and `sign._manifest_entry_path()` now return `.as_posix()`, since
+`files.path` is what `export_catalog` writes and a native separator made a catalog written on
+Windows unimportable on Linux.
+
