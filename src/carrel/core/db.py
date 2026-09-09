@@ -313,7 +313,7 @@ class DeskDB:
         if not row:
             return []
         return self.conn.execute(
-            "SELECT created, body FROM notes WHERE file_id=? ORDER BY created DESC",
+            "SELECT created, body FROM notes WHERE file_id=? ORDER BY created DESC, id DESC",
             (row["id"],),
         ).fetchall()
 

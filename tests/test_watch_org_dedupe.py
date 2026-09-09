@@ -89,8 +89,12 @@ def stripes_png(path: Path) -> Path:
 
 def test_watch_render_substitutes_and_quotes():
     path = Path("/tmp/some dir/my file.pdf")
-    assert _render("do {path}", path) == "do '/tmp/some dir/my file.pdf'"
-    assert _render("n={name} d={dir}", path) == "n='my file.pdf' d='/tmp/some dir'"
+    if os.name == "nt":  # cmd.exe has no single quotes: double-quoted only when needed
+        assert _render("do {path}", path) == 'do "\\tmp\\some dir\\my file.pdf"'
+        assert _render("n={name} d={dir}", path) == 'n="my file.pdf" d="\\tmp\\some dir"'
+    else:
+        assert _render("do {path}", path) == "do '/tmp/some dir/my file.pdf'"
+        assert _render("n={name} d={dir}", path) == "n='my file.pdf' d='/tmp/some dir'"
     assert _render("no placeholders", path) == "no placeholders"
 
 
@@ -133,8 +137,8 @@ def test_watch_once_runs_actions_in_order_then_exits(tmp_path: Path):
     finish(thread, holder)
     lines = log.read_text().splitlines()
     assert len(lines) == 2  # --once: exactly one coalesced action batch
-    assert lines[0] == f"one {watched / 'hello.txt'}"
-    assert lines[1] == "two hello.txt"
+    assert lines[0].rstrip() == f"one {watched / 'hello.txt'}"
+    assert lines[1].rstrip() == "two hello.txt"
 
 
 def test_watch_json_lines_output(tmp_path: Path):

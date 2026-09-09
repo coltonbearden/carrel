@@ -9,6 +9,7 @@ Provides (per specs/14-fixtures.md):
 
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path
 
@@ -32,6 +33,32 @@ def needs(name: str) -> pytest.MarkDecorator:
         not adapters.have(name),
         reason=f"requires '{name}' — {adapter.install_hint}",
     )
+
+
+def bash_path() -> str | None:
+    """Path to a bash that runs scripts, or None.
+
+    On Windows `shutil.which("bash")` finds the WSL launcher stub in System32
+    first, which prints an install prompt instead of running anything. Prefer
+    Git for Windows' bash — the one Claude Code itself uses for hooks there.
+    """
+    if os.name != "nt":
+        return shutil.which("bash")
+    bases = (os.environ.get("PROGRAMFILES"), os.environ.get("PROGRAMW6432"), r"C:\Program Files")
+    for base in bases:
+        if not base:
+            continue
+        for rel in ("Git/bin/bash.exe", "Git/usr/bin/bash.exe"):
+            candidate = Path(base) / rel
+            if candidate.is_file():
+                return str(candidate)
+    found = shutil.which("bash")
+    if found and "system32" in found.lower():
+        return None
+    return found
+
+
+needs_bash = pytest.mark.skipif(bash_path() is None, reason="bash not installed")
 
 
 @pytest.fixture

@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- **Fixed (Windows):** `carrel watch --action-timeout` crashed with `module 'os' has no
+  attribute 'killpg'` when an action timed out; a timed-out action is now killed as a
+  process tree (`taskkill /T`) there. `CARREL_BIN_<NAME>` overrides counted any existing
+  file as executable on Windows (`os.access(X_OK)` is plain existence there); executability
+  now follows `PATHEXT`, so a stale override never silently resolves (D-008). Substitutions
+  in `watch --run` templates are quoted for cmd.exe rather than `sh`.
+- **Fixed:** notes on a file come back newest-first by insertion order as well as
+  timestamp, so two notes added within one clock tick keep their order.
+- **Changed:** `carrel search` prints bm25 scores with three significant digits
+  (`score -0.0412`), matching `pack --stats`, instead of rounding them all to `-0.00`.
+
 ## v0.3.1 — 2026-09-09
 
 - **Fixed:** an unrelated `.gitignore` in a distant ancestor directory could

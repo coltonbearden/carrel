@@ -21,7 +21,7 @@ from collections import defaultdict
 from pathlib import Path
 
 import pytest
-from conftest import needs
+from conftest import bash_path, needs, needs_bash
 
 from carrel.cli import COMMANDS
 
@@ -64,7 +64,6 @@ READ_GUARD = GUARD_DIR / "scripts" / "read-guard.sh"
 CAPABILITIES = GUARD_DIR / "scripts" / "capabilities.sh"
 NO_CARREL_PATH = "/usr/bin:/bin"  # keeps jq/python3/coreutils, drops the project venv
 
-needs_bash = pytest.mark.skipif(shutil.which("bash") is None, reason="bash not installed")
 needs_carrel = pytest.mark.skipif(shutil.which("carrel") is None, reason="carrel not on PATH")
 
 
@@ -88,9 +87,17 @@ def read_frontmatter(md: Path) -> dict[str, str]:
     return fm
 
 
+def _bash() -> str:
+    """Scripts run through bash explicitly: Windows has no shebang exec."""
+    bash = bash_path()
+    if bash is None:
+        pytest.skip("bash not installed")
+    return bash
+
+
 def run_hook(payload: str, cwd: Path, env: dict[str, str] | None = None):
     return subprocess.run(
-        [str(HOOK_SCRIPT)],
+        [_bash(), str(HOOK_SCRIPT)],
         input=payload,
         capture_output=True,
         text=True,
@@ -120,7 +127,7 @@ def run_guard(
         assert shutil.which("carrel", path=env["PATH"]) is None, "test premise broken"
     env.update(extra_env or {})
     return subprocess.run(
-        [str(script)],
+        [_bash(), str(script)],
         input=payload,
         capture_output=True,
         text=True,
@@ -446,8 +453,8 @@ def test_mcp_json():
 
 
 def test_hook_script_is_executable():
-    mode = HOOK_SCRIPT.stat().st_mode
-    assert mode & stat.S_IXUSR, "reindex.sh must be executable"
+    if os.name != "nt":  # NTFS has no execute bit
+        assert HOOK_SCRIPT.stat().st_mode & stat.S_IXUSR, "reindex.sh must be executable"
     first = HOOK_SCRIPT.read_text(encoding="utf-8").splitlines()[0]
     assert first.startswith("#!"), "reindex.sh needs a shebang"
 
@@ -542,7 +549,8 @@ def test_guard_hooks_json_schema():
 
 @pytest.mark.parametrize("script", [READ_GUARD, CAPABILITIES], ids=lambda p: p.name)
 def test_guard_scripts_are_executable_bash(script: Path):
-    assert script.stat().st_mode & stat.S_IXUSR, f"{script.name} must be executable"
+    if os.name != "nt":  # NTFS has no execute bit
+        assert script.stat().st_mode & stat.S_IXUSR, f"{script.name} must be executable"
     lines = script.read_text(encoding="utf-8").splitlines()
     assert lines[0].startswith("#!") and "bash" in lines[0]
     assert "set -u" in lines[:40], "hooks use set -u, never set -e"

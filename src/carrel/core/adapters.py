@@ -71,7 +71,7 @@ class Adapter:
         if override is not None:
             # exact path only — a stale override must never fall back to PATH
             path = Path(override).expanduser()
-            if path.is_file() and os.access(path, os.X_OK):
+            if _is_executable(path):
                 return str(path)
             return None
         for candidate in self.binaries:
@@ -79,6 +79,22 @@ class Adapter:
             if found:
                 return found
         return None
+
+
+def _is_executable(path: Path) -> bool:
+    """True when `path` is a file the OS would actually run.
+
+    `os.access(X_OK)` is plain existence on Windows, which would let a stale
+    override that points at a README count as found (the silent fallback
+    D-008 forbids). There, executability is the PATHEXT suffix set — the same
+    rule `shutil.which` applies.
+    """
+    if not path.is_file():
+        return False
+    if os.name != "nt":
+        return os.access(path, os.X_OK)
+    pathext = os.environ.get("PATHEXT") or ".COM;.EXE;.BAT;.CMD"
+    return path.suffix.lower() in {ext.lower() for ext in pathext.split(os.pathsep) if ext}
 
 
 def _a(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from pathlib import Path
 
@@ -78,7 +79,7 @@ def test_have_pandoc_true_on_this_box():
 def test_require_returns_resolved_path():
     path = adapters.require("pdftotext")
     assert path == shutil.which("pdftotext")
-    assert path.startswith("/")
+    assert Path(path).is_absolute()
 
 
 def test_require_missing_binary_raises_with_hint(monkeypatch):
@@ -153,6 +154,10 @@ def test_git_adapter_runs():
 
 
 def _fake_binary(tmp_path: Path, name: str, banner: str) -> Path:
+    if os.name == "nt":  # no shebang exec on Windows; a .cmd is what PATHEXT calls executable
+        exe = tmp_path / f"{name}.cmd"
+        exe.write_text(f"@echo {banner}\r\n", newline="")
+        return exe
     exe = tmp_path / name
     exe.write_text(f"#!/bin/sh\necho '{banner}'\n")
     exe.chmod(0o755)
@@ -212,7 +217,8 @@ def test_override_uses_exact_path_and_skips_path_search(tmp_path, monkeypatch):
 def test_override_expands_home(tmp_path, monkeypatch):
     exe = _fake_binary(tmp_path, "gpg", "gpg (fake) 9.9")
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("CARREL_BIN_GPG", "~/gpg")
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))  # expanduser() reads this one on Windows
+    monkeypatch.setenv("CARREL_BIN_GPG", f"~/{exe.name}")
     assert adapters.require("gpg") == str(exe)
 
 

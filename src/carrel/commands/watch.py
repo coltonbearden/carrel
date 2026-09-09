@@ -56,12 +56,24 @@ def _handled(fn: Callable) -> Callable:
     return wrapper
 
 
+def _quote(value: str) -> str:
+    """Quote one substitution for the shell `_run_action` uses on this platform.
+
+    POSIX `sh` gets `shlex.quote`. cmd.exe does not understand single quotes, so
+    Windows gets the CreateProcess rules via `subprocess.list2cmdline`: bare
+    when nothing needs escaping, double-quoted otherwise.
+    """
+    if os.name == "nt":
+        return subprocess.list2cmdline([value])
+    return shlex.quote(value)
+
+
 def _render(template: str, path: Path) -> str:
-    """Substitute {path}/{name}/{dir} into an action template, shlex-quoted."""
+    """Substitute {path}/{name}/{dir} into an action template, shell-quoted."""
     return (
-        template.replace("{path}", shlex.quote(str(path)))
-        .replace("{name}", shlex.quote(path.name))
-        .replace("{dir}", shlex.quote(str(path.parent)))
+        template.replace("{path}", _quote(str(path)))
+        .replace("{name}", _quote(path.name))
+        .replace("{dir}", _quote(str(path.parent)))
     )
 
 
@@ -163,19 +175,32 @@ def _run_action(rendered: str, timeout: float | None) -> subprocess.CompletedPro
     which keeps writing into the watched directory. start_new_session + killpg
     takes the worker down with it, so a timed-out action leaves no stragglers.
     """
-    with subprocess.Popen(
-        rendered,
-        shell=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        start_new_session=True,
-    ) as child:
+    if os.name == "nt":
+        # no process groups to signal on Windows; a new group at least keeps
+        # Ctrl-C in the watcher's console from reaching the action, and
+        # _kill_tree walks the tree by pid instead
+        child = subprocess.Popen(
+            rendered,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
+        )
+    else:
+        child = subprocess.Popen(
+            rendered,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
+        )
+    with child:
         try:
             out, err = child.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:
-            with contextlib.suppress(ProcessLookupError):
-                os.killpg(child.pid, signal.SIGKILL)
+            _kill_tree(child)
             out, err = child.communicate()
             return subprocess.CompletedProcess(
                 rendered,
@@ -184,6 +209,20 @@ def _run_action(rendered: str, timeout: float | None) -> subprocess.CompletedPro
                 stderr=(err or "") + f"\naction timed out after {timeout:g}s (rc=124)",
             )
         return subprocess.CompletedProcess(rendered, child.returncode, out or "", err or "")
+
+
+def _kill_tree(child: subprocess.Popen[str]) -> None:
+    """Kill the shell and everything it spawned."""
+    if hasattr(os, "killpg"):
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(child.pid, signal.SIGKILL)
+        return
+    # Windows: taskkill /T takes the whole tree rooted at the shell's pid.
+    subprocess.run(
+        ["taskkill", "/F", "/T", "/PID", str(child.pid)], capture_output=True, check=False
+    )
+    with contextlib.suppress(OSError):
+        child.kill()
 
 
 def _as_text(data: bytes | str | None) -> str:
