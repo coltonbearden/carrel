@@ -37,6 +37,7 @@ FIXTURE_TYPES = [
     ("sample.epub", FileType.EPUB),
     ("sample.rtf", FileType.RTF),
     ("sample.xlsx", FileType.XLSX),
+    ("sample.py", FileType.CODE),
 ]
 
 

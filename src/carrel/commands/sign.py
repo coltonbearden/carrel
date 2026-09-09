@@ -215,11 +215,15 @@ def _sha256(path: Path) -> str:
 
 
 def _manifest_entry_path(target: Path, manifest_dir: Path) -> str:
-    """Path as written in the manifest: relative to the manifest when possible."""
+    """Path as written in the manifest: relative to the manifest when possible.
+
+    POSIX separators always, so a manifest written on one platform verifies on
+    another.
+    """
     try:
-        return str(target.resolve().relative_to(manifest_dir.resolve()))
+        return target.resolve().relative_to(manifest_dir.resolve()).as_posix()
     except ValueError:
-        return str(target.resolve())
+        return target.resolve().as_posix()
 
 
 def _collect_files(paths: tuple[Path, ...]) -> list[Path]:

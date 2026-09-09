@@ -449,10 +449,21 @@ def test_index_help_mentions_status():
 
 def test_index_paths_signature_for_mcp():
     sig = inspect.signature(index_paths)
-    assert list(sig.parameters) == ["root", "paths", "update", "prune", "ocr"]
+    assert list(sig.parameters) == [
+        "root",
+        "paths",
+        "update",
+        "prune",
+        "ocr",
+        "source",
+        "gitignore",
+    ]
     for name in ("update", "prune", "ocr"):
         assert sig.parameters[name].kind is inspect.Parameter.KEYWORD_ONLY
         assert sig.parameters[name].default is False
+    for name in ("source", "gitignore"):  # spec 22: on by default
+        assert sig.parameters[name].kind is inspect.Parameter.KEYWORD_ONLY
+        assert sig.parameters[name].default is True
     assert sig.parameters["paths"].default is None
 
 

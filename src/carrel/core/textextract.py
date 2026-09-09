@@ -218,8 +218,9 @@ def extract_text(path: Path | str, ocr: bool = False) -> str:
     path = Path(path)
     ftype = detect_or_die(path)
 
-    if ftype in (FileType.TXT, FileType.MD):
-        return path.read_text(errors="replace")
+    if ftype in (FileType.TXT, FileType.MD) or ftype.is_code:
+        # Source files are read verbatim: no extractor, no external binary.
+        return path.read_text(encoding="utf-8", errors="replace")
     if ftype.is_document:
         return document_text(path, ftype)
     if ftype is FileType.XLSX:

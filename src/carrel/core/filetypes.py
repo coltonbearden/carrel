@@ -4,6 +4,11 @@ Bytes beat names: a `%PDF` header, PNG/JPEG/ICO signatures and an `{\\rtf`
 prefix decide on their own. Zip containers (`PK\\x03\\x04`) are probed
 read-only for their office/ebook flavour (epub, odt, docx, xlsx); an
 unrecognised or broken zip falls back to the extension, never raises.
+
+Source files (`.py`, `.rs`, `.toml`, ...) are typed `CODE` from their extension
+alone -- they carry no signature. `SOURCE_EXTENSIONS` maps each to a language
+label for syntax fences; the label is presentation only and is never stored in
+the desk database, which holds the `FileType` value (D-010).
 """
 
 from __future__ import annotations
@@ -31,6 +36,7 @@ class FileType(StrEnum):
     EPUB = "epub"
     RTF = "rtf"
     XLSX = "xlsx"
+    CODE = "code"
     UNKNOWN = "unknown"
 
     @property
@@ -52,6 +58,11 @@ class FileType(StrEnum):
     def is_document(self) -> bool:
         """Word-processor / ebook containers that pandoc reads (PDF keeps its own paths)."""
         return self in (FileType.DOCX, FileType.ODT, FileType.EPUB, FileType.RTF)
+
+    @property
+    def is_code(self) -> bool:
+        """Plain-text source files, read verbatim (no extractor, no binary)."""
+        return self is FileType.CODE
 
 
 _EXT_MAP = {
@@ -94,6 +105,105 @@ _ZIP_MIMETYPES = {
 
 SUPPORTED_EXTENSIONS = tuple(sorted(_EXT_MAP))
 
+# Plain-text source and config files: extension -> language label for syntax
+# fences. Deliberately separate from _EXT_MAP so detect_or_die's "supported:"
+# message stays the list of types with real extractors, and so a .json/.xml/
+# .csv/.md file keeps its richer FileType instead of collapsing to CODE.
+SOURCE_EXTENSIONS = {
+    ".py": "python",
+    ".pyi": "python",
+    ".js": "javascript",
+    ".mjs": "javascript",
+    ".cjs": "javascript",
+    ".jsx": "jsx",
+    ".ts": "typescript",
+    ".mts": "typescript",
+    ".cts": "typescript",
+    ".tsx": "tsx",
+    ".vue": "vue",
+    ".svelte": "svelte",
+    ".rs": "rust",
+    ".go": "go",
+    ".c": "c",
+    ".h": "c",
+    ".cc": "cpp",
+    ".cpp": "cpp",
+    ".cxx": "cpp",
+    ".hh": "cpp",
+    ".hpp": "cpp",
+    ".hxx": "cpp",
+    ".cs": "csharp",
+    ".java": "java",
+    ".kt": "kotlin",
+    ".kts": "kotlin",
+    ".swift": "swift",
+    ".scala": "scala",
+    ".rb": "ruby",
+    ".php": "php",
+    ".pl": "perl",
+    ".pm": "perl",
+    ".lua": "lua",
+    ".r": "r",
+    ".dart": "dart",
+    ".ex": "elixir",
+    ".exs": "elixir",
+    ".erl": "erlang",
+    ".hs": "haskell",
+    ".clj": "clojure",
+    ".cljs": "clojure",
+    ".ml": "ocaml",
+    ".fs": "fsharp",
+    ".sh": "bash",
+    ".bash": "bash",
+    ".zsh": "bash",
+    ".fish": "fish",
+    ".ps1": "powershell",
+    ".bat": "batch",
+    ".cmd": "batch",
+    ".sql": "sql",
+    ".css": "css",
+    ".scss": "scss",
+    ".sass": "sass",
+    ".less": "less",
+    ".toml": "toml",
+    ".yml": "yaml",
+    ".yaml": "yaml",
+    ".ini": "ini",
+    ".cfg": "ini",
+    ".conf": "ini",
+    ".properties": "ini",
+    ".mk": "makefile",
+    ".cmake": "cmake",
+    ".gradle": "gradle",
+    ".tf": "terraform",
+    ".tfvars": "terraform",
+    ".proto": "protobuf",
+    ".graphql": "graphql",
+    ".gql": "graphql",
+    ".rst": "rst",
+    ".adoc": "asciidoc",
+    ".tex": "latex",
+}
+
+# Build files that carry their meaning in the name, not an extension.
+SOURCE_FILENAMES = {
+    "makefile": "makefile",
+    "dockerfile": "dockerfile",
+    "containerfile": "dockerfile",
+    "rakefile": "ruby",
+    "gemfile": "ruby",
+    "brewfile": "ruby",
+    "vagrantfile": "ruby",
+    "justfile": "just",
+    "procfile": "procfile",
+}
+
+
+def source_language(path: Path | str) -> str | None:
+    """Language label for a source file, or None when it is not one."""
+    path = Path(path)
+    return SOURCE_EXTENSIONS.get(path.suffix.lower()) or SOURCE_FILENAMES.get(path.name.lower())
+
 
 def _sniff_zip(path: Path) -> FileType | None:
     """Office/ebook flavour of a zip container; None for anything else or a broken zip."""
@@ -134,7 +244,9 @@ def detect(path: Path | str) -> FileType:
     by_ext = _EXT_MAP.get(path.suffix.lower())
     if by_magic is not None:
         return by_magic  # trust bytes over names
-    return by_ext or FileType.UNKNOWN
+    if by_ext is not None:
+        return by_ext
+    return FileType.CODE if source_language(path) else FileType.UNKNOWN
 
 
 def detect_or_die(path: Path | str) -> FileType:

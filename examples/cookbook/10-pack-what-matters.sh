@@ -8,13 +8,15 @@
 # the output is deterministic. Requires: nothing beyond carrel (index and pack
 # are pure python; the index is stdlib SQLite FTS5).
 #
-# Honest limitation shown at the end: --query can only rank files the index
-# knows about, and `carrel index` skips unsupported types such as .py/.toml, so
-# query-driven packing fits document trees, not source trees (see docs/FEATURES.md).
+# Source trees work too: `carrel index` covers .py/.toml/.yaml/... as type `code`,
+# so --query ranks source files alongside documents (step 2 asserts it). What is
+# still never indexed: hidden entries (.git, dotfiles), .gitignore'd paths, and
+# binary types with no text (see docs/FEATURES.md).
 #
-# Expected: an index summary of 6 files, a --stats table with a `score` column
-# listing only the 5 files that mention "release", a written ctx.md whose header
-# names the query, exit 5 for a query with no hits, then RECIPE OK.
+# Expected: an index summary of 7 files, a --stats table with a `score` column
+# listing only the files that mention "release" (documents and scratch.py), a
+# written ctx.md whose header names the query, exit 5 for a query with no hits,
+# then RECIPE OK.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 if [ -z "${CARREL:-}" ] && ! command -v carrel >/dev/null 2>&1; then CARREL="uv run carrel"; fi
@@ -56,11 +58,12 @@ Meeting notes, 2026-09-01. Agreed: the release goes out Friday after the checkli
 Action items: update the glossary, draft the onboarding guide.
 EOF
 printf 'id,topic,owner\n1,release,ada\n2,onboarding,grace\n' > "$docs/notes/topics.csv"
-printf 'def release():\n    return "release"  # source files are not indexed\n' > "$docs/notes/scratch.py"
+printf 'def release():\n    """Cut a release."""\n    return "release"\n' > "$docs/notes/scratch.py"
 
 echo "==> step 1: build the desk index under --root (creates docs/.carrel/carrel.db)"
 $CARREL --root "$docs" index
-# 6 indexed: the .py is an unsupported type and is skipped silently
+# 7 indexed: documents plus scratch.py — source and config files are indexed as
+# type `code` (--no-source opts out), and the walk honors .gitignore
 
 echo "==> step 2: size the relevant subset first (--stats adds a score column)"
 $CARREL --root "$docs" pack "$docs" --query release --stats
@@ -71,9 +74,8 @@ grep -qx 'guides/release-checklist.md' "$work/selected.txt"
 if grep -q 'exit-codes.md' "$work/selected.txt"; then
   echo "exit-codes.md does not mention 'release' and should not be packed" >&2; exit 1
 fi
-if grep -q 'scratch.py' "$work/selected.txt"; then
-  echo "scratch.py is not indexed and cannot be ranked" >&2; exit 1
-fi
+# source files rank alongside documents: scratch.py mentions "release" too
+grep -qx 'notes/scratch.py' "$work/selected.txt"
 
 echo "==> step 3: write the pack (relevance order, header names the query)"
 $CARREL --root "$docs" pack "$docs" --query release --top 5 -o "$work/ctx.md"
@@ -94,9 +96,11 @@ set -e
 [ "$rc" -eq 5 ] || { echo "expected exit 5, got $rc" >&2; exit 1; }
 echo "  exit code: $rc"
 
-echo "==> limitation: 'release' also appears in notes/scratch.py, but .py is not an indexed type"
+echo "==> step 6: what the index actually holds (source files included, type \`code\`)"
 $CARREL --root "$docs" --json search release \
   | python3 -c 'import json,sys; print("  index hits:", [h["path"] for h in json.load(sys.stdin)])'
-echo "  (for source trees use --include/--exclude, --since REF, or --outline instead)"
+$CARREL --root "$docs" --json search release --type code \
+  | python3 -c 'import json,sys; print("  just the source files:", [h["path"] for h in json.load(sys.stdin)])'
+echo "  (--no-source indexes documents only; .gitignore'd and hidden paths are never walked)"
 
 echo "RECIPE OK"

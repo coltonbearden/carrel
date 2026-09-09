@@ -4,6 +4,11 @@ Walks the given paths (default: the desk root), extracts text from every
 supported file via core.textextract, and upserts files + FTS rows through
 core.db.DeskDB. Unchanged files (same size+mtime) are skipped.
 
+Source and config files (`.py`, `.rs`, `.toml`, `.yaml`, ...) are indexed as
+FileType.CODE, so `search` and `pack --query` reach source trees; `--no-source`
+opts out. The walk honours `.gitignore` (`--no-gitignore` opts out), without
+which a source tree would drag in node_modules/, build/ and dist/.
+
 `--update FILE... [--if-indexed]` is the hook-facing mode: reindex just the
 named files, no walking; with --if-indexed it exits 0 silently when no desk
 db exists yet (so a PostToolUse hook is a no-op outside an indexed desk).
@@ -25,6 +30,7 @@ import click
 from carrel.core.adapters import MissingDependencyError
 from carrel.core.db import DeskDB
 from carrel.core.filetypes import FileType, detect
+from carrel.core.ignore import IgnoreFile, ancestor_ignores, ignored, load_ignore
 from carrel.core.output import CarrelError, CarrelInputError, ExitCode, emit, fail, progress
 from carrel.core.textextract import extract_text
 
@@ -49,12 +55,19 @@ def _root_of(ctx: click.Context) -> Path:
     return Path((ctx.obj or {}).get("root", ".")).resolve()
 
 
-def _walk(top: Path) -> Iterator[Path]:
-    """Yield files under `top`: hidden entries (.carrel, .git, dotfiles) and
-    symlinked directories are skipped; order is deterministic."""
+def _walk(
+    top: Path, ignores: tuple[IgnoreFile, ...] = (), *, use_gitignore: bool = True
+) -> Iterator[Path]:
+    """Yield files under `top`: hidden entries (.carrel, .git, dotfiles),
+    symlinked directories and `.gitignore`d paths are skipped; order is
+    deterministic. `ignores` is the inherited rule stack (empty = no filtering)."""
     if top.is_file():
         yield top
         return
+    if use_gitignore:
+        ig = load_ignore(top)
+        if ig:
+            ignores = (*ignores, ig)
     try:
         children = sorted(top.iterdir(), key=lambda p: p.name)
     except OSError:
@@ -63,9 +76,9 @@ def _walk(top: Path) -> Iterator[Path]:
         if child.name.startswith("."):
             continue
         if child.is_dir():
-            if not child.is_symlink():
-                yield from _walk(child)
-        elif child.is_file():
+            if not child.is_symlink() and not ignored(child, True, ignores):
+                yield from _walk(child, ignores, use_gitignore=use_gitignore)
+        elif child.is_file() and not ignored(child, False, ignores):
             yield child
 
 
@@ -106,13 +119,17 @@ def index_paths(
     update: bool = False,
     prune: bool = False,
     ocr: bool = False,
+    source: bool = True,
+    gitignore: bool = True,
 ) -> dict[str, Any]:
     """Index `paths` (default: `root`) into the desk db under `root`.
 
     Shared by `carrel index` and the MCP `carrel_index` tool. Walk mode
     descends directories (hidden entries skipped) and raises CarrelInputError
     for a path that does not exist; `update` treats each path as one file and
-    silently skips missing/unsupported ones (hook semantics). Returns
+    silently skips missing/unsupported ones (hook semantics). `source`
+    includes plain-text source/config files (FileType.CODE); `gitignore`
+    honours `.gitignore` while walking. Returns
     `{"indexed", "skipped", "pruned", "errors": [{path, error, kind}]}`.
     Progress lines go to stderr when a click context with human output is active.
     """
@@ -122,10 +139,16 @@ def index_paths(
     counts = {"indexed": 0, "skipped": 0, "pruned": 0}
     errors: list[dict[str, str]] = []
 
+    def _candidate(f: Path) -> bool:
+        ftype = detect(f)
+        if ftype is FileType.UNKNOWN:
+            return False
+        return source or not ftype.is_code
+
     with DeskDB(root) as db:
         if update:
             for f in targets:
-                if not f.is_file() or detect(f) is FileType.UNKNOWN:
+                if not f.is_file() or not _candidate(f):
                     counts["skipped"] += 1  # hook mode: never fail on odd files
                     continue
                 _index_file(db, f, ocr=ocr, counts=counts, errors=errors, ctx=ctx)
@@ -133,8 +156,9 @@ def index_paths(
             for top in targets:
                 if not top.exists():
                     raise CarrelInputError(f"no such path: {top}")
-                for f in _walk(top):
-                    if detect(f) is FileType.UNKNOWN:
+                seed = ancestor_ignores(top) if gitignore else ()
+                for f in _walk(top, seed, use_gitignore=gitignore):
+                    if not _candidate(f):
                         continue  # not a supported type — not a candidate
                     _index_file(db, f, ocr=ocr, counts=counts, errors=errors, ctx=ctx)
         if prune:
@@ -179,6 +203,17 @@ def _human_summary(data: dict[str, Any]) -> None:
     "(for hooks: only refresh an index someone already created).",
 )
 @click.option(
+    "--no-source",
+    is_flag=True,
+    help="Skip plain-text source and config files (.py, .rs, .toml, .yaml, ...); "
+    "index only the document types.",
+)
+@click.option(
+    "--no-gitignore",
+    is_flag=True,
+    help="Do not honor .gitignore files while walking.",
+)
+@click.option(
     "--status",
     is_flag=True,
     help="Report index health instead of indexing (alias of `carrel catalog status`); "
@@ -193,14 +228,18 @@ def cmd(
     prune: bool,
     update_mode: bool,
     if_indexed: bool,
+    no_source: bool,
+    no_gitignore: bool,
     status: bool,
 ) -> None:
     """Index PATH... (default: the desk root) into .carrel/carrel.db.
 
-    Walks directories for the supported file types, skipping hidden entries
-    (.carrel, .git, dotfiles). Files unchanged since the last run (same
-    size + mtime) are skipped. Text comes from core.textextract; images are
-    registered but only get searchable text with --ocr. Progress goes to
+    Walks directories for the supported file types plus plain-text source
+    and config files (.py, .rs, .toml, .yaml, ... — indexed as type `code`,
+    use --no-source to skip them), honoring .gitignore and skipping hidden
+    entries (.carrel, .git, dotfiles). Files unchanged since the last run
+    (same size + mtime) are skipped. Text comes from core.textextract; images
+    are registered but only get searchable text with --ocr. Progress goes to
     stderr; the JSON summary is {"indexed", "skipped", "pruned", "errors"}.
     `--status` prints the `carrel catalog status` report instead.
     """
@@ -215,7 +254,15 @@ def cmd(
     if update_mode and not paths:
         raise click.UsageError("--update requires at least one FILE argument")
 
-    data = index_paths(root, list(paths), update=update_mode, prune=prune, ocr=ocr)
+    data = index_paths(
+        root,
+        list(paths),
+        update=update_mode,
+        prune=prune,
+        ocr=ocr,
+        source=not no_source,
+        gitignore=not no_gitignore,
+    )
     counts, errors = data, data["errors"]
     emit(ctx, data, human=_human_summary)
     missing = [e for e in errors if e.get("kind") == "missing_dependency"]
