@@ -242,3 +242,63 @@ def test_diff_identical_source_files_exits_0(tmp_path: Path):
     for f in (a, b):
         f.write_text("SAME = 1\n")
     run("diff", str(a), str(b), expect=0)
+
+
+# -------------------------------------------------- ancestor .gitignore bound
+
+
+def test_unrelated_ancestor_gitignore_does_not_blank_the_index(tmp_path: Path):
+    """Regression: a desk under a stray `.gitignore` with `*` indexed zero files.
+
+    Hit for real while verifying v0.3.0 from PyPI — `uv venv` writes a
+    `.gitignore` containing `*` into the venv directory, and a desk created
+    inside one reported `indexed: 0, skipped: 0, errors: []` with nothing to
+    explain it. The ancestor walk had no stopping point outside a git repo.
+    """
+    (tmp_path / ".gitignore").write_text("*\n")  # the venv's rule
+    root = tmp_path / "desk"
+    root.mkdir()
+    (root / "auth.py").write_text("def login():\n    return 'perspicacious'\n")
+    (root / "README.md").write_text("A perspicacious readme.\n")
+
+    summary = run_json("--root", str(root), "index", str(root))
+    assert summary["indexed"] == 2, "a stray ancestor .gitignore blanked the desk"
+    hits = {h["path"] for h in run_json("--root", str(root), "search", "perspicacious")}
+    assert hits == {"auth.py", "README.md"}
+
+
+def test_pack_is_bounded_the_same_way(tmp_path: Path):
+    (tmp_path / ".gitignore").write_text("*\n")
+    root = tmp_path / "proj"
+    root.mkdir()
+    (root / "a.py").write_text("A = 1\n")
+    obj = run_json("pack", str(root), "--tree-only")  # tree-only: count, not entries
+    assert obj["meta"]["files_included"] == 1
+    assert "a.py" in obj["tree"]
+
+
+def test_gitignore_between_root_and_target_still_applies(tmp_path: Path):
+    """Bounding at the desk root must not lose rules *inside* the desk."""
+    root = tmp_path / "desk"
+    (root / "sub").mkdir(parents=True)
+    (root / ".gitignore").write_text("*.log\n")
+    (root / "sub" / "keep.py").write_text("KEEP = 'perspicacious'\n")
+    (root / "sub" / "drop.log").write_text("perspicacious noise\n")
+
+    run_json("--root", str(root), "index", str(root / "sub"))
+    hits = {h["path"] for h in run_json("--root", str(root), "search", "perspicacious")}
+    assert hits == {"sub/keep.py"}
+
+
+def test_repo_root_still_bounds_the_walk(tmp_path: Path):
+    """A .git ancestor is still a valid boundary, so its rules still apply."""
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    (repo / "pkg").mkdir()
+    (repo / ".gitignore").write_text("*.log\n")
+    (repo / "pkg" / "keep.py").write_text("KEEP = 'perspicacious'\n")
+    (repo / "pkg" / "drop.log").write_text("perspicacious noise\n")
+
+    run_json("--root", str(repo), "index", str(repo / "pkg"))
+    hits = {h["path"] for h in run_json("--root", str(repo), "search", "perspicacious")}
+    assert hits == {"pkg/keep.py"}

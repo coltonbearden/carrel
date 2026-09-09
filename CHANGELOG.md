@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.3.1 — 2026-09-09
+
+- **Fixed:** an unrelated `.gitignore` in a distant ancestor directory could
+  silently exclude an entire desk. The ancestor walk had no stopping point
+  outside a git repository, so it collected rules all the way to `/`. It now
+  stops at the repo root (`.git`) or the caller's root — the desk root for
+  `index`, the common root for `pack` — and an unbounded walk contributes
+  nothing. Found while verifying v0.3.0 from PyPI: `uv venv` writes a
+  `.gitignore` containing `*` into the venv directory, and a desk created inside
+  one reported `indexed: 0, skipped: 0, errors: []` with nothing to explain it.
+  `pack` was affected the same way and is fixed by the same change.
+
 ## v0.3.0 — 2026-09-09
 
 The desk reads code. `carrel index` covers source trees, so the agent-facing
