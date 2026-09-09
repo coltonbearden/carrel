@@ -223,3 +223,22 @@ def test_manifest_entry_path_returns_forward_slashes(tmp_path: Path):
     target = base / "inner" / "a.txt"
     target.write_text("x\n")
     assert _manifest_entry_path(target, base) == "inner/a.txt"
+
+
+# ------------------------------------------------------------------ diff
+
+
+def test_diff_auto_mode_handles_two_source_files(tmp_path: Path):
+    """A source file is text-like: auto mode must text-diff it, not exit 4."""
+    a, b = tmp_path / "a.py", tmp_path / "b.py"
+    a.write_text("def hello():\n    return 'world'\n")
+    b.write_text("def hello():\n    return 'there'\n")
+    result = run("diff", str(a), str(b), expect=1)  # exit 1 = inputs differ
+    assert "there" in result.output or "world" in result.output
+
+
+def test_diff_identical_source_files_exits_0(tmp_path: Path):
+    a, b = tmp_path / "a.py", tmp_path / "b.py"
+    for f in (a, b):
+        f.write_text("SAME = 1\n")
+    run("diff", str(a), str(b), expect=0)
