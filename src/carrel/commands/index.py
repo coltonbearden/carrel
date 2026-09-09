@@ -156,7 +156,7 @@ def index_paths(
             for top in targets:
                 if not top.exists():
                     raise CarrelInputError(f"no such path: {top}")
-                seed = ancestor_ignores(top) if gitignore else ()
+                seed = ancestor_ignores(top, root) if gitignore else ()
                 for f in _walk(top, seed, use_gitignore=gitignore):
                     if not _candidate(f):
                         continue  # not a supported type — not a candidate

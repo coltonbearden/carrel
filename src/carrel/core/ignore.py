@@ -52,15 +52,40 @@ def load_ignore(directory: Path) -> IgnoreFile | None:
     return IgnoreFile(directory, tuple(rules)) if rules else None
 
 
-def ancestor_ignores(top: Path) -> tuple[IgnoreFile, ...]:
-    """.gitignore files above `top`, stopping at the repo root (dir with .git)."""
+def ancestor_ignores(top: Path, stop_at: Path | None = None) -> tuple[IgnoreFile, ...]:
+    """`.gitignore` files above `top`, up to the nearest bounding directory.
+
+    The walk stops at the first ancestor containing `.git` (the repo root) or at
+    `stop_at`, whichever comes first; the stopping directory's own `.gitignore`
+    still counts. `stop_at` is the caller's known boundary — the desk root for
+    `index`, the common root for `pack`.
+
+    An **unbounded** walk returns nothing. Without that rule a directory outside
+    any git repo collects `.gitignore` files all the way to `/`, where something
+    unrelated can silently exclude the entire tree — a `uv venv` writes a
+    `.gitignore` containing `*` into the venv directory, so a desk created inside
+    one indexed zero files with no error to explain it.
+    """
+    top = top.resolve()
+    boundary: Path | None = None
+    if stop_at is not None:
+        stop_at = stop_at.resolve()
+        if top == stop_at:
+            return ()  # top's own .gitignore is loaded by the walk itself
+        if top.is_relative_to(stop_at):
+            boundary = stop_at
+
     found: list[IgnoreFile] = []
+    bounded = False
     for d in top.parents:
         ig = load_ignore(d)
         if ig:
             found.append(ig)
-        if (d / ".git").exists():
+        if (d / ".git").exists() or d == boundary:
+            bounded = True
             break
+    if not bounded:
+        return ()
     return tuple(reversed(found))
 
 

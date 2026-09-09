@@ -787,7 +787,7 @@ def pack_paths(
         if t.is_file():
             _add(t)  # explicitly named files are always packed
         else:
-            _walk_dir(t, () if no_gitignore else _ancestor_ignores(t))
+            _walk_dir(t, () if no_gitignore else _ancestor_ignores(t, root))
 
     # -- git-aware narrowing -------------------------------------------------
     removed: list[str] = []
