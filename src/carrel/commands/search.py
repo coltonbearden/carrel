@@ -117,7 +117,7 @@ def _human_hits(hits: list[dict[str, Any]]) -> None:
         click.echo("no results", err=True)
         return
     for rank, hit in enumerate(hits, 1):
-        click.echo(f"{rank:2}. {hit['path']}  (score {hit['score']:.2f})")
+        click.echo(f"{rank:2}. {hit['path']}  (score {hit['score']:.3g})")
         snippet = " ".join(hit["snippet"].split())
         if snippet:
             click.echo(f"    {snippet}")
