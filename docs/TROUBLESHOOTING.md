@@ -85,14 +85,15 @@ so three things have to line up:
 2. **The index is fresh.** `carrel index --status` (alias of
    `carrel catalog status`) lists `changed`, `missing` and `unindexed` files;
    `carrel index` refreshes them, `--prune` drops the missing ones.
-3. **The file is an indexed type.** `carrel index` walks the supported types —
+3. **The file is an indexed type.** `carrel index` walks the document types —
    pdf, md, txt, html, json, xml, csv, docx, odt, epub, rtf, xlsx, and images —
-   and silently skips everything else (`.py`, `.toml`, `.yaml`, `.rs`, …).
-   A source file that contains your term can therefore never be a hit. This
-   is a known limitation of v0.2.0, not a bug in your setup: query-driven
-   packing fits document trees; for source trees use `--include`/`--exclude`,
-   `--since REF`/`--changed`, or `--outline` (see the scope note in
-   [FEATURES.md](FEATURES.md#explicit-scope-notes)).
+   plus plain-text source and config files (`.py`, `.toml`, `.yaml`, `.rs`, …,
+   indexed as type `code`). It silently skips anything else, so a binary with
+   no extractable text is never a hit. Two things also keep a file out:
+   `--no-source` (documents only) and `.gitignore` — the walk honors it, so
+   anything under an ignored `build/` or `node_modules/` is not indexed
+   (`--no-gitignore` opts out). Hidden entries (`.git`, dotfiles) are never
+   walked.
 
 With an index and no hits, the header says so and the pack is empty; add
 `--fail-empty` to turn that into exit 5 for scripts:
@@ -198,7 +199,7 @@ Do this instead:
   the *same* `--root` to both commands. `carrel index --status` shows whether
   the index exists and what is stale.
 - Scanned PDFs and images have no text until you index with `--ocr`.
-- Source files (`.py`, `.toml`, …) are not indexed types — see
+- `.gitignore`d paths and hidden entries are never indexed — see
   [`pack --query` finds nothing](#pack-query-finds-nothing-or-misses-a-file-you-know-matches).
 - In scripts, `--fail-empty` makes an empty result exit 5 instead of 0, so
   pipelines can distinguish "no hits" from success.

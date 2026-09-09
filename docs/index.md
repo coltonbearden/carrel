@@ -39,7 +39,7 @@ carrel --root docs pack docs --query release --stats
 │ TOTAL                        │ 5 in / 0 skip │ 661 B │ 186        │        │      │
 ```
 
-`--query` only sees what the index knows, and `carrel index` skips unsupported types such as `.py` and `.toml` — so this fits document trees; for source trees use `--include`/`--exclude`, `--since REF`, or `--outline` ([Quickstart §6](QUICKSTART.md#6-pack-what-matters-pack-query)).
+`--query` only sees what the index knows — and `carrel index` covers source and config files (`.py`, `.toml`, `.yaml`, …) as type `code` alongside documents, honoring `.gitignore`, so this works on source trees too ([Quickstart §6](QUICKSTART.md#6-pack-what-matters-pack-query)).
 
 **Carry your tags and notes.** They are the one thing the desk cannot regenerate, so they export as plain JSON and merge back in:
 

@@ -250,11 +250,11 @@ wrote ctx.md (5 files, ~186 tokens_est)
 Two honest notes. First, bm25 scores from FTS5 are tiny on small documents,
 so the human table prints `-0.000`; `--json` carries the real value
 (`-1.5e-06` here) along with `meta.query`, `meta.hits` and `meta.top`.
-Second, `--query` only ranks files the index knows about, and `carrel index`
-skips unsupported types such as `.py` and `.toml` — `scratch.py` contains
-"release" too, yet it can never be a hit. Query-driven packing fits document
-trees today; for source trees use `--include`/`--exclude`, `--since REF`, or
-`--outline`.
+Second, `--query` only ranks files the index knows about — but that now
+includes source and config files (`.py`, `.toml`, `.yaml`, …), indexed as type
+`code`, so `scratch.py` ranks for "release" alongside the documents. Filter to
+them with `search --type code`, or index documents only with `--no-source`.
+The walk honors `.gitignore`, so `node_modules/` and `build/` stay out.
 
 In scripts, a query with no hits is exit 5 with `--fail-empty`:
 
