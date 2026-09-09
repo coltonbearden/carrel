@@ -97,10 +97,12 @@ claude plugin install carrel-inspect@carrel
 | Plugin | Gives Claude |
 |---|---|
 | `carrel-inspect` | `/inspect`, `/diff`, `/search`, `/pack` + a context-packing skill |
-| `carrel-convert` | `/convert`, `/ocr`, `/thumb`, `/audiobook` + a batch doc-converter agent |
+| `carrel-convert` | `/convert`, `/ocr`, `/thumb`, `/edit`, `/extract-images`, `/audiobook` + a batch doc-converter agent |
 | `carrel-organize` | `/organize`, `/dedupe`, `/tag`, `/note-file` |
+| `carrel-documents` | `/redact`, `/sign`, `/form`, `/proof`, `/color` + a document-clerk agent (redact → verify → sign) and a redaction-and-provenance skill |
 | `carrel-watch` | `/watch-folder` + a watch-automation recipe skill |
-| `carrel-agent` | A file-librarian agent, the carrel MCP server, and a hook that re-indexes files Claude writes |
+| `carrel-agent` | `/index`, `/doctor`, `/catalog`, `/completion`, a file-librarian agent, the carrel MCP server, and a hook that re-indexes files Claude writes |
+| `carrel-guard` | A `PreToolUse` hook that turns PDFs, Office/ebook files and images into text before `Read` sees them, and a `SessionStart` hook that reports what carrel can do here |
 
 Install the CLI first (see [Quickstart](#quickstart)) so the plugins can call it. Works headless too:
 

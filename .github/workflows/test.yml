@@ -29,8 +29,9 @@ jobs:
         with:
           python-version: "3.12"
           enable-cache: true
-      # all extras: mypy sees every optional import and sync_reference.py can load every command
-      - run: uv sync --group dev --all-extras
+      # all extras: mypy sees every optional import and sync_reference.py can load every command;
+      # the docs group is for the strict site build at the end (doc-drift gate, D-g)
+      - run: uv sync --group dev --group docs --all-extras
       - name: ruff check
         run: uv run ruff check --output-format=github src tests scripts
       - name: ruff format --check
@@ -49,6 +50,9 @@ jobs:
         run: |
           uv run python scripts/sync_plugins.py
           git diff --exit-code -- plugins
+      # Anchors and links; prose drift is tests/test_docs_drift.py in the test jobs.
+      - name: docs site builds strict
+        run: uv run mkdocs build --strict
 
   test:
     name: test (py${{ matrix.python }})

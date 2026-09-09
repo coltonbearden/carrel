@@ -78,5 +78,25 @@ Same mechanism: waves of ≤3 parallel `module-builder` subagents on a feature b
 
 - If wave 2 slips: cut `pack --outline` and `--tokenizer exact` first (both isolated flags), then MCP resources (keep the 10 tools). Log in FEATURES.md.
 - If `carrel-guard` cannot rewrite `Read` input reliably on the installed Claude Code, ship it as `deny` + reason naming the `carrel convert` command, and document.
-- The Windows CI job `test-minimal (windows)` is advisory (`continue-on-error: true` in `.github/workflows/test.yml`) for v0.2.0 and runs a **CLI smoke test plus the platform-neutral test modules**, not the whole suite: running the whole suite there produced **54 failures across 13 modules** (run 33880114130): CRLF line endings in tests that write fixtures with `write_text` (byte budgets and content hashes in `pack`), `os.killpg` in `watch`, executable-bit checks in the adapter tests, a `bin/python` venv layout, and UTF-8 console output (the job sets `PYTHONUTF8=1`). The job therefore runs the CLI smoke test plus the modules verified Windows-clean (`test_core_filetypes`, `test_office`). Making the full suite pass on Windows is its own spec; promote the job to required (drop the flag, add the check name to the `main` ruleset) once that lands and it has been green on `main` for two consecutive weeks. `test-minimal (macos)` is required from v0.2.0.
+- The Windows CI job `test-minimal (windows)` is advisory (`continue-on-error: true` in `.github/workflows/test.yml`). For v0.2.0 it ran only a CLI smoke test plus the two modules verified Windows-clean; since 2026-09-09 (D-f, PR #20) it runs the **whole suite** after the smoke test so every push records the current failure list — see [Windows suite](#windows-suite-failure-list) below. Promote the job to required (drop the flag, add the check name to the `main` ruleset) once the suite passes there and it has been green on `main` for two consecutive weeks. `test-minimal (macos)` is required from v0.2.0.
 - Textual moves to the `tui` extra (D-007); if user feedback during the release cycle objects, revert to a core dependency in a patch release — the guard in `commands/desk.py` makes either choice safe.
+
+## Windows suite — failure list
+
+From the first full-suite run after PR #20 (run 34406425888, 2026-09-09, `windows-latest`,
+`PYTHONUTF8=1`): **41 failed** across 7 modules. The 2026-09-04 run 33880114130 had 54 across
+13; spec 22's POSIX `DeskDB.rel()` / sign-manifest paths and the job's `PYTHONUTF8=1` cleared
+`test_redact_sign_form`, `test_product_sync`, `test_mcp_stdio`, `test_reference_sync`,
+`test_mcp_doctor` and `test_desk_db_cmds`, and three `test_pack` chunking cases. Fix order:
+test-side `bash` invocation and newline handling first (largest and cheapest), then the
+`src/` defects, then platform-shaped test expectations.
+
+| Module | Fails | Cause class | Fix side |
+|---|---|---|---|
+| `test_marketplace.py` | 25 | 21× `.sh` hook scripts executed directly (`WinError 193`: Windows does not honour shebangs); 3× executable-bit assertions; 1× capabilities summary via the same exec | tests: run scripts via `bash`; skip mode checks on `nt` |
+| `test_pack.py` | 4 | CRLF from `write_text` in tests shifts byte budgets, content hashes and outline sizes (`max_file_bytes`, `max_bytes`, `dedupe_content`, `outline`) | tests: `newline="\n"`; add `.gitattributes` |
+| `test_core_adapters.py` | 4 | `os.access(X_OK)` is plain existence on Windows; `~` override expansion; exec of a non-`.exe` file | src: `adapters.Adapter.resolve` |
+| `test_core_cli.py` | 3 | `os.killpg` (Windows-absent, voids the action-timeout guarantee); `venv/bin/python` layout (`Scripts\` on Windows); non-UTF-8 adapter output | src: `watch`; tests |
+| `test_watch_org_dedupe.py` | 2 | POSIX `shlex.quote` and `/tmp` path expectations in `_render` | tests |
+| `test_core_db.py` | 2 | notes ordered by `created` alone (a coarse clock ties two inserts); `rel()` of a path outside the root is POSIX since spec 22 (`C:/…`) while the test expects `str(path)` | src: `ORDER BY created DESC, id DESC`; test |
+| `test_completion.py` | 1 | `bash -n` on the generated script under Git Bash | tests |
