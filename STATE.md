@@ -10,8 +10,10 @@
   https://coltonbearden.github.io/carrel/, PyPI package `carrel`.
   Verified from PyPI: `carrel 0.2.0`, `catalog`/`completion` present, the six new
   `pack` flags, 10 MCP tools, `desk` exits 3 with the `carrel[tui]` hint.
-- **In flight:** `feat/source-index` — spec 22, source-tree indexing (PR open, see below).
-- **Next:** two repo-settings steps that only the owner can apply — add
+- **In flight:** nothing.
+- **Next:** unreleased work sits on `main` (see CHANGELOG "Unreleased"): spec 22
+  source-tree indexing. Cut v0.3.0 when ready (`docs/RELEASING.md`). Plus two
+  repo-settings steps that only the owner can apply — add
   `test-minimal (macos)` to the `main` ruleset's required checks and to
   `REQUIRED_CHECKS` in `scripts/github-harden.sh` (see docs/REPO_SETTINGS.md).
   `test-minimal (windows)` stays advisory until the Windows suite gap is closed
