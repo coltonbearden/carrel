@@ -98,7 +98,7 @@ notes (id INTEGER PK, file_id INT, created REAL, body TEXT)
 **Catalog export/import.** Tags and notes are the only data the desk cannot regenerate, so `carrel catalog export` writes them as one deterministic JSON document (sorted by path, byte-identical apart from `exported`):
 
 ```json
-{"schema": 1, "product": "carrel", "version": "0.1.2", "exported": "…", "root": "/abs/root",
+{"schema": 1, "product": "carrel", "version": "0.3.1", "exported": "…", "root": "/abs/root",
  "files": [{"path": "guides/release-checklist.md", "tags": ["process", "release"],
             "notes": [{"created": 1788522679.0094275, "body": "Step 4 needs …"}]}]}
 ```

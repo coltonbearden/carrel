@@ -20,6 +20,19 @@ uv run python scripts/sync_product.py   # regenerates every derived copy
 Then add a `## vX.Y.Z — YYYY-MM-DD` entry at the top of `CHANGELOG.md`
 (the test suite checks the heading exists; the publish workflow checks it again).
 
+Then regenerate the doc samples that print the version — the `carrel --version`
+banner, the `carrel doctor` header, the `pack` header, `catalog export` JSON,
+the `claude plugin list` line and the SessionStart hook summary:
+
+```sh
+uv run pytest tests/test_docs_drift.py   # lists every stale file:line
+```
+
+For each reported site, re-run the command shown in that doc block and paste
+its output; the `plugin.json` templates in PLUGIN_AUTHORING.md just take the
+new version. Never hand-edit the numbers in real output — the samples are only
+worth having because they are real.
+
 ## 2. Land it through a PR
 
 `main` is protected: push a branch, open a PR, wait for `lint`, `test (py3.12 /
