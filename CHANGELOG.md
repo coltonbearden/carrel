@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## v0.3.0 — 2026-09-09
+
+The desk reads code. `carrel index` covers source trees, so the agent-facing
+half of v0.2.0 — `pack --query`, `search`, and the plugin reindex hook — finally
+works on the repositories agents actually point it at.
 
 - **Added:** `carrel index` covers plain-text source and config files (`.py`, `.rs`, `.toml`,
   `.yaml`, `Makefile`, …) as the new type `code`, so `search`, `pack --query`, `tag`, `note`
@@ -9,6 +13,13 @@
 - **Added:** the `index` walk honours `.gitignore` (`--no-gitignore` opts out), sharing
   `pack`'s matcher via the new `carrel.core.ignore`. Without it, indexing a repo would pull in
   `node_modules/`, `build/` and `dist/`.
+- **Changed:** source files are indexed **by default**. An existing desk will
+  grow on its next `carrel index` run; pass `--no-source` to keep it to
+  documents. `.gitignore` is honored by the same walk, so ignored build output
+  stays out.
+- **Changed:** `carrel diff a.py b.py` picks `text` mode automatically instead of
+  exiting 4; `carrel inspect` reports source files as `type: code` with a
+  line/word/char detail block.
 - **Fixed:** `DeskDB.rel()` and PDF-manifest entries now use POSIX separators. `files.path` is
   written verbatim into `carrel catalog export`, so a catalog produced on Windows could not be
   imported on Linux — the exact portability D-009 exists to provide.
