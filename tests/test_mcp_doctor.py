@@ -572,15 +572,7 @@ class TestMcpDeskTools:
         res = call_tool("carrel_note", {"action": "rm", "path": "notes.txt"}, root)
         assert res["isError"] is True
 
-    @staticmethod
-    def _index_paths():
-        import carrel.commands.index as index_mod
-
-        return getattr(index_mod, "index_paths", None)
-
     def test_index_then_search_hits(self, tmp_path):
-        if self._index_paths() is None:
-            pytest.skip("index.index_paths not in this build (spec 17 seam)")
         make_tree(tmp_path)
         root = str(tmp_path)
         res = call_tool("carrel_index", {}, root)
@@ -597,22 +589,12 @@ class TestMcpDeskTools:
         assert res["payload"]["pruned"] == 1
 
     def test_index_update_mode_single_file(self, tmp_path):
-        if self._index_paths() is None:
-            pytest.skip("index.index_paths not in this build (spec 17 seam)")
         make_tree(tmp_path)
         res = call_tool("carrel_index", {"paths": ["sub/deep.txt"], "update": True}, str(tmp_path))
         assert res["isError"] is False, res["payload"]
         assert res["payload"]["indexed"] == 1
         res = call_tool("carrel_search", {"query": "buried"}, str(tmp_path))
         assert [h["path"] for h in res["payload"]["results"]] == ["sub/deep.txt"]
-
-    def test_index_unavailable_without_index_paths_is_tool_error(self, tmp_path):
-        if self._index_paths() is not None:
-            pytest.skip("index.index_paths present — the unavailable branch is dead here")
-        res = call_tool("carrel_index", {}, str(tmp_path))
-        assert res["isError"] is True
-        assert "unavailable" in res["payload"]["error"]
-        assert "carrel index" in res["payload"]["error"]
 
 
 # ---------------------------------------------------------------------------

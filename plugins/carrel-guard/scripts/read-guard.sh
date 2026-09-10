@@ -61,7 +61,7 @@ fi
 
 [ -n "$file_path" ] || exit 0
 case "$file_path" in
-    /*) ;;
+    /*|[A-Za-z]:*) ;;    # POSIX absolute, or a Windows drive path (Claude Code on Windows)
     *) file_path="${hook_cwd:-$PWD}/$file_path" ;;
 esac
 [ -f "$file_path" ] && [ -r "$file_path" ] || exit 0
@@ -91,6 +91,16 @@ esac
 # ---- cache dir keyed by sha256 of the absolute (symlink-resolved dir) path
 dir="$(cd -- "$(dirname -- "$file_path")" 2>/dev/null && pwd -P)" || exit 0
 abs="$dir/$name"
+# Under Git Bash / MSYS, pwd -P gives /c/Users/...; key the cache and report
+# paths in the native form Claude Code and carrel use there.
+native() {
+    if command -v cygpath >/dev/null 2>&1; then
+        cygpath -w -- "$1" 2>/dev/null || printf '%s' "$1"
+    else
+        printf '%s' "$1"
+    fi
+}
+abs="$(native "$abs")"
 hash=""
 if command -v sha256sum >/dev/null 2>&1; then
     hash="$(printf '%s' "$abs" | sha256sum 2>/dev/null | cut -d' ' -f1)"
@@ -104,7 +114,7 @@ case "$hash" in
 esac
 cache="${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/carrel-guard/$hash"
 mkdir -p -- "$cache" 2>/dev/null || exit 0
-txt="$cache/${name%.*}.txt"
+txt="$(native "$cache/${name%.*}.txt")"
 
 # ---- convert unless a fresh cached copy exists (source newer => redo)
 run_bounded() {

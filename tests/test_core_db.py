@@ -125,4 +125,5 @@ def test_rel_paths_outside_root(desk, tmp_path_factory):
     outside = tmp_path_factory.mktemp("elsewhere") / "far.txt"
     outside.write_text("far away")
     with DeskDB(desk) as db:
-        assert db.rel(outside) == str(outside.resolve())  # absolute when not under root
+        # absolute when not under root — and POSIX-separated like every other key
+        assert db.rel(outside) == outside.resolve().as_posix()

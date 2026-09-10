@@ -16,7 +16,6 @@ CLI would print (CarrelError text, install hints included) — never a crash.
 
 from __future__ import annotations
 
-import importlib
 import inspect as pyinspect
 import json
 import sys
@@ -451,18 +450,8 @@ def _tool_note(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
 
 
 def _tool_index(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
-    # index_paths is added by spec 17 (catalog); resolved at call time so this
-    # build degrades to a clean tool error when it is absent.
-    try:
-        module = importlib.import_module("carrel.commands.index")
-        index_paths: Callable[..., dict[str, Any]] | None = getattr(module, "index_paths", None)
-    except ImportError:
-        index_paths = None
-    if index_paths is None:
-        raise CarrelError(
-            "carrel_index is unavailable in this build (carrel.commands.index has no "
-            f"index_paths) — run `{PRODUCT['cli']} index --root DIR` from the CLI instead"
-        )
+    from carrel.commands.index import index_paths
+
     root = _root(args, default_root)
     paths = [_resolve(p, root) for p in _str_list(args, "paths")] or None
     result = index_paths(

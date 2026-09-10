@@ -182,4 +182,4 @@ jobs:
         # Windows failure list; the per-module table is in docs/BUILD_PLAN.md.
         # continue-on-error above keeps the job advisory until it has been
         # green on main for two consecutive weeks (docs/REPO_SETTINGS.md).
-        run: uv run pytest -q
+        run: uv run pytest

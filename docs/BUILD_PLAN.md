@@ -83,6 +83,12 @@ Same mechanism: waves of ≤3 parallel `module-builder` subagents on a feature b
 
 ## Windows suite — failure list
 
+**Status (PR #22):** every row below is fixed. The run on #22's first head reported
+`2 failed, 870 passed, 93 skipped` — `scripts/sync_plugins.py` wrote CRLF on Windows while
+the checked-in command files are LF, and the read-guard hook treated `C:\…` paths as relative
+— both fixed in the same PR. Next: two consecutive green weeks on `main`, then drop
+`continue-on-error` and add `test-minimal (windows)` to the ruleset (owner step).
+
 From the first full-suite run after PR #20 (run 34406425888, 2026-09-09, `windows-latest`,
 `PYTHONUTF8=1`): **41 failed** across 7 modules. The 2026-09-04 run 33880114130 had 54 across
 13; spec 22's POSIX `DeskDB.rel()` / sign-manifest paths and the job's `PYTHONUTF8=1` cleared

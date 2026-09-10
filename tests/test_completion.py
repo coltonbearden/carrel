@@ -15,6 +15,7 @@ from pathlib import Path
 import click
 import pytest
 from click.testing import CliRunner
+from conftest import bash_path, needs_bash
 
 from carrel._product import PRODUCT
 from carrel.cli import cli
@@ -155,10 +156,13 @@ def test_subprocess_entry_point_prints_script():
 
 
 @pytest.mark.skipif(shutil.which("bash") is None, reason="bash not installed")
+@needs_bash
 def test_bash_script_parses(tmp_path: Path):
     script = tmp_path / "carrel.bash"
     script.write_text(completion_script("bash"))
-    proc = subprocess.run(["bash", "-n", str(script)], capture_output=True, text=True, timeout=30)
+    proc = subprocess.run(
+        [bash_path(), "-n", str(script)], capture_output=True, text=True, timeout=30
+    )
     assert proc.returncode == 0, proc.stderr
 
 

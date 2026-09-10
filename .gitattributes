@@ -1,0 +1,17 @@
+# Line endings are normalised to LF on checkout everywhere: tests assert fixture
+# byte sizes and content hashes, and Git for Windows defaults to autocrlf=true.
+* text=auto eol=lf
+
+# Generated fixtures and assets that must never be touched by normalisation.
+*.pdf   binary
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.docx  binary
+*.odt   binary
+*.epub  binary
+*.xlsx  binary
+*.mp3   binary
+*.ogg   binary

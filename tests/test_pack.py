@@ -26,6 +26,8 @@ from carrel.commands.pack import PackResult, estimate_tokens, pack_paths
 from carrel.core import adapters
 from carrel.core.output import CarrelInputError
 
+# Every write_text below passes newline="\n": byte budgets, content hashes and
+# outline sizes are asserted in bytes, and Windows would otherwise write CRLF.
 A_TXT = "hello world alpha beta\n" * 5
 NOTES_TXT = "note line here\n" * 3
 README_MD = "# Title\n\nInline ```code``` fence collision.\n"
@@ -37,13 +39,13 @@ def proj(tmp_path: Path) -> Path:
     (root / "docs").mkdir(parents=True)
     (root / "sub").mkdir()
     (root / "build").mkdir()
-    (root / "a.txt").write_text(A_TXT)
-    (root / "docs" / "readme.md").write_text(README_MD)
-    (root / "data.json").write_text('{"k": "v"}')
-    (root / "sub" / "notes.txt").write_text(NOTES_TXT)
-    (root / "ignored.log").write_text("secret log\n")
-    (root / "build" / "artifact.txt").write_text("built artifact\n")
-    (root / ".gitignore").write_text("*.log\nbuild/\n!keep.log\n")
+    (root / "a.txt").write_text(A_TXT, newline="\n")
+    (root / "docs" / "readme.md").write_text(README_MD, newline="\n")
+    (root / "data.json").write_text('{"k": "v"}', newline="\n")
+    (root / "sub" / "notes.txt").write_text(NOTES_TXT, newline="\n")
+    (root / "ignored.log").write_text("secret log\n", newline="\n")
+    (root / "build" / "artifact.txt").write_text("built artifact\n", newline="\n")
+    (root / ".gitignore").write_text("*.log\nbuild/\n!keep.log\n", newline="\n")
     Image.new("RGB", (4, 4), "red").save(root / "pic.png")
     return root
 
@@ -205,7 +207,7 @@ def test_chunk_requires_output(proj: Path):
 
 def test_chunking_parts_within_budget(proj: Path, tmp_path: Path):
     big = proj / "big.txt"
-    big.write_text(("x" * 60 + "\n") * 200)  # ~3.4k tokens alone
+    big.write_text(("x" * 60 + "\n") * 200, newline="\n")  # ~3.4k tokens alone
     budget = 500
     out = tmp_path / "pack.md"
     res = run("pack", str(proj), "-o", str(out), "--chunk", str(budget))
@@ -276,7 +278,7 @@ def test_output_file_written(proj: Path, tmp_path: Path):
 
 
 def test_unknown_extension_text_is_packed(proj: Path):
-    (proj / "script.py").write_text("print('from python')\n")
+    (proj / "script.py").write_text("print('from python')\n", newline="\n")
     out = run("pack", str(proj)).output
     assert "from python" in out
     assert "```python" in out
@@ -329,12 +331,16 @@ def indexed(tmp_path: Path) -> Path:
     different densities so bm25 ranks them distinctly), plus an FTS index."""
     root = tmp_path / "desk"
     (root / "sub").mkdir(parents=True)
-    (root / "dense.txt").write_text("sentinel sentinel sentinel\n")
-    (root / "sub" / "sparse.txt").write_text("the sentinel stands guard " + "filler words " * 40)
-    (root / "medium.md").write_text("# Notes\n\nA sentinel and another sentinel here.\n")
-    (root / "plain1.txt").write_text("nothing to see here\n")
-    (root / "plain2.txt").write_text("still nothing relevant\n")
-    (root / "plain3.txt").write_text("lorem ipsum dolor\n")
+    (root / "dense.txt").write_text("sentinel sentinel sentinel\n", newline="\n")
+    (root / "sub" / "sparse.txt").write_text(
+        "the sentinel stands guard " + "filler words " * 40, newline="\n"
+    )
+    (root / "medium.md").write_text(
+        "# Notes\n\nA sentinel and another sentinel here.\n", newline="\n"
+    )
+    (root / "plain1.txt").write_text("nothing to see here\n", newline="\n")
+    (root / "plain2.txt").write_text("still nothing relevant\n", newline="\n")
+    (root / "plain3.txt").write_text("lorem ipsum dolor\n", newline="\n")
     res = run("--root", str(root), "index", str(root))
     assert res.exit_code == 0, res.output
     return root
@@ -397,7 +403,7 @@ def test_query_zero_hits_header_and_fail_empty(indexed: Path):
 
 
 def test_query_without_index_exits_4(tmp_path: Path):
-    (tmp_path / "a.txt").write_text("sentinel\n")
+    (tmp_path / "a.txt").write_text("sentinel\n", newline="\n")
     res = run("--root", str(tmp_path), "pack", str(tmp_path), "--query", "sentinel")
     assert res.exit_code == 4, res.output
     assert "index --root" in res.output  # actionable hint
@@ -445,14 +451,14 @@ def repo(tmp_path: Path) -> Path:
     r = tmp_path / "repo"
     (r / "pkg").mkdir(parents=True)
     _sh_git(r, "init", "-q", "-b", "main")
-    (r / "a.txt").write_text("alpha v1\n")
-    (r / "b.txt").write_text("bravo\n")
-    (r / "pkg" / "c.py").write_text("x = 1\n")
-    (r / "gone.txt").write_text("to be deleted\n")
+    (r / "a.txt").write_text("alpha v1\n", newline="\n")
+    (r / "b.txt").write_text("bravo\n", newline="\n")
+    (r / "pkg" / "c.py").write_text("x = 1\n", newline="\n")
+    (r / "gone.txt").write_text("to be deleted\n", newline="\n")
     _sh_git(r, "add", ".")
     _sh_git(r, "commit", "-q", "-m", "A")
-    (r / "a.txt").write_text("alpha v2\n")
-    (r / "pkg" / "d.py").write_text("y = 2\n")
+    (r / "a.txt").write_text("alpha v2\n", newline="\n")
+    (r / "pkg" / "d.py").write_text("y = 2\n", newline="\n")
     (r / "gone.txt").unlink()
     _sh_git(r, "add", "-A")
     _sh_git(r, "commit", "-q", "-m", "B")
@@ -482,8 +488,8 @@ def test_since_no_changes_and_fail_empty(repo: Path):
 
 
 def test_changed_packs_uncommitted_and_untracked(repo: Path):
-    (repo / "b.txt").write_text("bravo edited\n")  # uncommitted modification
-    (repo / "pkg" / "new.py").write_text("z = 3\n")  # untracked
+    (repo / "b.txt").write_text("bravo edited\n", newline="\n")  # uncommitted modification
+    (repo / "pkg" / "new.py").write_text("z = 3\n", newline="\n")  # untracked
     res = run("pack", str(repo), "--changed", "--json")
     meta, files = _meta_and_files(res)
     assert {f["path"] for f in files} == {"b.txt", "pkg/new.py"}
@@ -512,7 +518,7 @@ def test_since_bad_ref_exits_4_with_git_message(repo: Path):
 
 @needs("git")
 def test_since_outside_a_repo_exits_4(tmp_path: Path):
-    (tmp_path / "a.txt").write_text("x\n")
+    (tmp_path / "a.txt").write_text("x\n", newline="\n")
     res = run("pack", str(tmp_path), "--since", "HEAD")
     assert res.exit_code == 4, res.output
     assert "not a git repository" in res.output.lower()
@@ -549,9 +555,9 @@ def test_query_and_since_intersect(repo: Path):
 def test_gitignore_negation_reincludes(tmp_path: Path):
     root = tmp_path / "neg"
     root.mkdir()
-    (root / ".gitignore").write_text("*.log\n!keep.log\n")
-    (root / "keep.log").write_text("kept\n")
-    (root / "other.log").write_text("dropped\n")
+    (root / ".gitignore").write_text("*.log\n!keep.log\n", newline="\n")
+    (root / "keep.log").write_text("kept\n", newline="\n")
+    (root / "other.log").write_text("dropped\n", newline="\n")
     res = run("pack", str(root), "--json")
     _, files = _meta_and_files(res)
     paths = {f["path"] for f in files}
@@ -561,8 +567,10 @@ def test_gitignore_negation_reincludes(tmp_path: Path):
 def test_gitignore_negation_order_matters(tmp_path: Path):
     root = tmp_path / "neg2"
     root.mkdir()
-    (root / ".gitignore").write_text("!keep.log\n*.log\n")  # negation before its rule: no effect
-    (root / "keep.log").write_text("kept?\n")
+    (root / ".gitignore").write_text(
+        "!keep.log\n*.log\n", newline="\n"
+    )  # negation before its rule: no effect
+    (root / "keep.log").write_text("kept?\n", newline="\n")
     res = run("pack", str(root), "--json")
     _, files = _meta_and_files(res)
     assert "keep.log" not in {f["path"] for f in files}
@@ -572,11 +580,13 @@ def test_gitignore_negation_dir_only_and_nested(tmp_path: Path):
     root = tmp_path / "neg3"
     (root / "build").mkdir(parents=True)
     (root / "sub").mkdir()
-    (root / ".gitignore").write_text("build/\n*.tmp\n")
-    (root / "build" / "x.txt").write_text("built\n")
-    (root / "a.tmp").write_text("tmp a\n")
-    (root / "sub" / ".gitignore").write_text("!*.tmp\n")  # inner file overrides the outer rule
-    (root / "sub" / "b.tmp").write_text("tmp b\n")
+    (root / ".gitignore").write_text("build/\n*.tmp\n", newline="\n")
+    (root / "build" / "x.txt").write_text("built\n", newline="\n")
+    (root / "a.tmp").write_text("tmp a\n", newline="\n")
+    (root / "sub" / ".gitignore").write_text(
+        "!*.tmp\n", newline="\n"
+    )  # inner file overrides the outer rule
+    (root / "sub" / "b.tmp").write_text("tmp b\n", newline="\n")
     res = run("pack", str(root), "--json")
     _, files = _meta_and_files(res)
     paths = {f["path"] for f in files}
@@ -594,8 +604,8 @@ def test_help_no_longer_claims_negation_unsupported():
 
 
 def test_dedupe_content_marks_duplicates(proj: Path):
-    (proj / "copy.txt").write_text(A_TXT)  # identical to a.txt
-    (proj / "sub" / "copy2.txt").write_text(A_TXT)
+    (proj / "copy.txt").write_text(A_TXT, newline="\n")  # identical to a.txt
+    (proj / "sub" / "copy2.txt").write_text(A_TXT, newline="\n")
     res = run("pack", str(proj), "--dedupe-content", "--json")
     meta, files = _meta_and_files(res)
     assert meta["deduped"] == 2
@@ -620,7 +630,7 @@ def test_dedupe_content_marks_duplicates(proj: Path):
 
 
 def test_dedupe_off_by_default(proj: Path):
-    (proj / "copy.txt").write_text(A_TXT)
+    (proj / "copy.txt").write_text(A_TXT, newline="\n")
     meta, files = _meta_and_files(run("pack", str(proj), "--json"))
     assert "deduped" not in meta
     assert "copy.txt" in {f["path"] for f in files}
@@ -672,7 +682,7 @@ def test_chunk_budget_uses_exact_tokenizer(proj: Path, tmp_path: Path):
     tiktoken = pytest.importorskip("tiktoken")
     enc = tiktoken.get_encoding("o200k_base")
     big = proj / "big.txt"
-    big.write_text(("lorem ipsum dolor sit amet " * 3 + "\n") * 120)
+    big.write_text(("lorem ipsum dolor sit amet " * 3 + "\n") * 120, newline="\n")
     out = tmp_path / "pack.md"
     budget = 400
     res = run("pack", str(proj), "-o", str(out), "--chunk", str(budget), "--tokenizer", "exact")
@@ -705,9 +715,10 @@ def test_outline_python_lists_defs_and_classes():
 
 def test_outline_markdown_headings_and_size_only(proj: Path):
     (proj / "docs" / "guide.md").write_text(
-        "# Guide\n\n```md\n# not a heading (fenced)\n```\n\n## Install\n\ntext\n\n### Step 1\n"
+        "# Guide\n\n```md\n# not a heading (fenced)\n```\n\n## Install\n\ntext\n\n### Step 1\n",
+        newline="\n",
     )
-    (proj / "bad.py").write_text("def broken(:\n")
+    (proj / "bad.py").write_text("def broken(:\n", newline="\n")
     res = run("pack", str(proj), "--outline", "--json")
     _, files = _meta_and_files(res)
     by = {f["path"]: f for f in files}

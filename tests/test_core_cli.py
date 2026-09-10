@@ -240,9 +240,13 @@ def test_adapter_output_that_is_not_utf8_never_raises(
 ):
     from carrel.core import adapters
 
-    fake = tmp_path / "pandoc"
-    fake.write_bytes(b"#!/bin/sh\nprintf 'pandoc 3.1 \\351\\n'\n")
-    fake.chmod(0o755)
+    if os.name == "nt":  # cmd.exe echoes the raw 0xE9 byte from a .cmd file
+        fake = tmp_path / "pandoc.cmd"
+        fake.write_bytes(b"@echo pandoc 3.1 \xe9\r\n")
+    else:
+        fake = tmp_path / "pandoc"
+        fake.write_bytes(b"#!/bin/sh\nprintf 'pandoc 3.1 \\351\\n'\n")
+        fake.chmod(0o755)
     monkeypatch.setattr(
         adapters.shutil, "which", lambda name, *a, **k: str(fake) if name == "pandoc" else None
     )
@@ -319,7 +323,8 @@ def test_fresh_install_without_extras(tmp_path: Path):
         env=env,
         timeout=300,
     )
-    python = venv / "bin" / "python"
+    bindir = venv / ("Scripts" if os.name == "nt" else "bin")
+    python = bindir / ("python.exe" if os.name == "nt" else "python")
     install = subprocess.run(
         ["uv", "pip", "install", "--python", str(python), str(REPO_ROOT)],
         capture_output=True,
@@ -328,7 +333,7 @@ def test_fresh_install_without_extras(tmp_path: Path):
         timeout=600,
     )
     assert install.returncode == 0, install.stderr
-    carrel_bin = venv / "bin" / "carrel"
+    carrel_bin = bindir / ("carrel.exe" if os.name == "nt" else "carrel")
     assert carrel_bin.exists()
 
     def run(*args: str) -> subprocess.CompletedProcess:
@@ -356,6 +361,13 @@ def test_watch_timeout_orphan_check(tmp_path: Path):
     marker = tmp_path / "late.out"
     watched = tmp_path / "watched"
     watched.mkdir()
+    if os.name == "nt":  # cmd.exe: no sh/sleep/touch — the same worker, in python
+        action = (
+            f'{sys.executable} -c "import time, pathlib; time.sleep(4); '
+            f"pathlib.Path(r'{marker}').touch()\""
+        )
+    else:
+        action = f"sh -c 'sleep 4; touch {marker}'"
     watcher = sp.Popen(
         [
             sys.executable,
@@ -372,7 +384,7 @@ def test_watch_timeout_orphan_check(tmp_path: Path):
             "10",
             "--json-lines",
             "--run",
-            f"sh -c 'sleep 4; touch {marker}'",
+            action,
         ],
         stdout=sp.PIPE,
         stderr=sp.PIPE,
