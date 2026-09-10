@@ -181,8 +181,8 @@ def _strip_doi(value: str) -> str:
 
 # A value word that contains at least one digit (so "Invoice Date" never yields "Date").
 _DIGIT_WORD = r"(?=[A-Z0-9/-]*\d)[A-Z0-9][A-Z0-9/-]{1,30}"
-_LABEL = r"(?:\s*(?:number|num|no|nr|id)\.?)?(?:\s*[:#])*\s*"
-_STRICT_LABEL = r"\s*(?:number|num|no|nr|id|#)\.?(?:\s*[:#])*\s*"
+_LABEL = r"(?:\s+(?:number|num|no|nr|id)\.?)?(?:\s*[:#])*\s*"
+_STRICT_LABEL = r"(?:\s+(?:number|num|no|nr|id)\.?|\s*#)(?:\s*[:#])*\s*"
 
 
 def _p(
@@ -304,7 +304,7 @@ PATTERNS: dict[str, Pattern] = {
         _p(
             "vat",
             r"\b(?:VAT|USt[-. ]?Id(?:Nr)?|TVA|IVA|BTW|MwSt)\.?"
-            r"(?:\s*(?:number|num|no|nr|id|reg(?:istration)?)\.?)?(?:\s*[:#])*\s*"
+            r"(?:\s+(?:number|num|no|nr|id|reg(?:istration)?)\.?)?(?:\s*[:#])*\s*"
             r"(?P<v1>[A-Z]{2}\s?[A-Z0-9]{8,12})\b",
             "identifier",
             "VAT registration numbers (after a 'VAT' label)",

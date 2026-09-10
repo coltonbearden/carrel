@@ -83,7 +83,26 @@ _META_KEY_RE = re.compile(r"[a-z0-9][a-z0-9_.-]{0,63}\Z")
 _NUM_RE = re.compile(r"[-+]?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?\Z")
 _ISO_DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}\Z")
 _COND_RE = re.compile(r"([A-Za-z0-9_.\-]+)\s*(!=|>=|<=|=|>|<|~|\?)\s*(?![=<>!~?])(.*)\Z", re.DOTALL)
-_COMPARE_OPS = frozenset({"=", "!=", ">", ">=", "<", "<="})  # interpolated into SQL only from here
+# Literal SQL fragments per operator: the user's operator string never reaches the
+# query text, only the fragment it selects does.
+_NUM_CMP: dict[str, str] = {
+    ">": "(m.kind='num' AND CAST(m.value AS REAL) > ?)",
+    ">=": "(m.kind='num' AND CAST(m.value AS REAL) >= ?)",
+    "<": "(m.kind='num' AND CAST(m.value AS REAL) < ?)",
+    "<=": "(m.kind='num' AND CAST(m.value AS REAL) <= ?)",
+}
+_TEXT_CMP: dict[str, str] = {
+    ">": "m.value > ?",
+    ">=": "m.value >= ?",
+    "<": "m.value < ?",
+    "<=": "m.value <= ?",
+}
+_NON_NUM_TEXT_CMP: dict[str, str] = {
+    ">": "(m.kind<>'num' AND m.value > ?)",
+    ">=": "(m.kind<>'num' AND m.value >= ?)",
+    "<": "(m.kind<>'num' AND m.value < ?)",
+    "<=": "(m.kind<>'num' AND m.value <= ?)",
+}
 _META_EXISTS = "EXISTS (SELECT 1 FROM meta m WHERE m.file_id=f.id AND m.key=? {cmp})"
 _LEADING_ZERO_RE = re.compile(r"[-+]?0\d")
 _BOOL_WORDS: dict[str, str] = {
@@ -777,8 +796,6 @@ def _meta_comparison(op: str, value: str) -> tuple[str, list[Any]]:
     if op == "~":
         escaped = value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         return "AND m.value LIKE ? ESCAPE '\\'", [f"%{escaped}%"]
-    if op not in _COMPARE_OPS:  # parse_meta_condition guarantees this; belt and braces
-        raise CarrelInputError(f"unsupported operator {op!r}")
     text = value.strip()
     literals: list[str] = [text]
     if text.lower() in _BOOL_WORDS:
@@ -791,15 +808,13 @@ def _meta_comparison(op: str, value: str) -> tuple[str, list[Any]]:
         if _NUM_RE.match(text):
             equal += " OR (m.kind='num' AND CAST(m.value AS REAL) = ?)"
             params.append(float(Decimal(canonical_number(text))))
-        return (f"AND ({equal})" if op == "=" else f"AND NOT ({equal})"), params
+        return ("AND (" + equal + ")" if op == "=" else "AND NOT (" + equal + ")"), params
+    if op not in _NUM_CMP:  # parse_meta_condition guarantees this; belt and braces
+        raise CarrelInputError(f"unsupported operator {op!r}")
     if _NUM_RE.match(text):
         number = float(Decimal(canonical_number(text)))
-        fragment = (
-            f"AND ((m.kind='num' AND CAST(m.value AS REAL) {op} ?) "
-            f"OR (m.kind<>'num' AND m.value {op} ?))"
-        )
-        return fragment, [number, text]
-    return f"AND m.value {op} ?", [text]
+        return "AND (" + _NUM_CMP[op] + " OR " + _NON_NUM_TEXT_CMP[op] + ")", [number, text]
+    return "AND " + _TEXT_CMP[op], [text]
 
 
 def parse_meta_condition(cond: str) -> tuple[str, str, str]:
