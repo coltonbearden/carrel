@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.3.2 — 2026-09-10
 
 - **Fixed (Windows):** `carrel watch --action-timeout` crashed with `module 'os' has no
   attribute 'killpg'` when an action timed out; a timed-out action is now killed as a

@@ -21,7 +21,7 @@ carrel doctor
 ```
 
 ```text
-carrel 0.3.1 · python 3.12.13
+carrel 0.3.2 · python 3.12.13
                 external tools
 │ pandoc      │ found   │ pandoc 3.7.0.2            │
 │ tesseract   │ found   │ tesseract 5.5.0           │
@@ -240,7 +240,7 @@ wrote ctx.md (5 files, ~186 tokens_est)
 ```text
 # carrel pack
 
-- generated-by: carrel 0.3.1
+- generated-by: carrel 0.3.2
 - root: …/docs
 - files: 5 included, 0 skipped
 - tokens_est: 186
@@ -320,7 +320,7 @@ runs), so it diffs cleanly and can live next to the files in version control:
 {
   "schema": 1,
   "product": "carrel",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "exported": "2026-09-04T11:51:19+00:00",
   "root": "/home/you/docs",
   "files": [

@@ -32,7 +32,7 @@ claude plugin list
 # Installed plugins:
 #
 #   ❯ carrel-inspect@carrel
-#     Version: 0.3.1
+#     Version: 0.3.2
 #     Scope: user
 #     Status: ✔ enabled
 ```
@@ -117,7 +117,7 @@ path>/<stem>.txt`, is reused while newer than its source, and can be deleted at 
 The same plugin's `SessionStart` hook runs `carrel doctor --json` once and adds one
 paragraph of context, e.g.
 
-> carrel 0.3.1 is on PATH: 26 of 26 commands ok, 0 degraded, 0 unavailable. Run `carrel doctor --json` for the full table and `carrel <cmd> --help` before composing flags. Most useful missing binaries: edge-tts (pipx install edge-tts), piper (pipx install piper-tts).
+> carrel 0.3.2 is on PATH: 26 of 26 commands ok, 0 degraded, 0 unavailable. Run `carrel doctor --json` for the full table and `carrel <cmd> --help` before composing flags. Most useful missing binaries: edge-tts (pipx install edge-tts), piper (pipx install piper-tts).
 
 Both hooks exit 0 on every path and are silent without `carrel`. Disable them with
 `claude plugin disable carrel-guard`.
