@@ -22,6 +22,7 @@ import click
 
 from carrel.core import adapters, mail
 from carrel.core.filetypes import FileType, detect, detect_or_die
+from carrel.core.fsops import uncollide
 from carrel.core.output import CarrelError, CarrelInputError, ExitCode, emit, fail, progress
 
 
@@ -39,15 +40,6 @@ def _handled(fn: Callable) -> Callable:
             fail(str(e), e.exit_code)
 
     return wrapper
-
-
-def _uncollide(dest: Path, taken: set[Path]) -> Path:
-    """First non-existing, not-yet-planned variant: name.ext, name-1.ext, …"""
-    candidate, n = dest, 0
-    while candidate.exists() or candidate in taken:
-        n += 1
-        candidate = dest.with_name(f"{dest.stem}-{n}{dest.suffix}")
-    return candidate
 
 
 def _messages(path: Path) -> Iterator[tuple[str, Any]]:
@@ -99,7 +91,7 @@ def attachments_of(
             for filename, content_type, data in mail.attachment_parts(msg):
                 dest = out / mail.safe_filename(filename)
                 if not force:
-                    dest = _uncollide(dest, taken)
+                    dest = uncollide(dest, taken)
                 taken.add(dest)
                 dest.write_bytes(data)
                 saved.append(
@@ -155,7 +147,7 @@ def split_mbox(
         dest = out / _split_name(template, n=n, width=width, info=info)
         if dest.exists() and not force:
             raise CarrelError(f"refusing to overwrite existing file: {dest} (pass --force)")
-        dest = _uncollide(dest, taken) if not force else dest
+        dest = uncollide(dest, taken) if not force else dest
         taken.add(dest)
         dest.write_bytes(msg.as_bytes())
         written.append(

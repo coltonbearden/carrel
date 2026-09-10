@@ -25,9 +25,23 @@
   overwritten without `--force`), `split` (mbox → dated `.eml` files), `threads`
   (Message-ID / In-Reply-To / References), `pst` (Outlook exports via the new `readpst`
   adapter, `sudo apt install pst-utils`).
-- **Added (MCP):** `carrel_meta`, `carrel_refs` and `carrel_mail` tools (13 tools); `carrel_search` takes `meta`.
-- **Added (marketplace):** `carrel-finance` plugin (`/refs`), `carrel-mail` plugin (`/mail` + a
-  `mail-archive` skill); `/meta` in `carrel-organize`.
+- **Added:** `carrel fields` — vendor, invoice number, PO, dates, subtotal/tax/total, currency,
+  IBAN and account last-4 out of invoices, receipts and statements (label heuristics over the
+  text spine, `core/money.py` and `core/dates.py`), each with a confidence and its evidence
+  line; `--set` overrides, `--save` writes them as desk fields.
+- **Added:** `carrel rename --template '{date}_{vendor}_{ref}{ext}'` — names from the document's
+  own fields (or desk fields / references), slugified, dry-run by default, never overwriting;
+  the desk row follows the file. `organize --apply` moves through the same helper, so tags and
+  notes no longer go missing after a move (pre-v0.4.0 bug).
+- **Added:** `carrel batch` — run shell actions over many files with `watch`'s `{path}` language
+  (`core/actions.py`, D-013): `--jobs`, `--dry-run`, `--manifest` + `--resume`, `--fail-fast`,
+  `--json-lines`; exit 1 when any file failed.
+- **Added:** `carrel watch` upgrades — `--recursive`, `--existing`, `--stable SECS` (wait for a
+  file to stop growing), `--poll` (for `/mnt/c` and network shares), `--done-dir`/`--error-dir`,
+  `--log FILE`, `--print-service systemd|schtasks`; `{stem}` and `{ext}` substitutions.
+- **Added (MCP):** `carrel_meta`, `carrel_refs`, `carrel_fields` and `carrel_mail` tools (14 tools); `carrel_search` takes `meta`.
+- **Added (marketplace):** `carrel-finance` plugin (`/refs`, `/fields`), `carrel-mail` plugin (`/mail` + a
+  `mail-archive` skill); `/meta`, `/rename`, `/batch` in `carrel-organize`.
 
 ## v0.3.2 — 2026-09-10
 

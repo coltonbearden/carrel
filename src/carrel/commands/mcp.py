@@ -6,7 +6,7 @@ message per line on stdin/stdout, no Content-Length framing, no SDK.
 Every tool (see TOOLS) is a thin shim over a command module's library entry
 point (pack.pack_paths, search.search_index, inspect.inspect_path,
 convert.convert_file, diff.diff_files, redact's text engine, doctor.build_report,
-refs.scan_refs, mail.attachments_of/threads_of, DeskDB for tags, notes and meta
+refs.scan_refs, fields.fields_for, mail.attachments_of/threads_of, DeskDB for tags, notes and meta
 fields, index.index_paths).
 Nothing here walks a tree or estimates tokens on its own. Two resource
 templates expose file text and desk search as `carrel://` URIs.
@@ -294,6 +294,36 @@ TOOLS: list[dict[str, Any]] = [
                 "root": _ROOT_PROP,
             },
             "required": ["action"],
+        },
+    },
+    {
+        "name": "carrel_fields",
+        "description": "Extract vendor, invoice number, PO, dates, subtotal/tax/total, currency, "
+        "IBAN and account last-4 from a document (invoice, receipt, statement) with a confidence "
+        "per field; optionally save them as desk meta fields.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "File or directory."},
+                "profile": {
+                    "type": "string",
+                    "enum": ["auto", "invoice", "receipt", "statement"],
+                    "default": "auto",
+                },
+                "date_order": {"type": "string", "enum": ["mdy", "dmy"], "default": "mdy"},
+                "ocr": {
+                    "type": "boolean",
+                    "description": "OCR images and scanned PDFs.",
+                    "default": False,
+                },
+                "save": {
+                    "type": "boolean",
+                    "description": "Write the fields into the desk under root (source: fields).",
+                    "default": False,
+                },
+                "root": _ROOT_PROP,
+            },
+            "required": ["path"],
         },
     },
     {
@@ -768,6 +798,21 @@ def _tool_refs(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
     return {"root": str(root), "path": str(path), "files": records}
 
 
+def _tool_fields(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
+    from carrel.commands.fields import fields_for
+
+    root = _root(args, default_root)
+    path = _resolve(args["path"], root)
+    records = fields_for(
+        [path],
+        profile=_choice(args, "profile", ("auto", "invoice", "receipt", "statement"), "auto"),
+        date_order=_choice(args, "date_order", ("mdy", "dmy"), "mdy"),
+        ocr=bool(args.get("ocr") or False),
+        save_root=root if args.get("save") else None,
+    )
+    return {"root": str(root), "path": str(path), "files": records}
+
+
 def _tool_mail(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
     from carrel.commands.mail import attachments_of, threads_of
 
@@ -795,6 +840,7 @@ _TOOL_IMPLS: dict[str, Callable[[dict[str, Any], Path], dict[str, Any]]] = {
     "carrel_redact": _tool_redact,
     "carrel_doctor": _tool_doctor,
     "carrel_meta": _tool_meta,
+    "carrel_fields": _tool_fields,
     "carrel_mail": _tool_mail,
     "carrel_refs": _tool_refs,
 }

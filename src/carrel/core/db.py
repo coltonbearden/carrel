@@ -375,6 +375,24 @@ class DeskDB:
             (row["id"],),
         ).fetchall()
 
+    def rename_path(self, old: Path | str, new: Path | str) -> bool:
+        """Point the desk row of `old` at `new` after a move (tags/notes/fields/index follow).
+
+        A row already registered at `new` (a stale entry for a file that was
+        replaced) is dropped first. Returns False when `old` had no row.
+        """
+        old_rel, new_rel = self.rel(old), self.rel(new)
+        row = self.get_file(old)
+        if row is None or old_rel == new_rel:
+            return False
+        stale = self.get_file(new)
+        if stale is not None:
+            self.conn.execute("DELETE FROM docs WHERE rowid=?", (stale["id"],))
+            self.conn.execute("DELETE FROM files WHERE id=?", (stale["id"],))
+        self.conn.execute("UPDATE files SET path=? WHERE id=?", (new_rel, row["id"]))
+        self.conn.execute("UPDATE docs SET path=? WHERE rowid=?", (new_rel, row["id"]))
+        return True
+
     # -- meta (typed key/value fields, schema v2) ---------------------------------
     def set_meta(
         self,

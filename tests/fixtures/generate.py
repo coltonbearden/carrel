@@ -565,6 +565,48 @@ def gen_xlsx() -> None:
 
 
 # --------------------------------------------------------------------------
+# invoice fixtures (specs 25, 26, 27: fields, rename, intake)
+# --------------------------------------------------------------------------
+
+INVOICE_LINES = [
+    "ACME Corp",
+    "123 Harbor Street, Springfield",
+    "",
+    "INVOICE",
+    "",
+    "Invoice # INV-2026-0042",
+    "Invoice Date: 09/10/2026",
+    "Due Date: 10/10/2026",
+    "PO Number: PO-4471",
+    "",
+    "Description              Qty      Amount",
+    "Ledger consulting         10   $1,000.00",
+    "Support retainer           1     $150.00",
+    "",
+    "Subtotal                       $1,150.00",
+    "Tax (7.35%)                       $84.56",
+    "Total Due                      $1,234.56",
+    "",
+    "Pay by bank transfer: IBAN GB82 WEST 1234 5698 7654 32",
+    "Questions: billing@acme.example",
+]
+
+
+def gen_invoice() -> None:
+    """invoice.txt and invoice.pdf: the same labelled invoice as text and as a born-digital PDF."""
+    write("invoice.txt", ("\n".join(INVOICE_LINES) + "\n").encode("utf-8"))
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=letter, invariant=1)
+    _, height = letter
+    c.setFont("Courier", 11)
+    for i, line in enumerate(INVOICE_LINES):
+        c.drawString(72, height - 80 - 15 * i, line)
+    c.showPage()
+    c.save()
+    write("invoice.pdf", buf.getvalue())
+
+
+# --------------------------------------------------------------------------
 # email fixtures (stdlib email; fixed dates, ids and MIME boundaries)
 # --------------------------------------------------------------------------
 
@@ -689,6 +731,7 @@ def main() -> None:
     gen_office_docs()
     gen_xlsx()
     gen_mail()
+    gen_invoice()
     print("done.")
 
 

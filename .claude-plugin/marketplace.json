@@ -29,7 +29,7 @@
     {
       "name": "carrel-organize",
       "source": "./plugins/carrel-organize",
-      "description": "Organize, dedupe, tag, annotate, and record typed fields on local files with the carrel CLI: /organize, /dedupe, /tag, /note-file, /meta.",
+      "description": "Organize, dedupe, tag, annotate, record typed fields, rename from document fields, and batch-process local files with the carrel CLI: /organize, /dedupe, /tag, /note-file, /meta, /rename, /batch.",
       "version": "0.3.2",
       "author": { "name": "Colton Bearden" },
       "license": "MIT",
@@ -47,7 +47,7 @@
     {
       "name": "carrel-finance",
       "source": "./plugins/carrel-finance",
-      "description": "Accounting desk work with the carrel CLI: /refs finds invoice, PO, IBAN, routing, VAT and tracking numbers across files, tags files with them, and shows which documents share a reference.",
+      "description": "Accounting desk work with the carrel CLI: /refs finds invoice, PO, IBAN, routing, VAT and tracking numbers across files, tags files with them, and shows which documents share a reference; /fields extracts vendor, dates, totals and currency from invoices, receipts and statements.",
       "version": "0.3.2",
       "author": { "name": "Colton Bearden" },
       "license": "MIT",
@@ -74,7 +74,7 @@
     {
       "name": "carrel-agent",
       "source": "./plugins/carrel-agent",
-      "description": "Agentic file librarian for carrel desks: /index, /doctor, /catalog, /completion, a file-librarian agent, an agent-workflows skill, the carrel MCP server (13 tools + carrel:// resources), and a PostToolUse hook that re-indexes files Claude writes.",
+      "description": "Agentic file librarian for carrel desks: /index, /doctor, /catalog, /completion, a file-librarian agent, an agent-workflows skill, the carrel MCP server (14 tools + carrel:// resources), and a PostToolUse hook that re-indexes files Claude writes.",
       "version": "0.3.2",
       "author": { "name": "Colton Bearden" },
       "license": "MIT",
