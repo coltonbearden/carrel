@@ -123,7 +123,7 @@ def test_summary_and_threading(fixtures: Path):
 
 def test_names():
     assert mail.safe_filename("../../etc/passwd") == "passwd"
-    assert mail.safe_filename("Q2 report (final).pdf") == "Q2_report_final_.pdf"
+    assert mail.safe_filename("Q2 report (final).pdf") == "Q2_report_final.pdf"
     assert mail.safe_filename("...") == "attachment"
     assert mail.slug("Re: Quarterly close / Q2!!") == "re-quarterly-close-q2"
     assert mail.slug("", 10) == "message"
@@ -431,3 +431,353 @@ def test_doctor_lists_mail_and_readpst():
     report = run_json("doctor")
     assert any(c["command"] == "mail" for c in report["commands"])
     assert any(a["name"] == "readpst" for a in report["adapters"])
+
+
+# ---------------------------------------------- regressions from the PR B review
+
+from email.message import EmailMessage  # noqa: E402
+
+
+def _msg(**headers: str) -> EmailMessage:
+    msg = EmailMessage()
+    for key, value in headers.items():
+        msg[key.replace("_", "-")] = value
+    msg.set_content("body\n")
+    return msg
+
+
+def test_hostile_headers_never_abort_a_run(tmp_path: Path):
+    """A nonsense Date or an address header with an embedded newline is data, not a crash."""
+    overflow = tmp_path / "overflow.eml"
+    overflow.write_bytes(
+        b"From: a@example.org\nSubject: s\nDate: Mon, 14 Jun 99999999999 09:00:00 +0000\n\nbody\n"
+    )
+    msg = mail.parse_eml(overflow)
+    assert mail.header_date(msg) is None and mail.header_datetime(msg) is None
+    assert "Subject: s" in mail.message_text(msg)
+
+    crlf = tmp_path / "crlf.eml"
+    crlf.write_bytes(
+        b"From: =?utf-8?q?Alice=0ASmith?= <alice@example.org>\nSubject: s\nDate: "
+        b"Mon, 14 Jun 2021 09:00:00 +0000\n\nbody\n"
+    )
+    msg = mail.parse_eml(crlf)
+    assert mail.addresses(msg, "From") == []  # degrades, never raises
+    assert mail.summary(msg)["subject"] == "s"
+
+    # a whole desk indexes cleanly with both of them in it
+    (tmp_path / "good.txt").write_text("plain words\n", encoding="utf-8")
+    summary = run_json("--root", str(tmp_path), "index")
+    assert summary["errors"] == [] and summary["indexed"] == 3
+    assert run_json("--root", str(tmp_path), "search", "plain") != []
+    assert run("mail", "threads", str(tmp_path)).exit_code == 0
+
+
+def test_long_reply_chain_does_not_recurse(tmp_path: Path):
+    messages = [
+        {
+            "where": f"m{i}",
+            "message_id": f"<m{i}@x>",
+            "in_reply_to": f"<m{i - 1}@x>" if i else None,
+            "references": [],
+            "subject": "chain",
+            "date": f"2021-06-14T{i % 24:02d}:00:00+00:00",
+        }
+        for i in range(3000)
+    ]
+    (group,) = mail.thread_groups(messages)
+    assert len(group["messages"]) == 3000
+    assert group["messages"][0]["depth"] == 1
+
+
+def test_threads_order_by_instant_not_by_text(tmp_path: Path):
+    """Two timezones: the earlier instant is the root even though its text sorts later."""
+    root = tmp_path / "root.eml"
+    root.write_bytes(
+        b"From: a@example.org\nTo: b@example.org\nSubject: Budget\n"
+        b"Message-ID: <root@x>\nDate: Tue, 15 Jun 2021 11:00:00 +0200\n\nfirst\n"
+    )
+    reply = tmp_path / "reply.eml"
+    reply.write_bytes(
+        b"From: b@example.org\nTo: a@example.org\nSubject: Re: Budget\n"
+        b"Message-ID: <reply@x>\nIn-Reply-To: <root@x>\n"
+        b"Date: Tue, 15 Jun 2021 09:30:00 +0000\n\nsecond\n"
+    )
+    (group,) = threads_of([tmp_path])
+    assert group["root_subject"] == "Budget"
+    assert [m["depth"] for m in group["messages"]] == [1, 2]
+
+
+def test_unknown_charset_keeps_the_body(tmp_path: Path):
+    src = tmp_path / "odd.eml"
+    src.write_bytes(
+        b"From: a@example.org\nSubject: s\nMIME-Version: 1.0\n"
+        b'Content-Type: text/plain; charset="x-unknown-charset"\n\nthe sentinel body\n'
+    )
+    assert "the sentinel body" in mail.body_text(mail.parse_eml(src))
+    assert "the sentinel body" in extract_text(src)
+
+
+def test_nested_and_forwarded_attachments_are_found(tmp_path: Path):
+    inner = EmailMessage()
+    inner["From"] = "a@example.org"
+    inner["Subject"] = "inner"
+    inner.set_content("inner body\n")
+    inner.add_attachment(
+        b"%PDF-1.4 fake", maintype="application", subtype="pdf", filename="inner.pdf"
+    )
+    outer = EmailMessage()
+    outer["From"] = "b@example.org"
+    outer["Subject"] = "Fwd: inner"
+    outer.set_content("see attached\n")
+    outer.add_attachment(inner, filename="inner.eml")
+    src = tmp_path / "fwd.eml"
+    src.write_bytes(outer.as_bytes())
+
+    found = mail.attachments(mail.parse_eml(src))
+    assert [a["filename"] for a in found] == ["inner.pdf"]
+    assert found[0]["content_type"] == "application/pdf" and found[0]["size"] == 13
+    records = run_json("mail", "attachments", str(src), "--out-dir", str(tmp_path / "out"))
+    assert [a["filename"] for a in records[0]["attachments"]] == ["inner.pdf"]
+    assert (tmp_path / "out" / "inner.pdf").read_bytes() == b"%PDF-1.4 fake"
+
+
+def test_attachments_never_clobber_within_one_run(tmp_path: Path):
+    box = tmp_path / "two.mbox"
+    parts = []
+    for n, payload in enumerate((b"first", b"second-longer"), 1):
+        msg = EmailMessage()
+        msg["From"] = f"a{n}@example.org"
+        msg["Subject"] = f"m{n}"
+        msg["Date"] = "Mon, 14 Jun 2021 09:00:00 +0000"
+        msg.set_content("body\n")
+        msg.add_attachment(payload, maintype="image", subtype="png", filename="image001.png")
+        parts.append(b"From a@example.org Mon Jun 14 09:00:00 2021\n" + msg.as_bytes() + b"\n")
+    box.write_bytes(b"".join(parts))
+    out = tmp_path / "att"
+    for force in (False, True):
+        target = out if not force else tmp_path / "att-forced"
+        args = ["mail", "attachments", str(box), "--out-dir", str(target)]
+        records = run_json(*(args + (["--force"] if force else [])))
+        paths = [a["path"] for r in records for a in r["attachments"]]
+        assert len(set(paths)) == 2, f"force={force}: {paths}"
+        assert all(Path(x).is_file() for x in paths)
+        assert {Path(x).read_bytes() for x in paths} == {b"first", b"second-longer"}
+
+
+def test_long_attachment_name_is_capped(tmp_path: Path):
+    msg = EmailMessage()
+    msg["From"] = "a@example.org"
+    msg["Subject"] = "big name"
+    msg.set_content("body\n")
+    msg.add_attachment(
+        b"x", maintype="application", subtype="octet-stream", filename="n" * 300 + ".pdf"
+    )
+    src = tmp_path / "long.eml"
+    src.write_bytes(msg.as_bytes())
+    (rec,) = run_json("mail", "attachments", str(src), "--out-dir", str(tmp_path / "out"))
+    written = Path(rec["attachments"][0]["path"])
+    assert written.is_file() and len(written.name) <= 105 and written.suffix == ".pdf"
+    assert mail.safe_filename("CON") == "CON_"
+    assert mail.safe_filename("nul.txt") == "nul_.txt"
+    assert mail.safe_filename("COM1.pdf") == "COM1_.pdf"
+
+
+def test_split_plans_names_before_writing_and_keeps_stored_bytes(tmp_path: Path, fixtures: Path):
+    out = tmp_path / "split"
+    rows = run_json(
+        "mail",
+        "split",
+        str(fixtures / "thread.mbox"),
+        "--out-dir",
+        str(out),
+        "--template",
+        "{date}.eml",
+    )
+    names = sorted(Path(r["path"]).name for r in rows)
+    assert names == ["2021-06-14-1.eml", "2021-06-14.eml", "2021-06-15.eml"]
+    assert len({r["path"] for r in rows}) == 3
+    # the stored bytes survive: headers are not refolded or re-encoded
+    raw = list(mail.iter_mbox_raw(fixtures / "thread.mbox"))
+    written = [Path(r["path"]).read_bytes() for r in sorted(rows, key=lambda r: r["n"])]
+    assert written == raw
+
+    box = tmp_path / "utf8.mbox"
+    msg = EmailMessage()
+    msg["From"] = "a@example.org"
+    msg["Subject"] = "Zürich"
+    msg["Date"] = "Mon, 14 Jun 2021 09:00:00 +0000"
+    msg["DKIM-Signature"] = "v=1; a=rsa-sha256; b=AAAABBBBCCCCDDDD"
+    msg.set_content("body\n")
+    stored = b"From a@example.org Mon Jun 14 09:00:00 2021\n" + msg.as_bytes() + b"\n"
+    box.write_bytes(stored)
+    (row,) = split_mbox(box, tmp_path / "one")
+    assert b"b=AAAABBBBCCCCDDDD" in Path(row["path"]).read_bytes()
+
+
+def test_split_refuses_a_pre_existing_name_before_writing_anything(tmp_path: Path, fixtures: Path):
+    out = tmp_path / "split"
+    out.mkdir()
+    (out / "1_2021-06-14_quarterly-close.eml").write_text("older\n", encoding="utf-8")
+    result = run("mail", "split", str(fixtures / "thread.mbox"), "--out-dir", str(out), expect=1)
+    assert "--force" in result.stderr
+    assert sorted(p.name for p in out.iterdir()) == ["1_2021-06-14_quarterly-close.eml"]
+    assert (out / "1_2021-06-14_quarterly-close.eml").read_text(encoding="utf-8") == "older\n"
+    with pytest.raises(CarrelInputError, match="not a path"):
+        split_mbox(fixtures / "thread.mbox", out, template="{date}/{n}.eml")
+
+
+def test_mbox_without_a_separator_is_an_error(tmp_path: Path, fixtures: Path):
+    fake = tmp_path / "notreally.mbox"
+    fake.write_text("From: a@example.org\nSubject: s\n\nbody\n", encoding="utf-8")
+    with pytest.raises(CarrelInputError, match="no mbox `From ` separator"):
+        list(mail.iter_mbox(fake))
+    assert run("inspect", str(fake)).exit_code == 0  # inspect degrades to an error field
+
+
+def test_mailbox_named_eml_is_detected_by_its_bytes(tmp_path: Path, fixtures: Path):
+    disguised = tmp_path / "inbox.eml"
+    disguised.write_bytes((fixtures / "thread.mbox").read_bytes())
+    assert detect(disguised) is FileType.MBOX
+    text = extract_text(disguised)
+    assert text.count("# ") == 3  # all three messages, not just the first
+
+
+def test_mboxrd_from_quoting_is_undone(tmp_path: Path):
+    body = "line one\n>From the desk of nobody\nline three\n"
+    msg = EmailMessage()
+    msg["From"] = "a@example.org"
+    msg["Subject"] = "quoting"
+    msg["Date"] = "Mon, 14 Jun 2021 09:00:00 +0000"
+    msg.set_content(body)
+    box = tmp_path / "q.mbox"
+    box.write_bytes(b"From a@example.org Mon Jun 14 09:00:00 2021\n" + msg.as_bytes() + b"\n")
+    text = extract_text(box)
+    assert "\nFrom the desk of nobody" in text and ">From the desk" not in text
+
+
+def test_long_header_block_still_detects_without_an_extension(tmp_path: Path):
+    padding = b"".join(
+        f"Received: from relay{i}.example.org by mx.example.org\n".encode() for i in range(80)
+    )
+    bare = tmp_path / "1704103200.M1P2.host:2,S"  # Maildir: the "suffix" is delivery flags
+    bare.write_bytes(
+        b"From: a@example.org\n"
+        + padding
+        + b"Subject: s\nDate: Mon, 14 Jun 2021 09:00:00 +0000\n\nbody\n"
+    )
+    assert len(padding) > 2048
+    assert detect(bare) is FileType.EML
+
+
+@pytest.mark.parametrize("name", ["0001-fix-widget.patch", "series.diff", "notes.bak", "mail.log"])
+def test_named_text_files_are_never_reclassified_as_mail(tmp_path: Path, name: str):
+    """D-012: the shape sniff is for extension-less files only."""
+    p = tmp_path / name
+    p.write_text(
+        "From 9d4e1e23bd5b727046a9e3b4b7db57bd8d6ee684 Mon Sep 17 00:00:00 2001\n"
+        "From: A Dev <dev@example.org>\nDate: Mon, 14 Jun 2021 09:00:00 +0000\n"
+        "Subject: [PATCH] fix the widget\n\n---\n diff --git a/x b/x\n",
+        encoding="utf-8",
+    )
+    assert detect(p) is not FileType.MBOX
+    assert detect(p) is not FileType.EML
+
+
+def test_eml_to_html_declares_utf8_and_pdf_never_fetches(tmp_path: Path):
+    src = tmp_path / "styled.eml"
+    msg = EmailMessage()
+    msg["From"] = "a@example.org"
+    msg["Subject"] = "Café crème"
+    msg["Date"] = "Mon, 14 Jun 2021 09:00:00 +0000"
+    msg.set_content("Café crème — März\n")
+    msg.add_alternative(
+        '<html><head><meta http-equiv="Content-Type" content="text/html; charset=windows-1252">'
+        "</head><body><p>Café crème — März</p>"
+        '<img src="http://tracker.example.org/pixel.gif">'
+        '<link rel="attachment" href="file:///etc/hostname"></body></html>',
+        subtype="html",
+    )
+    src.write_bytes(msg.as_bytes())
+
+    (rec,) = run_json("convert", str(src), "--to", "html", "--out-dir", str(tmp_path))
+    html = Path(rec["dest"]).read_text(encoding="utf-8")
+    assert '<meta charset="utf-8">' in html
+    assert "windows-1252" not in html  # the stale declaration is gone
+    assert "Café crème" in html
+
+    from carrel.commands.convert import _eml_text_document
+
+    rendered = _eml_text_document(src)
+    assert "tracker.example.org" not in rendered  # nothing the sender referenced survives
+    assert "file:///etc/hostname" not in rendered
+    assert "<img" not in rendered and "<link" not in rendered
+    assert "Café crème" in rendered
+
+
+@needs("weasyprint")
+def test_eml_to_pdf_output_has_no_external_references(tmp_path: Path):
+    src = tmp_path / "tracked.eml"
+    msg = EmailMessage()
+    msg["From"] = "a@example.org"
+    msg["Subject"] = "tracked"
+    msg.set_content("plain body\n")
+    msg.add_alternative(
+        '<html><body><img src="http://127.0.0.1:9/pixel.gif">hi</body></html>', subtype="html"
+    )
+    src.write_bytes(msg.as_bytes())
+    (rec,) = run_json("convert", str(src), "--to", "pdf", "--out-dir", str(tmp_path))
+    from pypdf import PdfReader
+
+    reader = PdfReader(rec["dest"])
+    assert not reader.attachments  # no local file was pulled in
+    assert "plain body" in "".join(page.extract_text() for page in reader.pages)
+
+
+@pytest.mark.skipif(bash_path() is None, reason="bash not installed")
+def test_pst_uses_the_documented_readpst_flags(tmp_path: Path, monkeypatch, fixtures: Path):
+    fake = tmp_path / "readpst.sh"
+    fake.write_text(
+        "#!/usr/bin/env bash\n"
+        'printf "%s\\n" "$*" >> "$ARGV_LOG"\n'
+        'out=""; while [ $# -gt 0 ]; do case "$1" in -o) out="$2"; shift 2;; -V) echo fake; exit 0;; *) shift;; esac; done\n'
+        'mkdir -p "$out/Inbox" && cp "$FIXTURE" "$out/Inbox/1.eml"\n',
+        encoding="utf-8",
+    )
+    fake.chmod(fake.stat().st_mode | stat.S_IXUSR)
+    if os.name == "nt":
+        pytest.skip("shebang exec is not available on Windows")
+    log = tmp_path / "argv.log"
+    monkeypatch.setenv("CARREL_BIN_READPST", str(fake))
+    monkeypatch.setenv("FIXTURE", str(fixtures / "sample.eml"))
+    monkeypatch.setenv("ARGV_LOG", str(log))
+    src = tmp_path / "export.pst"
+    src.write_bytes(b"!BDN")
+    run_json("mail", "pst", str(src), "--out-dir", str(tmp_path / "eml"))
+    run_json("mail", "pst", str(src), "--out-dir", str(tmp_path / "mbox"), "--format", "mbox")
+    lines = log.read_text(encoding="utf-8").splitlines()
+    assert " -e " in f" {lines[0]} "  # one .eml per message
+    assert " -r " in f" {lines[1]} "  # one mbox file per folder, never -M (MH format)
+    assert "-M" not in lines[1]
+
+
+def test_pst_missing_binary_creates_no_output_directory(tmp_path: Path, monkeypatch):
+    src = tmp_path / "export.pst"
+    src.write_bytes(b"!BDN")
+    out = tmp_path / "should-not-exist"
+    monkeypatch.setenv("CARREL_BIN_READPST", str(tmp_path / "nowhere"))
+    run("mail", "pst", str(src), "--out-dir", str(out), expect=3)
+    assert not out.exists()
+
+
+def test_mail_threads_honours_ancestor_gitignore(tmp_path: Path, fixtures: Path):
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    (repo / ".gitignore").write_text("build/\n", encoding="utf-8")
+    sub = repo / "sub"
+    (sub / "build").mkdir(parents=True)
+    (sub / "build" / "ignored.eml").write_bytes((fixtures / "sample.eml").read_bytes())
+    (sub / "kept.eml").write_bytes((fixtures / "sample.eml").read_bytes())
+    groups = run_json("--root", str(repo), "mail", "threads", str(sub))
+    wheres = [m["where"] for g in groups for m in g["messages"]]
+    assert all("build" not in w for w in wheres) and any("kept.eml" in w for w in wheres)

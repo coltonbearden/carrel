@@ -39,6 +39,20 @@
 - **Added:** `carrel watch` upgrades — `--recursive`, `--existing`, `--stable SECS` (wait for a
   file to stop growing), `--poll` (for `/mnt/c` and network shares), `--done-dir`/`--error-dir`,
   `--log FILE`, `--print-service systemd|schtasks`; `{stem}` and `{ext}` substitutions.
+- **Fixed (email, found by review before release):** converting a message to PDF now renders its
+  *text*, never the sender's HTML, so a conversion can no longer fetch a tracking pixel, reach an
+  intranet URL, or embed a local `file://` into the output; `eml → html` re-declares the encoding
+  it is actually written in (no more mojibake from a `windows-1252` header). A malformed `Date`,
+  an address header containing a newline, an unknown charset, a 3000-message reply chain, a
+  300-character attachment name and a Windows device name are all handled as data instead of
+  crashing or silently dropping content. Attachments nested inside forwarded messages are found;
+  two attachments with the same name in one run no longer overwrite each other; `mail split`
+  plans every name before writing (so a collision cannot leave half a mailbox on disk) and writes
+  the bytes as stored, keeping encodings and DKIM signatures intact. `mail pst --format mbox`
+  passes readpst `-r` (one `mbox` per folder) rather than `-M` (MH format). The mail shape-sniff
+  now applies only to files without a real extension (D-012), so `.patch`, `.diff` and log files
+  are no longer reclassified as mail, while Maildir names still are; a mailbox saved as `.eml` is
+  detected by its bytes instead of swallowing every message after the first.
 - **Added (MCP):** `carrel_meta`, `carrel_refs`, `carrel_fields` and `carrel_mail` tools (14 tools); `carrel_search` takes `meta`.
 - **Added (marketplace):** `carrel-finance` plugin (`/refs`, `/fields`), `carrel-mail` plugin (`/mail` + a
   `mail-archive` skill); `/meta`, `/rename`, `/batch` in `carrel-organize`.

@@ -8,7 +8,7 @@ silent no-ops.
 
 **`PreToolUse` on `Read` → `scripts/read-guard.sh`.** Claude's `Read` tool cannot parse
 PDFs, Word/OpenDocument/EPUB/RTF files, spreadsheets, email files or images. When Claude is
-about to `Read` one of those (`.pdf .docx .odt .epub .rtf .xlsx .eml .mbox`, and `.png .jpg
+about to `Read` one of those (`.pdf .docx .odt .epub .rtf .xlsx .eml .mbox .mbx`, and `.png .jpg
 .jpeg .ico` when OCR is installed), the guard:
 
 1. converts it to text with `carrel convert --to txt` (images: `carrel ocr --to txt`),

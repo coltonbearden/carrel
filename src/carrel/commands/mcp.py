@@ -820,7 +820,7 @@ def _tool_mail(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
     root = _root(args, default_root)
     path = _resolve(args["path"], root)
     if action == "threads":
-        return {"root": str(root), "path": str(path), "threads": threads_of([path])}
+        return {"root": str(root), "path": str(path), "threads": threads_of([path], root=root)}
     if not args.get("out_dir"):
         raise CarrelInputError("carrel_mail attachments requires `out_dir`")
     out_dir = _resolve(args["out_dir"], root)

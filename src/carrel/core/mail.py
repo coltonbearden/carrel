@@ -11,9 +11,11 @@ messages as plain files.
 
 from __future__ import annotations
 
+import contextlib
 import mailbox
 import re
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from email import policy
 from email.message import EmailMessage
 from email.parser import BytesParser
@@ -34,9 +36,17 @@ _SLUG_UNSAFE = re.compile(r"[^A-Za-z0-9_-]+")
 
 
 def looks_like_eml(head: bytes) -> bool:
-    """RFC 5322 header block at the start: ≥2 well-known fields before the first blank line."""
+    """RFC 5322 header block at the start: ≥2 well-known fields before the first blank line.
+
+    `head` is a prefix of the file, so its final line may be cut in half — that
+    line is ignored rather than judged (a header block of Received/DKIM/ARC
+    lines easily runs past any fixed read).
+    """
+    lines = head.split(b"\n")
+    if b"\n" in head and head[-1:] != b"\n":
+        lines = lines[:-1]  # the read stopped mid-line
     seen = 0
-    for line in head.split(b"\n", 60):
+    for line in lines:
         stripped = line.rstrip(b"\r")
         if not stripped:
             break
@@ -63,36 +73,126 @@ def parse_eml(path: Path) -> EmailMessage:
         return BytesParser(policy=policy.default).parse(fh)
 
 
-def iter_mbox(path: Path) -> Iterator[EmailMessage]:
-    """Messages of an mbox file in order (read-only; the file is never locked or rewritten)."""
+def _unquote_mboxrd(raw: bytes) -> bytes:
+    """Undo mboxrd/mboxo `>From ` escaping in a stored message body.
+
+    Writers escape a body line starting with `From ` so it cannot be mistaken
+    for the next envelope separator; readers must put it back or the text (and
+    any signature over it) is wrong.
+    """
+    if b"\n>From " not in raw and not raw.startswith(b">From "):
+        return raw
+    return re.sub(rb"(?m)^>(>*From )", rb"\1", raw)
+
+
+def iter_mbox_raw(path: Path) -> Iterator[bytes]:
+    """The stored bytes of each message, in mailbox order (read-only, never locked).
+
+    Raises CarrelInputError for an unreadable file or one with no `From `
+    envelope line at all — `mailbox.mbox` reports such a file as empty, which
+    would otherwise look like a mailbox of zero messages.
+    """
     try:
         box = mailbox.mbox(str(path), factory=None, create=False)
     except (OSError, mailbox.Error) as e:
         raise CarrelInputError(f"cannot read mbox {path}: {e}") from e
     try:
-        for key in box.iterkeys():
-            raw = box.get_bytes(key)
-            yield BytesParser(policy=policy.default).parsebytes(raw)
+        keys = list(box.iterkeys())
+        if not keys and path.stat().st_size > 0:
+            raise CarrelInputError(
+                f"{path} has no mbox `From ` separator line — not a mailbox "
+                "(a single message is an .eml)"
+            )
+        for key in keys:
+            yield _unquote_mboxrd(box.get_bytes(key))
     finally:
         box.close()
 
 
-def header_date(msg: EmailMessage) -> str | None:
-    """The Date header as ISO 8601 (timezone kept), or None when absent/unparseable."""
-    raw = msg.get("Date")
+def count_mbox(path: Path) -> int:
+    """How many messages the mailbox holds, without parsing any of them."""
+    try:
+        box = mailbox.mbox(str(path), factory=None, create=False)
+    except (OSError, mailbox.Error) as e:
+        raise CarrelInputError(f"cannot read mbox {path}: {e}") from e
+    try:
+        return len(box.keys())
+    finally:
+        box.close()
+
+
+def iter_mbox(path: Path) -> Iterator[EmailMessage]:
+    """Messages of an mbox file in order (read-only; the file is never locked or rewritten)."""
+    for raw in iter_mbox_raw(path):
+        yield BytesParser(policy=policy.default).parsebytes(raw)
+
+
+def header_datetime(msg: EmailMessage) -> datetime | None:
+    """The Date header as an aware datetime, or None when absent or unusable.
+
+    Reading the header is itself inside the guard: under `policy.default` the
+    value is parsed lazily on access, and a nonsense year raises OverflowError
+    there — one such message must not abort an index or pack run.
+    """
+    raw = header_str(msg, "Date")
     if not raw:
         return None
     try:
-        return parsedate_to_datetime(str(raw)).isoformat(timespec="seconds")
-    except (TypeError, ValueError):
+        when = parsedate_to_datetime(raw)
+    except Exception:  # noqa: BLE001 — any malformed Date is "no date", never a crash
         return None
+    if when.tzinfo is None:  # a `-0000` or malformed offset: treat as UTC
+        return when.replace(tzinfo=UTC)
+    return when
+
+
+def header_date(msg: EmailMessage) -> str | None:
+    """The Date header as ISO 8601 (timezone kept), or None when absent/unparseable."""
+    when = header_datetime(msg)
+    return when.isoformat(timespec="seconds") if when else None
+
+
+def _instant(msg_summary: dict[str, Any]) -> datetime:
+    """The message's instant for ordering; undated messages sort last."""
+    raw = msg_summary.get("date")
+    if not raw:
+        return datetime.max.replace(tzinfo=UTC)
+    try:
+        when = datetime.fromisoformat(str(raw))
+    except ValueError:
+        return datetime.max.replace(tzinfo=UTC)
+    return when if when.tzinfo else when.replace(tzinfo=UTC)
+
+
+def header_str(msg: Any, field: str) -> str:
+    """A header as text, or "" when it is absent or refuses to render.
+
+    Under `policy.default` a header is parsed when it is read, and a malformed
+    one raises there — an address with an embedded newline raises ValueError on
+    `str()`. Every read of a message header goes through here so one hostile
+    message cannot abort an index, pack or thread run.
+    """
+    try:
+        value = msg.get(field)
+        return str(value) if value is not None else ""
+    except Exception:  # noqa: BLE001 — an unrenderable header is "no header"
+        return ""
 
 
 def addresses(msg: EmailMessage, field: str) -> list[str]:
-    """`Name <addr>` strings of an address header (empty when absent)."""
-    values = msg.get_all(field, [])
+    """`Name <addr>` strings of an address header (empty when absent or unparseable).
+
+    A header that decodes to something with a CR or LF in it makes
+    `getaddresses` raise; a hostile-but-parseable message must not abort a
+    whole index run, so the field degrades to empty.
+    """
+    try:
+        values = [str(v) for v in (msg.get_all(field) or [])]
+        pairs = getaddresses(values)
+    except Exception:  # noqa: BLE001 — an unusable address header is "no addresses"
+        return []
     out: list[str] = []
-    for name, addr in getaddresses([str(v) for v in values]):
+    for name, addr in pairs:
         if not addr and not name:
             continue
         out.append(f"{name} <{addr}>" if name else addr)
@@ -119,66 +219,125 @@ def body_text(msg: EmailMessage) -> str:
         part = None
     if part is None:
         return ""
-    try:
-        content = part.get_content()
-    except Exception:  # noqa: BLE001
-        return ""
-    if not isinstance(content, str):
+    content = _part_text(part)
+    if content is None:
         return ""
     if part.get_content_type() == "text/html":
         return html_to_text(content)
     return content
 
 
+def _part_text(part: Any) -> str | None:
+    """A text part's content, falling back to a permissive decode.
+
+    `get_content()` raises LookupError for a charset Python does not know —
+    a mislabeled or typo'd `charset=` is routine in real mail, and dropping the
+    body silently would index the message as headers only.
+    """
+    with contextlib.suppress(Exception):  # unknown charset: fall through to the raw payload
+        content = part.get_content()
+        if isinstance(content, str):
+            return content
+    try:
+        payload = part.get_payload(decode=True)
+    except Exception:  # noqa: BLE001
+        return None
+    if not isinstance(payload, bytes):
+        return None
+    charset = part.get_content_charset() or ""
+    for encoding in (charset, "utf-8", "cp1252"):
+        if not encoding:
+            continue
+        try:
+            return payload.decode(encoding)
+        except (LookupError, UnicodeDecodeError):
+            continue
+    return payload.decode("utf-8", errors="replace")
+
+
 def body_html(msg: EmailMessage) -> str | None:
     """The text/html part as-is, or None."""
     try:
         part = msg.get_body(preferencelist=("html",))
-        if part is None:
-            return None
-        content = part.get_content()
     except Exception:  # noqa: BLE001
         return None
-    return content if isinstance(content, str) else None
+    return _part_text(part) if part is not None else None
+
+
+def _iter_attachment_parts(msg: Any) -> Iterator[Any]:
+    """Every attachment part, descending into nested multiparts and forwarded messages.
+
+    `EmailMessage.iter_attachments()` yields only the top level, so a
+    "forward as attachment" (`message/rfc822`) or a nested `multipart/mixed`
+    would otherwise be reported as one opaque part and its real attachments
+    never seen.
+    """
+    try:
+        parts = list(msg.iter_attachments())
+    except Exception:  # noqa: BLE001 — a broken MIME tree has no attachments
+        return
+    for part in parts:
+        content_type = part.get_content_type()
+        if content_type == "message/rfc822" or part.get_content_maintype() == "multipart":
+            inner = part.get_payload()
+            inner_messages = inner if isinstance(inner, list) else [inner]
+            for sub in inner_messages:
+                if hasattr(sub, "iter_attachments"):
+                    yield from _iter_attachment_parts(sub)
+            continue
+        yield part
+
+
+def _attachment_name(part: Any, index: int) -> str:
+    try:
+        name = part.get_filename()
+    except Exception:  # noqa: BLE001 — an undecodable filename header
+        name = None
+    return name or f"attachment-{index}"
 
 
 def attachments(msg: EmailMessage) -> list[dict[str, Any]]:
-    """[{filename, content_type, size}] for every attachment part."""
+    """[{filename, content_type, size}] for every attachment part, nested ones included."""
     out: list[dict[str, Any]] = []
-    try:
-        parts = list(msg.iter_attachments())
-    except Exception:  # noqa: BLE001
-        return out
-    for i, part in enumerate(parts, 1):
-        try:
-            payload = part.get_payload(decode=True)
-        except Exception:  # noqa: BLE001
-            payload = None
-        size = len(payload) if isinstance(payload, bytes) else 0
+    for i, part in enumerate(_iter_attachment_parts(msg), 1):
         out.append(
             {
-                "filename": part.get_filename() or f"attachment-{i}",
+                "filename": _attachment_name(part, i),
                 "content_type": part.get_content_type(),
-                "size": size,
+                "size": _encoded_size(part),
             }
         )
     return out
 
 
-def attachment_parts(msg: EmailMessage) -> list[tuple[str, str, bytes]]:
-    """(filename, content_type, bytes) for every attachment part with decodable content."""
-    out: list[tuple[str, str, bytes]] = []
+def _encoded_size(part: Any) -> int:
+    """Decoded byte size, estimated from the encoded payload when that is cheaper.
+
+    `inspect` and `index` only want a number, and base64-decoding every
+    attachment on that path is wasted work; base64 is 3 bytes per 4 characters.
+    """
+    encoding = (part.get("Content-Transfer-Encoding") or "").strip().lower()
+    raw = part.get_payload()
+    if encoding == "base64" and isinstance(raw, str):
+        chars = len(raw.replace("\n", "").replace("\r", "").rstrip("="))
+        return chars * 3 // 4  # 4 base64 characters carry 3 bytes
     try:
-        parts = list(msg.iter_attachments())
+        payload = part.get_payload(decode=True)
     except Exception:  # noqa: BLE001
-        return out
-    for i, part in enumerate(parts, 1):
+        return 0
+    return len(payload) if isinstance(payload, bytes) else 0
+
+
+def attachment_parts(msg: EmailMessage) -> list[tuple[str, str, bytes]]:
+    """(filename, content_type, bytes) for every attachment with decodable content."""
+    out: list[tuple[str, str, bytes]] = []
+    for i, part in enumerate(_iter_attachment_parts(msg), 1):
         try:
             payload = part.get_payload(decode=True)
         except Exception:  # noqa: BLE001 — an undecodable part is skipped, the rest still land
             payload = None
         if isinstance(payload, bytes):
-            out.append((part.get_filename() or f"attachment-{i}", part.get_content_type(), payload))
+            out.append((_attachment_name(part, i), part.get_content_type(), payload))
     return out
 
 
@@ -190,10 +349,10 @@ def summary(msg: EmailMessage) -> dict[str, Any]:
         "to": addresses(msg, "To"),
         "cc": addresses(msg, "Cc"),
         "date": header_date(msg),
-        "subject": str(msg.get("Subject") or "") or None,
-        "message_id": _first_id(str(msg.get("Message-ID") or "")),
-        "in_reply_to": _first_id(str(msg.get("In-Reply-To") or "")),
-        "references": message_ids(str(msg.get("References") or "")),
+        "subject": header_str(msg, "Subject") or None,
+        "message_id": _first_id(header_str(msg, "Message-ID")),
+        "in_reply_to": _first_id(header_str(msg, "In-Reply-To")),
+        "references": message_ids(header_str(msg, "References")),
         "parts": parts,
         "has_html": body_html(msg) is not None,
         "attachments": attachments(msg),
@@ -204,7 +363,7 @@ def message_text(msg: EmailMessage) -> str:
     """The text `index`/`pack`/`search` see: key headers, a blank line, the body, attachments."""
     lines: list[str] = []
     for field in ("From", "To", "Cc", "Date", "Subject", "Message-ID"):
-        value = header_date(msg) if field == "Date" else str(msg.get(field) or "")
+        value = header_date(msg) if field == "Date" else header_str(msg, field)
         if value:
             lines.append(f"{field}: {value}")
     body = body_text(msg).strip()
@@ -244,16 +403,24 @@ def thread_groups(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     Each input needs `message_id`, `in_reply_to`, `references`, `subject`,
     `date` and a `where` label (path, or `path#n` inside an mbox). Output:
     [{root_subject, first_date, messages: [{where, message_id, date, from,
-    subject, depth}]}] sorted by first date; messages inside a thread are in
+    subject, depth}]}] sorted by first instant; messages inside a thread are in
     date order; `depth` is the reply-chain length when the parent is present.
+
+    Ordering compares parsed instants, not ISO text: correspondents in two
+    timezones would otherwise sort by wall clock. Copies of one message (the
+    same Message-ID in a mailbox and in its split-out `.eml`) join the same
+    thread rather than fracturing it, and a reply chain of any length is walked
+    iteratively — a mailing-list megathread must not hit the recursion limit.
     """
     parent: dict[int, int] = {}
 
     def find(i: int) -> int:
-        while parent.get(i, i) != i:
-            parent[i] = parent.get(parent[i], parent[i])
-            i = parent[i]
-        return i
+        root = i
+        while parent.get(root, root) != root:
+            root = parent[root]
+        while parent.get(i, i) != i:  # path compression, iteratively
+            parent[i], i = root, parent[i]
+        return root
 
     def union(a: int, b: int) -> None:
         ra, rb = find(a), find(b)
@@ -266,6 +433,8 @@ def thread_groups(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if m.get("message_id"):
             by_id.setdefault(m["message_id"], i)
     for i, m in enumerate(messages):
+        if m.get("message_id") and by_id[m["message_id"]] != i:
+            union(by_id[m["message_id"]], i)  # the same message twice: one thread, not two
         for ref in [m.get("in_reply_to"), *m.get("references", [])]:
             if ref and ref in by_id:
                 union(i, by_id[ref])
@@ -274,17 +443,25 @@ def thread_groups(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for i in range(len(messages)):
         groups.setdefault(find(i), []).append(i)
 
-    def depth_of(i: int, seen: set[int]) -> int:
-        m = messages[i]
-        pid = m.get("in_reply_to")
-        if pid and pid in by_id and by_id[pid] not in seen:
-            seen.add(by_id[pid])
-            return 1 + depth_of(by_id[pid], seen)
-        return 1
+    def depth_of(start: int) -> int:
+        """Length of the reply chain above `start`, walked iteratively."""
+        depth = 1
+        seen = {start}
+        current = start
+        while True:
+            pid = messages[current].get("in_reply_to")
+            if not pid or pid not in by_id:
+                return depth
+            nxt = by_id[pid]
+            if nxt in seen:
+                return depth
+            seen.add(nxt)
+            current = nxt
+            depth += 1
 
     out: list[dict[str, Any]] = []
     for members in groups.values():
-        ordered = sorted(members, key=lambda i: (messages[i].get("date") or "", i))
+        ordered = sorted(members, key=lambda i: (_instant(messages[i]), i))
         root = messages[ordered[0]]
         out.append(
             {
@@ -297,24 +474,54 @@ def thread_groups(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
                         "date": messages[i].get("date"),
                         "from": messages[i].get("from"),
                         "subject": messages[i].get("subject"),
-                        "depth": depth_of(i, {i}),
+                        "depth": depth_of(i),
                     }
                     for i in ordered
                 ],
             }
         )
-    out.sort(key=lambda g: (g["first_date"] or "", g["root_subject"] or ""))
+    out.sort(key=lambda g: (_instant(g["messages"][0]), g["root_subject"] or ""))
     return out
 
 
 # --------------------------------------------------------------------- names
 
 
-def safe_filename(name: str, fallback: str = "attachment") -> str:
-    """A file name safe on every platform: no separators, no control chars, no leading dots."""
+# Names cmd.exe resolves to devices rather than files, whatever the extension.
+_WINDOWS_DEVICES = frozenset(
+    {
+        "con",
+        "prn",
+        "aux",
+        "nul",
+        *(f"com{n}" for n in range(1, 10)),
+        *(f"lpt{n}" for n in range(1, 10)),
+    }
+)
+MAX_FILENAME = 100  # bytes of stem kept; ext.4 filesystems cap a name at 255
+
+
+def safe_filename(name: str, fallback: str = "attachment", *, max_len: int = MAX_FILENAME) -> str:
+    """A file name safe on every platform.
+
+    No separators, no control characters, no leading dots, no Windows device
+    name, and short enough that the filesystem accepts it — an attachment name
+    can legitimately run to hundreds of characters (RFC 2231 continuations),
+    and `File name too long` from deep inside a write is not a useful error.
+    """
     base = Path(name.replace("\\", "/")).name.strip()
     base = _UNSAFE.sub("_", base).strip("._")
-    return base or fallback
+    if not base:
+        return fallback
+    stem, dot, suffix = base.rpartition(".")
+    if not dot:
+        stem, suffix = base, ""
+    suffix = suffix[:20]
+    keep = max(1, max_len - (len(suffix) + 1 if suffix else 0))
+    stem = stem[:keep].rstrip("._-") or fallback
+    if stem.lower() in _WINDOWS_DEVICES:  # after the trim, or it would strip the guard back off
+        stem = f"{stem}_"
+    return f"{stem}.{suffix}" if suffix else stem
 
 
 def slug(text: str, max_len: int = 60) -> str:
