@@ -10,7 +10,7 @@ The product name, tagline, and version live ONLY in `product.json` at the repo r
 
 - Python ≥3.12 (dev box: 3.14), managed by **uv** (`pyproject.toml`, `uv run`, `uv sync`).
 - Core library in `src/<pkg>/`; umbrella CLI entry in `pyproject.toml [project.scripts]`.
-- All external binaries are called through the single adapter layer `src/<pkg>/core/adapters.py` — never `subprocess` directly from command modules. Adapters do capability detection and convert timeouts into a clean error. One documented exception: `commands/watch.py` runs user-authored `--run` shell actions itself (shell-quoted substitutions, `--action-timeout`).
+- All external binaries are called through the single adapter layer `src/<pkg>/core/adapters.py` — never `subprocess` directly from command modules. Adapters do capability detection and convert timeouts into a clean error. One documented exception: `core/actions.py` runs the user-authored `--run` shell actions of `watch` and `batch` (shell-quoted substitutions, `--action-timeout`; D-013).
 - Repo root doubles as a Claude Code plugin marketplace: `.claude-plugin/marketplace.json` + `plugins/<name>/`.
 
 ## Coding standards

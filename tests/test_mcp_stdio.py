@@ -110,7 +110,7 @@ class TestMcpStdio:
         assert init["serverInfo"]["version"]
 
         tools = responses[1]["result"]["tools"]
-        assert len(tools) == 13
+        assert len(tools) == 14
         assert tools[0]["name"] == "carrel_search"
         assert {"carrel_tag", "carrel_note", "carrel_convert", "carrel_doctor"} <= {
             t["name"] for t in tools

@@ -435,9 +435,9 @@ Details per shell in [INSTALL.md](INSTALL.md#shell-completions).
 
 ## Where to next
 
-- Full flag-by-flag docs for all 29 commands: [REFERENCE.md](REFERENCE.md) —
+- Full flag-by-flag docs for all 32 commands: [REFERENCE.md](REFERENCE.md) —
   including OCR, dedupe, organize, redact, sign, audiobook, and the MCP server
-  (thirteen tools, two resource templates — see [AGENTS.md](AGENTS.md)).
+  (fourteen tools, two resource templates — see [AGENTS.md](AGENTS.md)).
 - Runnable recipes: [COOKBOOK.md](COOKBOOK.md) (`examples/cookbook/` and
   `snippets/` in the repo).
 - Claude Code integration: the repo doubles as a plugin marketplace

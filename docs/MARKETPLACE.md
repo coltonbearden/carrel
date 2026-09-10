@@ -55,12 +55,12 @@ is reached through the MCP server instead and `carrel desk` is an interactive TU
 |---|---|---|---|
 | **carrel-convert** | `/convert`, `/ocr`, `/thumb`, `/edit`, `/extract-images`, `/audiobook` | `doc-converter` agent — batch conversions with per-file verification via `carrel inspect` | Turn any supported file into another (pdf/md/html/txt/office/ebook/images), OCR scans, merge/split/rotate PDFs, resize/crop images, pull embedded images, narrate documents |
 | **carrel-inspect** | `/inspect`, `/diff`, `/search`, `/pack` | `context-packing` skill — `--query`-first selection, `--since` for PRs, `--outline` orientation, `--tokenizer exact` budgeting | Know what a file is, compare two files (text/struct/pdf/image), full-text search the desk, build LLM context packs that fit |
-| **carrel-organize** | `/organize`, `/dedupe`, `/tag`, `/note-file`, `/meta` | — | Sort a folder by type/date (dry-run first), find exact/near duplicates (report-only by default), tag, annotate and record typed fields (vendor, total, due) on files in the desk db |
-| **carrel-finance** | `/refs` | — | Find invoice, PO, order, check, IBAN, routing, VAT, ISBN and tracking numbers in any supported file (check digits verified), tag files with `ref:<kind>:<value>`, and list the documents that share a reference |
+| **carrel-organize** | `/organize`, `/dedupe`, `/tag`, `/note-file`, `/meta`, `/rename`, `/batch` | — | Sort a folder by type/date (dry-run first), find exact/near duplicates (report-only by default), tag, annotate and record typed fields on files, rename files from what they say (`{date}_{vendor}_{ref}{ext}`), run any command over many files with a resumable manifest |
+| **carrel-finance** | `/refs`, `/fields` | — | Find invoice, PO, order, check, IBAN, routing, VAT, ISBN and tracking numbers in any supported file (check digits verified), tag files with `ref:<kind>:<value>`, list the documents that share a reference; extract vendor, invoice number, dates, subtotal/tax/total and currency from invoices, receipts and statements with a confidence per field |
 | **carrel-documents** | `/redact`, `/sign`, `/form`, `/proof`, `/color` | `document-clerk` agent (redact → verify → sign manifest → report; never overwrites without `--force`), `redaction-and-provenance` skill | Remove PII with true-raster PDF redaction, stamp/sign/verify, list and fill PDF forms or build HTML ones, soft-proof and color-manage images |
 | **carrel-mail** | `/mail` | `mail-archive` skill — split → index → threads → attachments → cross-reference with `refs` | Save attachments (with sha256), split an mbox into dated `.eml` files, group messages into threads, convert Outlook `.pst` exports (readpst); `.eml`/`.mbox` are first-class desk files for inspect/convert/index/search/pack/refs and the Read guard |
 | **carrel-watch** | `/watch-folder` | `watch-automation` skill — auto-thumb / auto-index / auto-convert drop-folder recipes | React to files landing in a folder |
-| **carrel-agent** | `/index`, `/doctor`, `/catalog`, `/completion` | `file-librarian` agent, `agent-workflows` skill, the carrel MCP server (13 tools + `carrel://` resources), the PostToolUse reindex hook (below) | Keep a desk index current and healthy, know what the environment can do, export/import tags and notes, answer questions about a collection with citations |
+| **carrel-agent** | `/index`, `/doctor`, `/catalog`, `/completion` | `file-librarian` agent, `agent-workflows` skill, the carrel MCP server (14 tools + `carrel://` resources), the PostToolUse reindex hook (below) | Keep a desk index current and healthy, know what the environment can do, export/import tags and notes, answer questions about a collection with citations |
 | **carrel-guard** | — | `PreToolUse` Read guard + `SessionStart` capabilities hook (below) | Read PDFs, docx/odt/epub/rtf, xlsx, eml/mbox and (with OCR) images as plain text, and start every session knowing carrel's capabilities |
 
 What the commands actually do: each command's markdown carries the **generated** `--help`
@@ -160,7 +160,7 @@ There is no per-hook toggle — hooks load with their plugin.
 {"mcpServers": {"carrel": {"command": "carrel", "args": ["mcp"]}}}
 ```
 
-The server (pure stdlib JSON-RPC over stdio, protocol `2025-06-18`) exposes thirteen tools and
+The server (pure stdlib JSON-RPC over stdio, protocol `2025-06-18`) exposes fourteen tools and
 two resource templates:
 
 | Tool | Does |
@@ -176,6 +176,7 @@ two resource templates:
 | `carrel_redact` | Redact builtin or custom patterns from a text file or PDF |
 | `carrel_doctor` | Environment capability report |
 | `carrel_meta` | Set / get / list / remove typed fields on a desk file, or find files by conditions (`total>1000`, `due<2026-11-01`) |
+| `carrel_fields` | Extract vendor, invoice number, dates, subtotal/tax/total, currency and IBAN from a document with a confidence per field; `save` writes them as desk fields |
 | `carrel_mail` | Save an email's attachments into a directory, or group eml/mbox messages into threads |
 | `carrel_refs` | Find reference numbers (invoice, PO, IBAN, routing, tracking, …) in a file or directory; tag files with them or group files by shared value |
 

@@ -43,8 +43,16 @@ EXPECTED_PLUGINS: dict[str, set[str]] = {
         "extract-images.md",
     },
     "carrel-inspect": {"inspect.md", "diff.md", "search.md", "pack.md"},
-    "carrel-organize": {"organize.md", "dedupe.md", "tag.md", "note-file.md", "meta.md"},
-    "carrel-finance": {"refs.md"},
+    "carrel-organize": {
+        "organize.md",
+        "dedupe.md",
+        "tag.md",
+        "note-file.md",
+        "meta.md",
+        "rename.md",
+        "batch.md",
+    },
+    "carrel-finance": {"refs.md", "fields.md"},
     "carrel-mail": {"mail.md"},
     "carrel-documents": {"redact.md", "sign.md", "form.md", "proof.md", "color.md"},
     "carrel-watch": {"watch-folder.md"},
@@ -424,7 +432,7 @@ def test_agent_workflows_skill_lists_mcp_surface():
         assert f"`{tool['name']}`" in text, f"skill must list MCP tool {tool['name']}"
     for template in RESOURCE_TEMPLATES:
         assert template["uriTemplate"] in text, f"skill must list {template['uriTemplate']}"
-    assert len(TOOLS) == 13
+    assert len(TOOLS) == 14
 
 
 def test_document_clerk_refuses_silent_overwrite():

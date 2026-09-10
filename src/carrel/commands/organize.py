@@ -3,7 +3,8 @@
 Operates on the files directly inside DIRECTORY (non-recursive; hidden files
 and subdirectories are left alone). Default is a dry-run that prints the
 plan; nothing moves without --apply. Destinations never overwrite: name
-collisions get a ``-1``, ``-2``, … suffix before the extension.
+collisions get a ``-1``, ``-2``, … suffix before the extension. When a desk
+exists under --root, a moved file's tags, notes and fields follow it.
 
 --by type mapping (also in --help):
     pdf            -> pdf/
@@ -17,7 +18,6 @@ collisions get a ``-1``, ``-2``, … suffix before the extension.
 from __future__ import annotations
 
 import functools
-import os
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -26,6 +26,7 @@ from typing import Any
 import click
 
 from carrel.core.filetypes import FileType, detect
+from carrel.core.fsops import move_file, uncollide
 from carrel.core.output import CarrelError, CarrelInputError, emit, fail
 
 TYPE_DIRS: dict[FileType, str] = {
@@ -100,15 +101,6 @@ def _bucket(src: Path, by: str, into: dict[str, str]) -> tuple[str | None, str |
     return f"{year:04d}/{month:02d}", None
 
 
-def _uncollide(dest: Path, taken: set[Path]) -> Path:
-    """First non-existing, not-yet-planned variant: name.ext, name-1.ext, …"""
-    candidate, n = dest, 0
-    while candidate.exists() or candidate in taken:
-        n += 1
-        candidate = dest.with_name(f"{dest.stem}-{n}{dest.suffix}")
-    return candidate
-
-
 def _build_plan(directory: Path, by: str, into: dict[str, str]) -> list[dict[str, Any]]:
     plan: list[dict[str, Any]] = []
     taken: set[Path] = set()
@@ -121,7 +113,7 @@ def _build_plan(directory: Path, by: str, into: dict[str, str]) -> list[dict[str
         if subdir is None:
             plan.append({"src": str(src), "dest": None, "action": "skip", "reason": reason})
             continue
-        dest = _uncollide(directory / subdir / src.name, taken)
+        dest = uncollide(directory / subdir / src.name, taken)
         taken.add(dest)
         plan.append({"src": str(src), "dest": str(dest), "action": "move"})
     return plan
@@ -202,12 +194,11 @@ def cmd(ctx: click.Context, directory: Path, by: str, into_: tuple[str, ...], ap
     plan = _build_plan(directory, by, into)
 
     if apply_:
+        desk_root = Path((ctx.obj or {}).get("root", ".")).resolve()
         for entry in plan:
             if entry["action"] != "move":
                 continue
-            dest_path = Path(entry["dest"])
-            dest_path.parent.mkdir(parents=True, exist_ok=True)
-            os.replace(entry["src"], dest_path)
+            move_file(Path(entry["src"]), Path(entry["dest"]), desk_root=desk_root)
             entry["action"] = "moved"
 
     emit(ctx, plan, human=_human_plan(applied=apply_))

@@ -29,6 +29,7 @@ Options:
 
 Commands:
   audiobook       Narrate SRC (txt, md, pdf) into an audiobook.
+  batch           Run --run actions over every file in PATH...
   catalog         Export, import and check the desk catalog (tags, notes, meta in...
   color           Color tools: dominant palette, ICC profile conversion, WCAG contrast.
   completion      Print a completion script for SHELL (bash, zsh, or fish).
@@ -39,11 +40,12 @@ Commands:
   doctor          Report environment health: adapters found, versions, per-command capability.
   edit            Edit files in place-adjacent, non-destructive ways (pdf/image/text/json).
   extract-images  Extract images embedded in / referenced by SRC (pdf, ico, html).
+  fields          Extract vendor, invoice number, dates and totals from PATH...
   form            Build HTML forms from JSON specs; list and fill PDF AcroForms.
   index           Index PATH...
   inspect         Show metadata for one file.
   mail            Attachments, mailbox splitting, threads and Outlook exports for eml/mbox files.
-  mcp             Serve the desk as an MCP server on stdio: 13 tools (search, pack, inspect,...
+  mcp             Serve the desk as an MCP server on stdio: 14 tools (search, pack, inspect,...
   meta            Typed key/value fields on desk files (.carrel/carrel.db under --root).
   note            Attach notes to files (desk db) and annotations to PDFs (pypdf).
   ocr             OCR an image or PDF into text (txt/md) or a searchable PDF.
@@ -52,11 +54,12 @@ Commands:
   proof           Soft-proof SRC against an ICC PROFILE (simulate print/display output).
   redact          Redact sensitive strings from a text file or PDF.
   refs            Find reference numbers (invoice, PO, IBAN, routing, tracking, …) in PATH...
+  rename          Plan (default) or perform (--apply) renaming PATH...
   search          Full-text search the desk index for QUERY (FTS5 syntax, bm25-ranked).
   sign            Sign things: stamp PDFs, hash manifests, verify both.
   tag             Tag files in the desk db (.carrel/carrel.db under --root).
   thumb           Create thumbnails for SRC...
-  watch           Watch DIRECTORY (non-recursive) and run shell actions on file events.
+  watch           Watch DIRECTORY and run shell actions on file events.
 ```
 
 - `--json` — where a command produces data, exactly one JSON object or array
@@ -68,9 +71,10 @@ Commands:
 
 ## Commands
 
-29 commands:
+32 commands:
 
 [audiobook](#carrel-audiobook) ·
+[batch](#carrel-batch) ·
 [catalog](#carrel-catalog) ·
 [color](#carrel-color) ·
 [completion](#carrel-completion) ·
@@ -81,6 +85,7 @@ Commands:
 [doctor](#carrel-doctor) ·
 [edit](#carrel-edit) ·
 [extract-images](#carrel-extract-images) ·
+[fields](#carrel-fields) ·
 [form](#carrel-form) ·
 [index](#carrel-index) ·
 [inspect](#carrel-inspect) ·
@@ -94,6 +99,7 @@ Commands:
 [proof](#carrel-proof) ·
 [redact](#carrel-redact) ·
 [refs](#carrel-refs) ·
+[rename](#carrel-rename) ·
 [search](#carrel-search) ·
 [sign](#carrel-sign) ·
 [tag](#carrel-tag) ·
@@ -124,6 +130,42 @@ Options:
   --format [mp3|ogg|wav]          Audio format (default: from -o extension, else mp3).
   --json                          Machine-readable JSON output.
   --help                          Show this message and exit.
+```
+
+## carrel batch
+
+```text
+Usage: carrel batch [OPTIONS] PATHS...
+
+  Run --run actions over every file in PATH... (files, or directories walked like `index`).
+
+  Exit 0 when every file succeeded, 1 when any failed (its record carries the rc, stdout and
+  stderr), 5 with --fail-empty when nothing matched. JSON output is {"summary": {total, ran, ok,
+  failed, skipped, seconds}, "results": [{path, cmd, rc, stdout, stderr, seconds, ok}]} (cmd/rc are
+  the failing or last action's, stdout/stderr every action's output in order); --json-lines streams
+  the records instead. --manifest + --resume make a long run restartable.
+
+Options:
+  --run CMD                     Shell action per file; repeatable, runs in order, stops at the first
+                                failure. Substituted (shell-quoted): {path}, {name}, {stem}, {ext},
+                                {dir}.  [required]
+  --glob PATTERN                Only files whose name matches (e.g. '*.pdf').
+  --type T1,T2                  Only these detected types (pdf, md, eml, code, …).
+  --recursive / --no-recursive  Walk directories (hidden and .gitignored entries skipped).
+                                [default: recursive]
+  --jobs INTEGER RANGE          Files to process in parallel.  [default: 1; x>=1]
+  --dry-run                     Print the rendered commands without running anything.
+  --manifest FILE               Append one JSON record per file to this file.
+  --resume                      Skip files whose last --manifest record succeeded with the same
+                                --run set.
+  --fail-fast                   Stop after the first failing file.
+  --action-timeout SECS         Kill an action that runs longer than SECS (rc=124).  [default:
+                                300.0; x>0]
+  --fail-empty                  Exit 5 when no file matched.
+  --json-lines                  Stream one JSON record per file as it completes, then a summary
+                                line.
+  --json                        Machine-readable JSON output.
+  --help                        Show this message and exit.
 ```
 
 ## carrel catalog
@@ -528,6 +570,31 @@ Options:
   --help                    Show this message and exit.
 ```
 
+## carrel fields
+
+```text
+Usage: carrel fields [OPTIONS] PATHS...
+
+  Extract vendor, invoice number, dates and totals from PATH... (invoices, receipts, statements).
+
+  Directories are walked like `refs`. Fields: vendor, invoice_no, po, date, due, subtotal, tax,
+  total, currency, iban, account_last4 — each with a confidence (high: after its label; medium:
+  heuristic; low: fallback) and the evidence line. Amounts are plain decimals, dates ISO. JSON
+  output is a list of {path, profile, fields: {name: {value, confidence, evidence}}}.
+
+Options:
+  --profile [auto|invoice|receipt|statement]
+                                  Document kind; auto picks by keywords.  [default: auto]
+  --date-order [mdy|dmy]          How to read an ambiguous slashed date such as 03/04/2026.
+                                  [default: mdy]
+  --ocr                           OCR images and scanned PDFs (needs tesseract / ocrmypdf).
+  --set FIELD=VALUE               Override an extracted field (repeatable).
+  --save                          Write the fields into the desk db under --root (source: fields).
+  --fail-empty                    Exit 5 when no file yielded any field.
+  --json                          Machine-readable JSON output.
+  --help                          Show this message and exit.
+```
+
 ## carrel form
 
 ```text
@@ -733,8 +800,8 @@ Options:
 ```text
 Usage: carrel mcp [OPTIONS]
 
-  Serve the desk as an MCP server on stdio: 13 tools (search, pack, inspect, tag, note, index,
-  convert, diff, redact, doctor, meta, mail, refs) and carrel:// file/search resources.
+  Serve the desk as an MCP server on stdio: 14 tools (search, pack, inspect, tag, note, index,
+  convert, diff, redact, doctor, meta, fields, mail, refs) and carrel:// file/search resources.
 
 Options:
   --json  Machine-readable JSON output.
@@ -1106,6 +1173,36 @@ Options:
   --help                Show this message and exit.
 ```
 
+## carrel rename
+
+```text
+Usage: carrel rename [OPTIONS] PATHS...
+
+  Plan (default) or perform (--apply) renaming PATH... from the documents' own fields.
+
+  Placeholders: {date} (or {date:%Y-%m}), {yyyy}, {mm}, {vendor}, {ref}, {total}, {fields.NAME},
+  {meta.KEY}, {type}, {stem}, {name}, {ext}, {sha8}. Dates come from the document (then the desk,
+  then mtime); {ref} is the invoice number or the first reference found. Values are slugified; a
+  file with an unresolved placeholder is skipped unless --fallback is given. Renames happen next to
+  the source (a literal / in the template files into subfolders), never overwrite (-1, -2, …
+  suffixes), and carry the desk row under --root along. JSON: [{src, dest, action:
+  rename|renamed|skip, reason, sources}].
+
+Options:
+  --template TEXT          Name template; see the placeholders in the command description.
+                           [default: {date}_{vendor}_{ref}{ext}]
+  --apply / --dry-run      Execute the renames. Default is a dry-run that only prints the plan.
+  --date-order [mdy|dmy]   How to read an ambiguous slashed date in the document.  [default: mdy]
+  --fallback TEXT          Use TEXT for a placeholder that has no value instead of skipping the
+                           file.
+  --lower                  Lower-case the rendered name.
+  --max-len INTEGER RANGE  Cap the stem length.  [default: 120; x>=8]
+  --ocr                    OCR images and scanned PDFs to read their fields (needs tesseract /
+                           ocrmypdf).
+  --json                   Machine-readable JSON output.
+  --help                   Show this message and exit.
+```
+
 ## carrel search
 
 ```text
@@ -1282,28 +1379,46 @@ Options:
 ```text
 Usage: carrel watch [OPTIONS] DIRECTORY
 
-  Watch DIRECTORY (non-recursive) and run shell actions on file events.
+  Watch DIRECTORY and run shell actions on file events.
 
   Events for files an action is currently producing are suppressed via an in-flight set plus an
   output-name heuristic (outputs whose name starts with the source file's stem); other action
   outputs written into the watched directory WILL re-trigger — write outputs elsewhere or use --glob
-  to narrow matches. Ctrl-C exits cleanly.
+  to narrow matches. --stable waits for a file to stop growing, --existing processes what is already
+  there, --poll works where inotify does not (/mnt/c, shares), --done-dir/--error-dir file sources
+  away after their actions, --log keeps a JSON trail. Ctrl-C exits cleanly.
 
 Options:
-  --on EVENTS            Comma-separated events to react to: created, modified, deleted, moved.
-                         [default: created,modified]
-  --glob PATTERN         Only react to file names matching this glob (e.g. '*.pdf').
-  --run CMD              Shell action to run per event; repeatable, runs in order. {path}, {name}
-                         and {dir} are substituted (shell-quoted).  [required]
-  --debounce MS          Coalesce events per path within this window.  [default: 500; x>=0]
-  --once                 Exit after the first triggered action batch.
-  --timeout SECS         Hard stop after SECS seconds.  [x>0]
-  --action-timeout SECS  Kill an action that runs longer than SECS (logged as rc=124).  [default:
-                         300.0; x>0]
-  --json-lines           Log one JSON object per action to stdout instead of human lines (--json
-                         implies this).
-  --json                 Machine-readable JSON output.
-  --help                 Show this message and exit.
+  --on EVENTS                     Comma-separated events to react to: created, modified, deleted,
+                                  moved, existing.  [default: created,modified]
+  --glob PATTERN                  Only react to file names matching this glob (e.g. '*.pdf').
+  --run CMD                       Shell action to run per event; repeatable, runs in order. {path},
+                                  {name}, {stem}, {ext}, {dir} are substituted (shell-quoted).
+                                  [required]
+  --recursive                     Watch subdirectories too.
+  --existing                      Queue the files already in DIRECTORY at start (event 'existing').
+  --stable SECS                   Act only once a file's size and mtime have not changed for SECS
+                                  (scanners, big copies).  [x>0]
+  --stable-timeout SECS           With --stable: give up waiting and act after SECS regardless.
+                                  [x>0]
+  --poll                          Poll instead of inotify (needed on /mnt/c, network shares, some
+                                  containers).
+  --poll-interval SECS            With --poll: how often to scan.  [default: 1.0; x>0]
+  --done-dir DIRECTORY            Move each source here after its actions all succeed.
+  --error-dir DIRECTORY           Move each source here after an action fails.
+  --log FILE                      Append one JSON record per action (and per move) to FILE.
+  --print-service [systemd|schtasks]
+                                  Print a service definition that runs this exact watch at login,
+                                  then exit.
+  --debounce MS                   Coalesce events per path within this window.  [default: 500; x>=0]
+  --once                          Exit after the first triggered action batch.
+  --timeout SECS                  Hard stop after SECS seconds.  [x>0]
+  --action-timeout SECS           Kill an action that runs longer than SECS (logged as rc=124).
+                                  [default: 300.0; x>0]
+  --json-lines                    Log one JSON object per action to stdout instead of human lines
+                                  (--json implies this).
+  --json                          Machine-readable JSON output.
+  --help                          Show this message and exit.
 ```
 
 ## Exit codes
