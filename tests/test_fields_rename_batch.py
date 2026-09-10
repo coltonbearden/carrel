@@ -756,11 +756,13 @@ def test_render_substitutes_in_one_pass(tmp_path: Path):
     tricky.write_text("contents\n", encoding="utf-8")
     rendered = actions.render("cat {path}", tricky)
     assert rendered == f"cat {actions.quote(str(tricky))}"
-    payload = run_json("batch", str(tricky), "--run", "cat {path}")
-    assert payload["summary"]["ok"] == 1 and payload["results"][0]["stdout"].strip() == "contents"
     assert actions.render("{name} {stem} {ext}", tricky) == " ".join(
         actions.quote(x) for x in ("{name}.txt", "{name}", ".txt")
     )
+    if os.name != "nt":  # `cat` is the POSIX half of the check
+        payload = run_json("batch", str(tricky), "--run", "cat {path}")
+        assert payload["summary"]["ok"] == 1
+        assert payload["results"][0]["stdout"].strip() == "contents"
 
 
 def test_manifest_and_log_directories_are_created(tmp_path: Path):

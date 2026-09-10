@@ -25,7 +25,7 @@
 
 </div>
 
-A *carrel* is a private study desk in a library: your materials close at hand, organized your way. **carrel** is that desk for your local files — pdf, docx, odt, epub, rtf, xlsx, md, html, txt, json, xml, csv, and png/jpg/ico images — with 33 commands to convert, OCR, inspect, diff, index, search, pack, watch, file an inbox, and more. And it treats AI agents as first-class users of the desk: every data-producing command speaks `--json` with stable exit codes, `carrel pack` turns file trees into LLM-ready context, and the repo doubles as a [Claude Code plugin marketplace](#the-marketplace) whose plugins drive the same CLI.
+A *carrel* is a private study desk in a library: your materials close at hand, organized your way. **carrel** is that desk for your local files — pdf, docx, odt, epub, rtf, xlsx, md, html, txt, json, xml, csv, eml/mbox email, and png/jpg/ico images — with 33 commands to convert, OCR, inspect, diff, index, search, pack, watch, file an inbox, and more. And it treats AI agents as first-class users of the desk: every data-producing command speaks `--json` with stable exit codes, `carrel pack` turns file trees into LLM-ready context, and the repo doubles as a [Claude Code plugin marketplace](#the-marketplace) whose plugins drive the same CLI.
 
 ## What can it do
 
@@ -45,12 +45,19 @@ A *carrel* is a private study desk in a library: your materials close at hand, o
 | | `carrel search` | bm25-ranked full-text search with type and tag filters |
 | | `carrel tag` | Tag files; find by tag |
 | | `carrel note` | Sidecar notes on any file; real text annotations on PDFs |
-| | `carrel catalog` | Export/import tags + notes as JSON (move a desk, commit it next to a repo); `status` shows schema version and stale index rows |
+| | `carrel meta` | Typed fields on files — `vendor=Acme`, `total=1234.56`, `due=2026-10-01` — queried with `meta find 'total>1000' 'due<2026-11'`, exported as a CSV of the folder |
+| | `carrel catalog` | Export/import tags + notes + fields as JSON (move a desk, commit it next to a repo); `status` shows schema version and stale index rows |
+| **Read the documents** | `carrel fields` | Vendor, invoice number, PO, dates, subtotal/tax/total, currency and IBAN out of invoices, receipts and statements — each with a confidence and the line it came from; `--save` records them as desk fields |
+| | `carrel refs` | Reference numbers anywhere in a folder: invoice, PO, order, check, account, tracking, ticket, plus check-digit-verified IBAN, ABA routing, EIN, VAT, ISBN, GTIN, DOI, UPS, USPS. `--tag` links every document that shares one; `--link` shows the grouping |
+| **Email** | `carrel mail` | `.eml`/`.mbox` are ordinary desk files (inspect, convert, index, search, pack, refs all read them, stdlib only). `mail` adds the rest: save attachments with digests, split a mailbox into messages, group messages into threads, convert Outlook `.pst` exports |
 | **Agents & context** | `carrel pack` | Bundle files/trees into one LLM-ready document — md/xml/json; `--query` packs what the desk index ranks relevant, `--since REF`/`--changed` packs what git touched; include/exclude globs, `.gitignore`-aware (with `!` negation), chunking, `--dedupe-content`, `--outline`, token estimates or exact counts (`--tokenizer exact`) |
 | | `carrel mcp` | Serve the whole desk over MCP on stdio: 14 tools (search, pack, inspect, tag, note, index, convert, diff, redact, doctor, meta, fields, mail, refs) plus `carrel://file/{path}` and `carrel://search/{query}` resources |
 | **Housekeeping** | `carrel organize` | Sort a folder by type/date/EXIF date — dry-run by default |
 | | `carrel dedupe` | Exact (BLAKE2) and near (perceptual hash) duplicate detection |
-| | `carrel watch` | Watch a folder and run shell actions on file events |
+| | `carrel rename` | Rename files from what they say — `{date}_{vendor}_{ref}{ext}` — dry-run first, collision-safe, and the desk's tags and notes follow the file |
+| | `carrel batch` | Run any command over many files: parallel jobs, a resumable manifest, dry-run, per-file JSON records |
+| | `carrel watch` | Watch a folder and run shell actions on file events — recursive, settle-wait for slow writers, polling for `/mnt/c` and network shares, done/error folders, a printable systemd or Task Scheduler unit |
+| | `carrel intake` | The inbox in one command: read each document, name it, file it into `YYYY/MM` (or fiscal quarters), index it, record its fields and tag its references. Scans are OCRed into a searchable copy, the original is kept |
 | | `carrel redact` | Pattern/PII redaction for text formats; true raster redaction for PDFs |
 | | `carrel sign` | Visible PDF stamps, sha256 manifests, gpg-backed verify |
 | | `carrel form` | Build html/pdf forms from JSON specs; list and fill AcroForm PDFs |
