@@ -47,12 +47,16 @@ Usage: carrel mail pst [OPTIONS] SRC
 
   Convert an Outlook SRC (.pst/.ost) into eml or mbox files via readpst.
 
+  `--format eml` writes one .eml per message (readpst -e); `--format mbox` writes one `mbox` file
+  per mail folder (readpst -r), which `carrel mail split` can then take apart.
+
   Needs readpst (sudo apt install pst-utils); exit 3 with that hint otherwise. JSON: {src, out_dir,
   format, files, via}.
 
 Options:
   --out-dir DIRECTORY  Directory readpst writes into (one subfolder per mail folder).  [required]
-  --format [eml|mbox]  One .eml per message, or one mbox per folder.  [default: eml]
+  --format [eml|mbox]  One .eml per message (readpst -e), or one mbox file per mail folder (readpst
+                       -r).  [default: eml]
   --json               Machine-readable JSON output.
   --help               Show this message and exit.
 ```
@@ -89,8 +93,9 @@ Options:
 ```
 <!-- usage:end -->
 
-- Choose the subcommand from intent: "pull the attachments out of X" → `attachments X --out-dir DIR`; "break this mailbox into messages" → `split box.mbox --out-dir DIR`; "what conversations are in here" → `threads FOLDER`; "I exported Outlook to a .pst" → `pst FILE.pst --out-dir DIR` (needs readpst: `sudo apt install pst-utils`; exit 3 says so).
-- Reading the mail itself needs no subcommand: `.eml` and `.mbox` are desk file types, so `carrel inspect`, `carrel convert --to md|txt|html|pdf`, `carrel index` + `carrel search`, `carrel pack` and `/carrel-finance:refs` all read them directly, and the `carrel-guard` Read hook turns them into text for you.
+- Choose the subcommand from intent: "pull the attachments out of X" → `attachments FILE...` (eml or mbox **files**, not folders) `--out-dir DIR`; "break this mailbox into messages" → `split box.mbox --out-dir DIR` (an mbox file); "what conversations are in here" → `threads PATH...` (files **or** folders); "I exported Outlook to a .pst" → `pst FILE.pst --out-dir DIR` (needs readpst: `sudo apt install pst-utils`; exit 3 says so). `--format eml` writes one `.eml` per message, `--format mbox` one `mbox` file per mail folder.
+- Reading the mail itself needs no subcommand: `.eml` and `.mbox` are desk file types, so `carrel inspect`, `carrel index` + `carrel search`, `carrel pack` and `/carrel-finance:refs` all read them directly, and the `carrel-guard` Read hook turns them into text for you. Conversion targets differ by type: `.eml` → md, txt, html or pdf; `.mbox` → md or txt only (anything else exits 4 and lists the real targets).
+- `carrel convert msg.eml --to pdf` renders the message's **text**, never its HTML, so converting a message can never fetch a tracking pixel or pull in a local file; `--to html` keeps the sender's HTML (opening that in a browser will fetch whatever it references, exactly like opening the mail would).
 - Attachments and split messages are never overwritten without `--force`; colliding names get `-1`, `-2`, … suffixes.
 - Prefer `--json` and report paths, sizes and sha256 digests back to the user; for threads, show root subject, participants and dates.
 

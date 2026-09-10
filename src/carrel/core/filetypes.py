@@ -18,6 +18,7 @@ export that carries an RFC 5322 header block is EML.
 
 from __future__ import annotations
 
+import re
 import zipfile
 from enum import StrEnum
 from pathlib import Path
@@ -253,12 +254,16 @@ def sniff(path: Path) -> FileType | None:
     return None
 
 
-def _sniff_mail(path: Path) -> FileType | None:
-    """eml / mbox by shape — only consulted for unmapped extensions (D-012)."""
+_MAIL_HEAD_BYTES = 16384  # a Received/DKIM/ARC header block runs well past 2 KiB
+
+
+def _mail_shape(path: Path) -> FileType | None:
+    """eml / mbox by shape, or None when the bytes do not look like a message."""
     from carrel.core.mail import looks_like_eml, looks_like_mbox
 
     try:
-        head = path.open("rb").read(2048)
+        with path.open("rb") as fh:
+            head = fh.read(_MAIL_HEAD_BYTES)
     except OSError:
         return None
     if looks_like_mbox(head):
@@ -268,6 +273,27 @@ def _sniff_mail(path: Path) -> FileType | None:
     return None
 
 
+_PLAIN_EXTENSION = re.compile(r"\.[A-Za-z0-9]+\Z")
+
+
+def _sniff_mail(path: Path) -> FileType | None:
+    """eml / mbox by shape — only for files that carry no real extension (D-012).
+
+    A shape sniff that outranked extensions would reclassify every text file
+    that happens to start with a header block: `git format-patch` output
+    (`From <sha> Mon Sep 17 …`), `.diff`, `.bak`, mail logs. Files named with a
+    plain extension keep the type that extension gives them.
+
+    The exception is a trailing segment that is not an extension at all —
+    Maildir stores messages as `1704103200.M1P2.host:2,S`, whose "suffix"
+    carries delivery flags. Those are sniffed like extension-less files.
+    """
+    suffix = path.suffix
+    if suffix and _PLAIN_EXTENSION.match(suffix):
+        return None
+    return _mail_shape(path)
+
+
 def detect(path: Path | str) -> FileType:
     path = Path(path)
     by_magic = sniff(path)
@@ -275,6 +301,10 @@ def detect(path: Path | str) -> FileType:
     if by_magic is not None:
         return by_magic  # trust bytes over names
     if by_ext is not None:
+        if by_ext is FileType.EML:
+            # a mailbox saved as `.eml` would otherwise be read as one message,
+            # silently swallowing every message after the first
+            return _mail_shape(path) or by_ext
         return by_ext
     if source_language(path):
         return FileType.CODE

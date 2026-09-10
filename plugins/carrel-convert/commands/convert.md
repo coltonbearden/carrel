@@ -23,6 +23,8 @@ Usage: carrel convert [OPTIONS] SRC...
   (pdf also needs weasyprint); md/html/txt can be written as docx or odt, and docx <-> epub round-
   trips. xlsx reads need the `office` extra (openpyxl) and go to csv or json only. Email (eml) goes
   to md/txt/html/pdf and a mailbox (mbox) to md/txt, with no external binary (pdf needs weasyprint).
+  eml → html keeps the message's own HTML; eml → pdf renders its text instead, so a conversion never
+  fetches remote content the sender referenced.
 
 Options:
   --to EXT             Target type: pdf, md, txt, html, json, xml, csv, png, jpg, ico, docx, odt,

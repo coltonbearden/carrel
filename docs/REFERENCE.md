@@ -339,6 +339,8 @@ Usage: carrel convert [OPTIONS] SRC...
   (pdf also needs weasyprint); md/html/txt can be written as docx or odt, and docx <-> epub round-
   trips. xlsx reads need the `office` extra (openpyxl) and go to csv or json only. Email (eml) goes
   to md/txt/html/pdf and a mailbox (mbox) to md/txt, with no external binary (pdf needs weasyprint).
+  eml → html keeps the message's own HTML; eml → pdf renders its text instead, so a conversion never
+  fetches remote content the sender referenced.
 
 Options:
   --to EXT             Target type: pdf, md, txt, html, json, xml, csv, png, jpg, ico, docx, odt,
@@ -750,12 +752,16 @@ Usage: carrel mail pst [OPTIONS] SRC
 
   Convert an Outlook SRC (.pst/.ost) into eml or mbox files via readpst.
 
+  `--format eml` writes one .eml per message (readpst -e); `--format mbox` writes one `mbox` file
+  per mail folder (readpst -r), which `carrel mail split` can then take apart.
+
   Needs readpst (sudo apt install pst-utils); exit 3 with that hint otherwise. JSON: {src, out_dir,
   format, files, via}.
 
 Options:
   --out-dir DIRECTORY  Directory readpst writes into (one subfolder per mail folder).  [required]
-  --format [eml|mbox]  One .eml per message, or one mbox per folder.  [default: eml]
+  --format [eml|mbox]  One .eml per message (readpst -e), or one mbox file per mail folder (readpst
+                       -r).  [default: eml]
   --json               Machine-readable JSON output.
   --help               Show this message and exit.
 ```

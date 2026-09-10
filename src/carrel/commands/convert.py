@@ -29,8 +29,10 @@ Documented conversion shapes (deliberately minimal, honest formats):
                numbers/bools kept, dates as ISO strings. Never the reverse.
 - eml → md     header table, body text, attachment list; → txt is the
                same text `index` sees; → html is the message's own HTML
-               part (else the text in <pre>); → pdf renders that HTML
-               with weasyprint. mbox → md/txt concatenates every message.
+               part (else the text in <pre>), re-declared as utf-8; → pdf
+               renders the message *text*, never its HTML, so converting a
+               message cannot fetch a tracking pixel or embed a local file.
+               mbox → md/txt concatenates every message.
 """
 
 from __future__ import annotations
@@ -627,15 +629,62 @@ def _mbox_to_md(src: Path, dest: Path, opts: dict) -> dict:
     return {"via": "email (stdlib)"}
 
 
+_HEAD_OPEN = re.compile(r"<head\b[^>]*>", re.IGNORECASE)
+_HTML_OPEN = re.compile(r"<html\b[^>]*>", re.IGNORECASE)
+_META_CHARSET = '<meta charset="utf-8">'
+
+
+def _force_utf8_charset(html: str) -> str:
+    """Make an HTML document declare the encoding we actually write it in.
+
+    The message's own HTML usually declares the charset the mail client sent
+    (windows-1252, iso-8859-1, …). We decode it and write UTF-8, so that
+    declaration is now a lie — and a browser or renderer that believes it shows
+    mojibake. An undeclared encoding is just as bad: WeasyPrint's fallback is
+    windows-1252. So the old declaration goes and ours goes first in the head.
+    """
+    stripped = re.sub(r"<meta[^>]+charset[^>]*>", "", html, flags=re.IGNORECASE)
+    head = _HEAD_OPEN.search(stripped)
+    if head:
+        return stripped[: head.end()] + "\n" + _META_CHARSET + stripped[head.end() :]
+    opening = _HTML_OPEN.search(stripped)
+    if opening:
+        return (
+            stripped[: opening.end()]
+            + f"\n<head>{_META_CHARSET}</head>"
+            + stripped[opening.end() :]
+        )
+    return _META_CHARSET + "\n" + stripped
+
+
 def _eml_html_document(path: Path) -> str:
+    """The message as an HTML document: its own HTML when it has one, else its text."""
     from carrel.core import mail
 
     msg = mail.parse_eml(path)
     html = mail.body_html(msg)
     title = htmllib.escape(str(msg.get("Subject") or path.name))
     if html is not None:
-        return html if "<html" in html.lower() else _html_doc(title, html)
+        return _force_utf8_charset(html if "<html" in html.lower() else _html_doc(title, html))
     return _html_doc(title, f"<pre>{htmllib.escape(mail.message_text(msg))}</pre>")
+
+
+def _eml_text_document(path: Path) -> str:
+    """The message as a self-contained HTML document built only from its text.
+
+    Deliberately not the message's own HTML: rendering that would make the
+    renderer fetch whatever the sender referenced — tracking pixels (a read
+    receipt for a message you only converted), intranet URLs, and `file://`
+    references that WeasyPrint will happily embed into the PDF. Everything here
+    comes from `message_text`, escaped, so a conversion reaches the network or
+    the local filesystem never.
+    """
+    from carrel.core import mail
+
+    msg = mail.parse_eml(path)
+    title = htmllib.escape(str(msg.get("Subject") or path.name))
+    body = htmllib.escape(mail.message_text(msg))
+    return _html_doc(title, f"<h1>{title}</h1>\n<pre>{body}</pre>")
 
 
 def _eml_to_html(src: Path, dest: Path, opts: dict) -> dict:
@@ -647,7 +696,7 @@ def _eml_to_pdf(src: Path, dest: Path, opts: dict) -> dict:
     adapters.require("weasyprint")
     with tempfile.TemporaryDirectory() as td:
         html_path = Path(td) / "message.html"
-        html_path.write_text(_eml_html_document(src), encoding="utf-8")
+        html_path.write_text(_eml_text_document(src), encoding="utf-8")
         _weasyprint(html_path, dest)
     return {"via": "email (stdlib) → weasyprint"}
 
@@ -829,7 +878,9 @@ def cmd(
     be written as docx or odt, and docx <-> epub round-trips. xlsx reads
     need the `office` extra (openpyxl) and go to csv or json only. Email
     (eml) goes to md/txt/html/pdf and a mailbox (mbox) to md/txt, with no
-    external binary (pdf needs weasyprint).
+    external binary (pdf needs weasyprint). eml → html keeps the message's own
+    HTML; eml → pdf renders its text instead, so a conversion never fetches
+    remote content the sender referenced.
     """
     dest_type = normalize_target(to)
     if dest_type is None:

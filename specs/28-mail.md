@@ -22,7 +22,7 @@ The accounting inbox is half email: the invoice arrives as an attachment, the re
 - `carrel mail attachments FILE... --out-dir DIR [--force] [--fail-empty]` → per message `{message, attachments: [{filename, path, size, sha256, content_type}]}`; names sanitised; collisions suffixed `-1, -2, …` unless `--force`; eml or mbox input (`file#n` per mbox message); a non-mail file → exit 4.
 - `carrel mail split BOX.mbox --out-dir DIR [--template '{n}_{date}_{subject}.eml'] [--force]` → `[{n, path, subject, date, message_id}]`; `{n}` zero-padded, `{date}` `YYYY-MM-DD` or `undated`, `{subject}` slug, `{id}` message-id slug; bytes written as stored; refuses to overwrite without `--force`.
 - `carrel mail threads PATH...` (eml/mbox files or directories walked like `index`) → `[{root_subject, first_date, messages: [{where, message_id, date, from, subject, depth}]}]`.
-- `carrel mail pst FILE.pst --out-dir DIR [--format eml|mbox]` → `readpst -q -e|-M -o DIR FILE` (adapter `readpst`, `sudo apt install pst-utils`, `-V` for the version); returns `{src, out_dir, format, files, via}`; exit 3 without readpst, exit 4 for a missing or non-`.pst/.ost` file.
+- `carrel mail pst FILE.pst --out-dir DIR [--format eml|mbox]` → `readpst -q -e|-r -o DIR FILE` (`-e` one .eml per message, `-r` one `mbox` file per folder; `-M` is MH format and is **not** what `--format mbox` means) (adapter `readpst`, `sudo apt install pst-utils`, `-V` for the version); returns `{src, out_dir, format, files, via}`; exit 3 without readpst, exit 4 for a missing or non-`.pst/.ost` file.
 - `doctor`: `mail` row (`readpst` optional). CI's full job installs `pst-utils`; the minimal jobs skip through `needs("readpst")`.
 
 ## MCP
