@@ -20,11 +20,13 @@ uv run python scripts/sync_product.py   # regenerates every derived copy
 Then add a `## vX.Y.Z — YYYY-MM-DD` entry at the top of `CHANGELOG.md`
 (the test suite checks the heading exists; the publish workflow checks it again).
 
-Then regenerate the doc samples that print the version — the `carrel --version`
-banner, the `carrel doctor` header, the `pack` header, `catalog export` JSON,
-the `claude plugin list` line and the SessionStart hook summary:
+Then regenerate `docs/REFERENCE.md` (its header names the version) and the doc
+samples that print it — the `carrel --version` banner, the `carrel doctor`
+header, the `pack` header, `catalog export` JSON, the `claude plugin list`
+block and the SessionStart hook summary:
 
 ```sh
+uv run python scripts/sync_reference.py
 uv run pytest tests/test_docs_drift.py   # lists every stale file:line
 ```
 

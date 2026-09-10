@@ -10,9 +10,8 @@
   `doctor` 26/26 commands ok, and a desk under a stray `*` `.gitignore` indexes 2 files where
   0.3.0 indexed 0. Repo `coltonbearden/carrel`, docs at https://coltonbearden.github.io/carrel/,
   PyPI package `carrel`.
-- **In flight:** nothing.
-- **Next:** cut v0.3.2 (CHANGELOG "Unreleased": Windows fixes, note order, `search` score
-  format) per docs/RELEASING.md. Promote `test-minimal (windows)` to required once it has
+- **In flight:** v0.3.2 release PR (Windows fixes, note order, `search` score format).
+- **Next:** publish v0.3.2 (`gh release create v0.3.2`), verify from PyPI, record it here. Promote `test-minimal (windows)` to required once it has
   been green on `main` for two consecutive weeks (drop `continue-on-error`; the ruleset
   entry is the owner's step). Plus two repo-settings steps only the owner can apply — add
   `test-minimal (macos)` to the `main` ruleset's required checks and to `REQUIRED_CHECKS`
