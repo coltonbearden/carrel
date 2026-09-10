@@ -21,7 +21,7 @@ carrel doctor
 ```
 
 ```text
-carrel 0.3.2 · python 3.12.13
+carrel 0.4.0 · python 3.12.13
                 external tools
 │ pandoc      │ found   │ pandoc 3.7.0.2            │
 │ tesseract   │ found   │ tesseract 5.5.0           │
@@ -240,7 +240,7 @@ wrote ctx.md (5 files, ~186 tokens_est)
 ```text
 # carrel pack
 
-- generated-by: carrel 0.3.2
+- generated-by: carrel 0.4.0
 - root: …/docs
 - files: 5 included, 0 skipped
 - tokens_est: 186
@@ -318,16 +318,17 @@ runs), so it diffs cleanly and can live next to the files in version control:
 
 ```json
 {
-  "schema": 1,
+  "schema": 2,
   "product": "carrel",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "exported": "2026-09-04T11:51:19+00:00",
   "root": "/home/you/docs",
   "files": [
     {
       "path": "guides/release-checklist.md",
       "tags": ["process", "release"],
-      "notes": [{"created": 1788522679.0094275, "body": "Step 4 needs the PyPI trusted publisher set up first."}]
+      "notes": [{"created": 1788522679.0094275, "body": "Step 4 needs the PyPI trusted publisher set up first."}],
+      "meta": []
     },
     {"path": "reference/glossary.md", "tags": ["reference"], "notes": []}
   ]
@@ -435,7 +436,7 @@ Details per shell in [INSTALL.md](INSTALL.md#shell-completions).
 
 ## Where to next
 
-- Full flag-by-flag docs for all 32 commands: [REFERENCE.md](REFERENCE.md) —
+- Full flag-by-flag docs for all 33 commands: [REFERENCE.md](REFERENCE.md) —
   including OCR, dedupe, organize, redact, sign, audiobook, and the MCP server
   (fourteen tools, two resource templates — see [AGENTS.md](AGENTS.md)).
 - Runnable recipes: [COOKBOOK.md](COOKBOOK.md) (`examples/cookbook/` and

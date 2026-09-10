@@ -31,7 +31,7 @@ more (see below):
 {
   "name": "carrel-example",
   "description": "One sentence: what it wraps and which slash commands it adds.",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "author": { "name": "Your Name" },
   "license": "MIT",
   "keywords": ["files", "example"]
@@ -137,7 +137,7 @@ source, don't rely on `pluginRoot`:
   "name": "carrel-example",
   "source": "./plugins/carrel-example",
   "description": "Same one-liner as plugin.json",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "author": { "name": "Your Name" },
   "license": "MIT",
   "keywords": ["files", "example"]

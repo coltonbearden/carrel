@@ -5,13 +5,15 @@
 
 ## Now
 
-- **Status:** v0.3.2 released 2026-09-10 (GitHub Release + PyPI via Trusted Publishing,
-  with a PEP 740 attestation). Verified from PyPI in a clean venv: `carrel 0.3.2`, `doctor`
-  26 commands (25 ok, `desk` unavailable without the `tui` extra, as designed), `search`
-  prints `score -8.51e-07` (`.3g`). The full suite is green on `windows-latest`; the
-  advisory job has been green on `main` since 2026-09-10. Repo `coltonbearden/carrel`,
-  docs at https://coltonbearden.github.io/carrel/, PyPI package `carrel`.
-- **In flight:** nothing.
+- **Status:** v0.4.0 "the accounting inbox" is ready to release (this branch). carrel now
+  reads what a document says (`fields`), links documents by the numbers they share
+  (`refs`), records typed facts about them (`meta`, schema v2), names and files them
+  (`rename`, `intake`), runs anything over many of them (`batch`), and treats email as a
+  first-class file type (`.eml`/`.mbox`, `mail`). 33 commands, 14 MCP tools, 9 marketplace
+  plugins. Repo `coltonbearden/carrel`, docs at https://coltonbearden.github.io/carrel/,
+  PyPI package `carrel`.
+- **In flight:** the v0.4.0 release itself — tag `v0.4.0`, watch `publish.yml`, verify from
+  PyPI in a clean venv, then record it here.
 - **Next:** promote `test-minimal (windows)` to required once it has been green on `main`
   for two consecutive weeks (from 2026-09-10): drop `continue-on-error` in
   `.github/workflows/test.yml`; the ruleset entry is the owner's step. Plus two
@@ -21,6 +23,18 @@
 
 ## Done
 
+- 2026-09-10 (v0.4.0, specs 23–28): the accounting-inbox release, in five PRs.
+  `meta` + `refs` (#25), email as a file type + `mail` (#26), `fields` + `rename` +
+  `batch` + watch v2 (#28), the email review fixes (#29), and `intake`. Schema v2 adds
+  the `meta` table (D-015); `core/patterns.py` is one registry for `redact --builtin` and
+  `refs`; `core/actions.py` is the single `shell=True` site shared by `watch` and `batch`
+  (D-013); `core/fsops.py` makes every move carry the desk row, which also fixed
+  `organize --apply` orphaning tags and notes. `.msg` is cut (D-011), mail shape-sniffing
+  is gated to extension-less files (D-012), and `intake` never destroys its input (D-014).
+- 2026-09-10 adversarial review of the email work found 15 confirmed defects before the
+  release, including a real one: `convert msg.eml --to pdf` rendered the sender's HTML, so
+  a conversion fetched tracking pixels and could embed local files into the PDF. PDF now
+  renders the message text. Every finding has a regression test (#29).
 - Build phases 0–7 complete (2026-07-16); v0.1.0 tagged.
 - v0.1.1 on PyPI via Trusted Publishing (2026-08-12).
 - 2026-09-03 hardening: owner rename, version SoT fix, `--json` everywhere, timeouts,
@@ -51,6 +65,12 @@
   still advisory (D-f).
 
 ## Open issues
+
+- Every command module carries its own copy of `_handled` (25 copies) and `_root_of` (12).
+  They are byte-identical; a change to how `CarrelError` maps to an exit code has to be made
+  in 25 places or it silently diverges. They belong next to `emit`/`fail` in
+  `core/output.py`. Deliberately not done during the v0.4.0 release (it touches every
+  command module); do it first in the next session.
 
 - Windows, latent (not covered by the suite): ~30 text-IO sites read or write without
   `encoding="utf-8"` (`commands/pack.py`, `core/textextract.py`, `desk/app.py`). CI sets

@@ -63,6 +63,11 @@ CAPABILITIES: dict[str, dict[str, Any]] = {
         "note": "names from fields/meta/refs; the text spine's binaries widen the types",
     },
     "batch": {"required": (), "optional": (), "note": "user shell actions per file (core.actions)"},
+    "intake": {
+        "required": (),
+        "optional": ("ocrmypdf", "pdftotext", "pandoc", "tesseract"),
+        "note": "fields + refs + rename + index in one pass; ocrmypdf makes scans searchable",
+    },
     "mail": {
         "required": (),
         "optional": ("readpst",),

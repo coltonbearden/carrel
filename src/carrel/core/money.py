@@ -35,8 +35,9 @@ _CODE = "(?:" + "|".join(CODES) + ")"
 _NUMBER = r"\d{1,3}(?:[ ,.'\u2019]\d{3})+(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?"
 _AMOUNT = re.compile(
     rf"(?:(?P<paren>\()\s*)?"
+    rf"(?:(?P<presign>[-+\u2212])\s?)?"  # -$1,234.56
     rf"(?:(?P<cur1>{_SYM}|{_CODE}\b)\s?)?"
-    rf"(?:(?P<sign>[-+\u2212])\s?)?"
+    rf"(?:(?P<sign>[-+\u2212])\s?)?"  # $-1,234.56 / EUR -5
     rf"(?P<num>{_NUMBER})"
     rf"(?:\s?(?P<cur2>{_SYM}|\b{_CODE}\b))?"
     rf"(?P<trail>-|\s?(?:CR|DR)\b)?"
@@ -105,7 +106,8 @@ def _to_amount(m: re.Match[str]) -> Amount | None:
     value = parse_number(m.group("num"))
     if value is None:
         return None
-    negative = bool(m.group("sign") and m.group("sign") in _MINUS)
+    sign = m.group("presign") or m.group("sign")
+    negative = bool(sign and sign in _MINUS)
     trail = (m.group("trail") or "").strip().upper()
     if trail in ("-", "CR") or (m.group("paren") and m.group("close")):
         negative = True
@@ -135,10 +137,17 @@ def find_amounts(text: str) -> list[Amount]:
     for m in _AMOUNT.finditer(text):
         if not _money_like(m):
             continue
-        # a number glued to more digits/letters (e.g. inside an id) is not an amount
+        # a number glued to more digits/letters (an id, a version, a dotted date)
+        # is not an amount: `2026.03.04` must not yield 2026.03
         before = text[m.start() - 1] if m.start() > 0 else " "
         after = text[m.end()] if m.end() < len(text) else " "
+        after2 = text[m.end() + 1] if m.end() + 1 < len(text) else " "
+        before2 = text[m.start() - 2] if m.start() > 1 else " "
         if before.isalnum() or after.isalnum() or before in "-/" or after in "-/":
+            continue
+        if after == "." and after2.isdigit():  # `2026.03` inside `2026.03.04`
+            continue
+        if before == "." and before2.isdigit():  # `.04` inside `2026.03.04`
             continue
         amount = _to_amount(m)
         if amount is not None:

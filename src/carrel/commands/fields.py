@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import functools
 import re
+from collections import Counter
 from collections.abc import Callable, Sequence
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -87,7 +88,11 @@ _LABEL_RE: dict[str, list[tuple[str, re.Pattern[str]]]] = {
         (
             label,
             re.compile(
-                r"^\s*" + re.escape(label) + r"\b\s*(?:\([^)]*\))?\s*[:.\-]?\s*(?P<rest>.*)$",
+                # `-` counts as a separator only when whitespace follows: in
+                # `Total Due  -$1,234.56` the dash belongs to the amount
+                r"^\s*"
+                + re.escape(label)
+                + r"\b\s*(?:\([^)]*\))?\s*(?:[:.]|-(?=\s))?\s*(?P<rest>.*)$",
                 re.IGNORECASE,
             ),
         )
@@ -95,7 +100,9 @@ _LABEL_RE: dict[str, list[tuple[str, re.Pattern[str]]]] = {
     ]
     for field, labels in _LABELS.items()
 }
-_NET_TERMS = re.compile(r"\bnet\s*(\d{1,3})\b", re.IGNORECASE)
+# Payment terms, not an amount: `Net 30` yes, `Net  500.00` (a subtotal line) no.
+_NET_TERMS = re.compile(r"\bnet\s+(\d{1,3})\b(?![\d.,])", re.IGNORECASE)
+MAX_NET_DAYS = 180
 _PROFILE_WORDS: dict[str, tuple[str, ...]] = {
     "invoice": ("invoice", "inv #", "bill to", "amount due", "purchase order"),
     "receipt": (
@@ -151,8 +158,15 @@ def detect_profile(text: str) -> str:
     return best if scores[best] else "invoice"
 
 
-def _labelled(lines: list[str], field: str) -> tuple[str, str] | None:
-    """(remainder text, evidence line) for the first line that starts with one of the field's labels."""
+def _labelled(lines: list[str], field: str) -> list[tuple[str, str]]:
+    """Every (remainder, evidence line) whose line starts with one of the field's labels.
+
+    All of them, not just the first: a document can carry a decoy above the
+    real line (`Tax ID: 12-3456789` before `Tax  $84.56`, `Total units 3.00`
+    before `Total  $1,234.56`), and the caller decides which candidate actually
+    parses into a value.
+    """
+    out: list[tuple[str, str]] = []
     for _label, rx in _LABEL_RE[field]:
         for i, line in enumerate(lines):
             m = rx.match(line)
@@ -160,23 +174,37 @@ def _labelled(lines: list[str], field: str) -> tuple[str, str] | None:
                 continue
             rest = m.group("rest").strip()
             if not rest and i + 1 < len(lines):  # label on its own line: value follows
-                rest = lines[i + 1].strip()
-                return rest, f"{line.strip()} / {rest}"
-            if rest:
-                return rest, line
+                out.append((lines[i + 1].strip(), f"{line.strip()} / {lines[i + 1].strip()}"))
+            elif rest:
+                out.append((rest, line))
+    return out
+
+
+def _best_amount(candidates: list[tuple[str, str]]) -> tuple[money.Amount, str] | None:
+    """The amount a labelled line states, preferring one that carries a currency marker.
+
+    `Total units          3.00` and `Total          $1,234.56` both match the
+    `total` label; the one with a currency symbol is the money line, and a later
+    line beats an earlier one because totals sit at the foot of a document.
+    """
+    best: tuple[tuple[int, int], money.Amount, str] | None = None
+    for rank, (text, evidence) in enumerate(candidates):
+        found = money.find_amounts(text)
+        if not found:
+            continue
+        amount = found[-1]  # "Total ..... $1,234.56": the value ends the line
+        score = (1 if amount.currency else 0, rank)
+        if best is None or score > best[0]:
+            best = (score, amount, evidence)
+    return (best[1], best[2]) if best else None
+
+
+def _first_date(candidates: list[tuple[str, str]], order: str) -> tuple[dates.Found, str] | None:
+    for text, evidence in candidates:
+        found = dates.find_dates(text, order)
+        if found:
+            return found[0], evidence
     return None
-
-
-def _amount_after(text: str) -> money.Amount | None:
-    found = money.find_amounts(text)
-    if found:
-        return found[-1]  # "Total ..... $1,234.56": the amount is at the end of the line
-    return None
-
-
-def _date_after(text: str, order: str) -> dates.Found | None:
-    found = dates.find_dates(text, order)
-    return found[0] if found else None
 
 
 _GREETING = re.compile(
@@ -219,16 +247,21 @@ def extract_fields(
 ) -> dict[str, Any]:
     """Fields for one document: {path, profile, fields: {name: {value, confidence, evidence}}}.
 
-    `source` is a file (text comes from `extract_text`, honouring `ocr`) or,
-    when `text` is given, any label for it. Amounts are canonical decimal
+    `source` is a file (text comes from `extract_text`, honouring `ocr`); pass
+    `text` to reuse a body that was already extracted — the file's mtime and
+    name still back the low-confidence fallbacks. A `source` that is not a file
+    is treated as a label only. Amounts are canonical decimal
     strings, dates ISO. Only fields that were found are present.
     """
     if profile not in PROFILES:
         raise CarrelInputError(f"unknown profile {profile!r} (choose from: {', '.join(PROFILES)})")
     if date_order not in ("mdy", "dmy"):
         raise CarrelInputError("date_order must be 'mdy' or 'dmy'")
-    path = Path(source) if text is None else None
-    body = text if text is not None else extract_text(path, ocr=ocr)  # type: ignore[arg-type]
+    candidate = Path(source)
+    path: Path | None = candidate if candidate.exists() else None
+    if path is None and text is None:
+        raise CarrelInputError(f"no such file: {source}")
+    body = text if text is not None else extract_text(candidate, ocr=ocr)
     lines = [ln for ln in body.splitlines() if ln.strip()]
     kind = detect_profile(body) if profile == "auto" else profile
     out: dict[str, dict[str, Any]] = {}
@@ -236,27 +269,25 @@ def extract_fields(
     # -- amounts -----------------------------------------------------------
     all_amounts = money.find_amounts(body)
     for name in ("total", "subtotal", "tax"):
-        hit = _labelled(lines, name)
-        if hit:
-            amount = _amount_after(hit[0])
-            if amount is not None:
-                out[name] = _field(str(amount.value), "high", hit[1])
+        money_hit = _best_amount(_labelled(lines, name))
+        if money_hit is not None:
+            out[name] = _field(str(money_hit[0].value), "high", money_hit[1])
     if "total" not in out and all_amounts:
         largest = max(all_amounts, key=lambda a: abs(a.value))
         out["total"] = _field(str(largest.value), "medium", largest.raw)
     currencies = [a.currency for a in all_amounts if a.currency]
     if currencies:
-        best = max(set(currencies), key=currencies.count)
+        counts = Counter(currencies)
+        # most frequent, then alphabetical: identical input gives an identical answer
+        best = min(counts, key=lambda code: (-counts[code], code))
         out["currency"] = _field(best, "high" if "total" in out else "medium", best)
 
     # -- dates -------------------------------------------------------------
     all_dates = dates.find_dates(body, date_order)
     for name in ("date", "due"):
-        hit = _labelled(lines, name)
-        if hit:
-            found = _date_after(hit[0], date_order)
-            if found is not None:
-                out[name] = _field(found.value.isoformat(), "high", hit[1])
+        date_hit = _first_date(_labelled(lines, name), date_order)
+        if date_hit is not None:
+            out[name] = _field(date_hit[0].value.isoformat(), "high", date_hit[1])
     if "date" not in out and all_dates:
         out["date"] = _field(all_dates[0].value.isoformat(), "medium", all_dates[0].raw)
     if "date" not in out and path is not None and path.exists():
@@ -264,7 +295,7 @@ def extract_fields(
         out["date"] = _field(stamp, "low", "file mtime")
     if "due" not in out and "date" in out:
         terms = _NET_TERMS.search(body)
-        if terms:
+        if terms and int(terms.group(1)) <= MAX_NET_DAYS:
             base = date.fromisoformat(out["date"]["value"])
             due = base + timedelta(days=int(terms.group(1)))
             out["due"] = _field(due.isoformat(), "medium", terms.group(0))

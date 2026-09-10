@@ -32,7 +32,7 @@ claude plugin list
 # Installed plugins:
 #
 #   ❯ carrel-inspect@carrel
-#     Version: 0.3.2
+#     Version: 0.4.0
 #     Scope: user
 #     Status: ✔ enabled
 ```
@@ -56,10 +56,10 @@ is reached through the MCP server instead and `carrel desk` is an interactive TU
 | **carrel-convert** | `/convert`, `/ocr`, `/thumb`, `/edit`, `/extract-images`, `/audiobook` | `doc-converter` agent — batch conversions with per-file verification via `carrel inspect` | Turn any supported file into another (pdf/md/html/txt/office/ebook/images), OCR scans, merge/split/rotate PDFs, resize/crop images, pull embedded images, narrate documents |
 | **carrel-inspect** | `/inspect`, `/diff`, `/search`, `/pack` | `context-packing` skill — `--query`-first selection, `--since` for PRs, `--outline` orientation, `--tokenizer exact` budgeting | Know what a file is, compare two files (text/struct/pdf/image), full-text search the desk, build LLM context packs that fit |
 | **carrel-organize** | `/organize`, `/dedupe`, `/tag`, `/note-file`, `/meta`, `/rename`, `/batch` | — | Sort a folder by type/date (dry-run first), find exact/near duplicates (report-only by default), tag, annotate and record typed fields on files, rename files from what they say (`{date}_{vendor}_{ref}{ext}`), run any command over many files with a resumable manifest |
-| **carrel-finance** | `/refs`, `/fields` | — | Find invoice, PO, order, check, IBAN, routing, VAT, ISBN and tracking numbers in any supported file (check digits verified), tag files with `ref:<kind>:<value>`, list the documents that share a reference; extract vendor, invoice number, dates, subtotal/tax/total and currency from invoices, receipts and statements with a confidence per field |
+| **carrel-finance** | `/refs`, `/fields` | `bookkeeper` agent (read → cross-reference → propose a filing plan, never applying it unasked), `accounting-inbox` skill | Find invoice, PO, order, check, IBAN, routing, VAT, ISBN and tracking numbers in any supported file (check digits verified), tag files with `ref:<kind>:<value>`, list the documents that share a reference; extract vendor, invoice number, dates, subtotal/tax/total and currency from invoices, receipts and statements with a confidence per field |
 | **carrel-documents** | `/redact`, `/sign`, `/form`, `/proof`, `/color` | `document-clerk` agent (redact → verify → sign manifest → report; never overwrites without `--force`), `redaction-and-provenance` skill | Remove PII with true-raster PDF redaction, stamp/sign/verify, list and fill PDF forms or build HTML ones, soft-proof and color-manage images |
 | **carrel-mail** | `/mail` | `mail-archive` skill — split → index → threads → attachments → cross-reference with `refs` | Save attachments (with sha256), split an mbox into dated `.eml` files, group messages into threads, convert Outlook `.pst` exports (readpst); `.eml`/`.mbox` are first-class desk files for inspect/convert/index/search/pack/refs and the Read guard |
-| **carrel-watch** | `/watch-folder` | `watch-automation` skill — auto-thumb / auto-index / auto-convert drop-folder recipes | React to files landing in a folder |
+| **carrel-watch** | `/watch-folder`, `/intake` | `watch-automation` skill — auto-thumb / auto-index / auto-convert drop-folder recipes | React to files landing in a folder |
 | **carrel-agent** | `/index`, `/doctor`, `/catalog`, `/completion` | `file-librarian` agent, `agent-workflows` skill, the carrel MCP server (14 tools + `carrel://` resources), the PostToolUse reindex hook (below) | Keep a desk index current and healthy, know what the environment can do, export/import tags and notes, answer questions about a collection with citations |
 | **carrel-guard** | — | `PreToolUse` Read guard + `SessionStart` capabilities hook (below) | Read PDFs, docx/odt/epub/rtf, xlsx, eml/mbox and (with OCR) images as plain text, and start every session knowing carrel's capabilities |
 
@@ -119,7 +119,7 @@ path>/<stem>.txt`, is reused while newer than its source, and can be deleted at 
 The same plugin's `SessionStart` hook runs `carrel doctor --json` once and adds one
 paragraph of context, e.g.
 
-> carrel 0.3.2 is on PATH: 26 of 26 commands ok, 0 degraded, 0 unavailable. Run `carrel doctor --json` for the full table and `carrel <cmd> --help` before composing flags. Most useful missing binaries: edge-tts (pipx install edge-tts), piper (pipx install piper-tts).
+> carrel 0.4.0 is on PATH: 32 of 33 commands ok, 1 degraded, 0 unavailable. Run `carrel doctor --json` for the full table and `carrel <cmd> --help` before composing flags. Most useful missing binaries: readpst (sudo apt install pst-utils), edge-tts (pipx install edge-tts), piper (pipx install piper-tts).
 
 Both hooks exit 0 on every path and are silent without `carrel`. Disable them with
 `claude plugin disable carrel-guard`.

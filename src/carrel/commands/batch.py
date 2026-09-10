@@ -342,9 +342,9 @@ def cmd(
             fail("no files matched (--fail-empty)", ExitCode.EMPTY)
         return
 
-    manifest_fh = manifest.open("a", encoding="utf-8") if manifest is not None else None
     if manifest is not None:
         manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest_fh = manifest.open("a", encoding="utf-8") if manifest is not None else None
 
     def on_record(rec: dict[str, Any]) -> None:
         if manifest_fh is not None:

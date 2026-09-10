@@ -30,7 +30,7 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -132,8 +132,12 @@ class _Watcher:
                 del self.suppress[path]
             if path in self.inflight:
                 return
-            for src in self.inflight:  # output-path suffix heuristic
-                if path != src and path.name.startswith(src.stem):
+            for src in self.inflight:
+                # output-name heuristic, deliberately narrow: an action's output
+                # keeps the source's stem and adds a segment (report.pdf ->
+                # report.txt, report.thumb.png). `report-2026.pdf` is a new input,
+                # not an output, and must never be dropped.
+                if path != src and path.name.startswith(f"{src.stem}."):
                     return
             self.pending[path] = (event_type, time.monotonic())
 
@@ -225,6 +229,7 @@ class _Watcher:
     def _log_record(self, record: dict[str, Any]) -> None:
         if self.log_path is None:
             return
+        self.log_path.parent.mkdir(parents=True, exist_ok=True)
         stamp = time.strftime("%Y-%m-%dT%H:%M:%S")
         line = json.dumps({"time": stamp, **record}, ensure_ascii=False)
         with self.log_path.open("a", encoding="utf-8") as fh:
@@ -237,10 +242,23 @@ def _as_text(data: bytes | str | None) -> str:
     return data.decode(errors="replace") if isinstance(data, bytes) else data
 
 
-def _existing_files(directory: Path, recursive: bool) -> list[Path]:
-    if recursive:
-        return sorted(p for p in directory.rglob("*") if p.is_file() and not p.name.startswith("."))
-    return sorted(p for p in directory.iterdir() if p.is_file() and not p.name.startswith("."))
+def _existing_files(directory: Path, recursive: bool, skip: Sequence[Path] = ()) -> list[Path]:
+    """Files already in `directory` at start, skipping hidden entries and `skip` subtrees.
+
+    `--done-dir` / `--error-dir` are usually inside the watched folder; without
+    skipping them a restart would re-run every action over the whole archive.
+    """
+    entries = directory.rglob("*") if recursive else directory.iterdir()
+    out: list[Path] = []
+    for p in sorted(entries):
+        if not p.is_file():
+            continue
+        if any(part.startswith(".") for part in p.relative_to(directory).parts):
+            continue
+        if any(p.is_relative_to(s) for s in skip):
+            continue
+        out.append(p)
+    return out
 
 
 def _watch_command_line(ctx: click.Context, directory: Path) -> list[str]:
@@ -507,7 +525,8 @@ def cmd(
     )
     observer.schedule(_make_handler(watcher), str(directory), recursive=recursive)
     if existing:
-        for f in _existing_files(directory, recursive):
+        filed_away = [d for d in (watcher.done_dir, watcher.error_dir) if d is not None]
+        for f in _existing_files(directory, recursive, filed_away):
             watcher.seed("existing", f)
     click.echo(
         f"watching {directory} (on: {', '.join(sorted(on))}"

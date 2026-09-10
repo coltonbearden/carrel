@@ -113,6 +113,27 @@ relevant, with `--stats` for the token table. No optional binaries needed.
 --8<-- "examples/cookbook/10-pack-what-matters.sh"
 ```
 
+### 11 — The accounting inbox
+
+A folder of invoices and billing email goes in; a searchable, cross-referenced
+archive comes out. `intake` reads each document's fields, names it, files it by
+date, indexes it and tags it with its reference numbers — then `meta find` and
+`tag find` answer the questions. No optional binaries needed.
+
+```bash
+--8<-- "examples/cookbook/11-accounting-inbox.sh"
+```
+
+### 12 — Mail archive
+
+Split an mbox into one `.eml` per message, index it, follow the threads, pull the
+attachments out with their digests, and see which invoice the mail belongs to.
+Standard-library parsing: no binary needed.
+
+```bash
+--8<-- "examples/cookbook/12-mail-archive.sh"
+```
+
 ## Snippets
 
 Each file's header comment states what it does, what it needs, and how to run it.

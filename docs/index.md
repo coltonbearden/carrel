@@ -2,7 +2,7 @@
 
 *A library desk for your files — and your agents.*
 
-A **carrel** is a private study desk in a library: your materials close at hand, organized your way. carrel is that desk for your local files — pdf, docx, odt, epub, rtf, xlsx, md, html, txt, json, xml, csv, and png/jpg/ico images — with 32 commands to convert, OCR, inspect, diff, index, search, pack, watch, and more.
+A **carrel** is a private study desk in a library: your materials close at hand, organized your way. carrel is that desk for your local files — pdf, docx, odt, epub, rtf, xlsx, md, html, txt, json, xml, csv, and png/jpg/ico images — with 33 commands to convert, OCR, inspect, diff, index, search, pack, watch, file an inbox, and more.
 
 It treats AI agents as first-class users of the desk: every data-producing command speaks `--json` on stable exit codes, `carrel pack` turns file trees into LLM-ready context, `carrel mcp` serves the whole desk as ten MCP tools, and the [repository doubles as a Claude Code plugin marketplace](MARKETPLACE.md) whose plugins drive the same CLI.
 
@@ -17,7 +17,7 @@ Plain `carrel` (no extras) skips the TUI, xlsx reading, and exact token counts; 
 
 - **[Carrel in ten minutes](QUICKSTART.md)** — a guided tour of the CLI and the desk TUI.
 - **[Installing](INSTALL.md)** — the CLI, its optional extras, the optional binaries that unlock each capability, and shell completions.
-- **[Command reference](REFERENCE.md)** — every flag of all 32 commands, generated from real `--help` output.
+- **[Command reference](REFERENCE.md)** — every flag of all 33 commands, generated from real `--help` output.
 - **[Cookbook & snippets](COOKBOOK.md)** — runnable, end-to-end recipes.
 
 ## Three things worth trying first

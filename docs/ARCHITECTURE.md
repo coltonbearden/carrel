@@ -38,7 +38,7 @@ src/carrel/
 ### CLI shape
 
 - Root: `carrel <command> [args]`. Every command: `--help` works, `--json` (where output is data) prints ONE JSON object/array to stdout and nothing else, human mode may use rich.
-- Commands are registered in `cli.py` via a `COMMANDS: dict[str, str]` name→module map with lazy import (startup stays fast; a broken optional import breaks only its command). 32 commands as of v0.4.0.
+- Commands are registered in `cli.py` via a `COMMANDS: dict[str, str]` name→module map with lazy import (startup stays fast; a broken optional import breaks only its command). 33 commands as of v0.4.0.
 - Global `--debug` (tracebacks), `--root PATH` (desk root for db-backed commands; default: cwd).
 - `carrel completion bash|zsh|fish` prints click's completion script in-process (no subprocess); `--install-hint` appends the per-shell enable lines as a comment block; an unknown shell exits 2.
 
@@ -103,7 +103,7 @@ meta  (file_id INT, key TEXT, value TEXT, kind TEXT, source TEXT, updated REAL, 
 **Catalog export/import.** Tags, notes and meta fields are the data the desk cannot regenerate, so `carrel catalog export` writes them as one deterministic JSON document (sorted by path, byte-identical apart from `exported`; `schema` is the DB schema version):
 
 ```json
-{"schema": 2, "product": "carrel", "version": "0.3.2", "exported": "…", "root": "/abs/root",
+{"schema": 2, "product": "carrel", "version": "0.4.0", "exported": "…", "root": "/abs/root",
  "files": [{"path": "guides/release-checklist.md", "tags": ["process", "release"],
             "notes": [{"created": 1788522679.0094275, "body": "Step 4 needs …"}],
             "meta": [{"key": "owner", "value": "release", "kind": "str", "source": "user"}]}]}
