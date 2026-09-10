@@ -12,7 +12,7 @@
       "name": "carrel-convert",
       "source": "./plugins/carrel-convert",
       "description": "Convert, OCR, thumbnail, edit, extract images from, and narrate local files with the carrel CLI: /convert, /ocr, /thumb, /edit, /extract-images, /audiobook, plus a doc-converter batch agent.",
-      "version": "0.3.2",
+      "version": "0.4.0",
       "author": { "name": "Colton Bearden" },
       "license": "MIT",
       "keywords": ["files", "convert", "pdf", "ocr", "thumbnails", "edit", "images", "audiobook", "tts"]
@@ -21,7 +21,7 @@
       "name": "carrel-inspect",
       "source": "./plugins/carrel-inspect",
       "description": "Inspect, diff, search, and pack local files for LLM context with the carrel CLI: /inspect, /diff, /search, /pack, plus a context-packing skill.",
-      "version": "0.3.2",
+      "version": "0.4.0",
       "author": { "name": "Colton Bearden" },
       "license": "MIT",
       "keywords": ["files", "inspect", "diff", "search", "fts5", "pack", "llm-context"]
@@ -30,7 +30,7 @@
       "name": "carrel-organize",
       "source": "./plugins/carrel-organize",
       "description": "Organize, dedupe, tag, annotate, record typed fields, rename from document fields, and batch-process local files with the carrel CLI: /organize, /dedupe, /tag, /note-file, /meta, /rename, /batch.",
-      "version": "0.3.2",
+      "version": "0.4.0",
       "author": { "name": "Colton Bearden" },
       "license": "MIT",
       "keywords": ["files", "organize", "dedupe", "tags", "notes", "metadata"]
@@ -39,7 +39,7 @@
       "name": "carrel-documents",
       "source": "./plugins/carrel-documents",
       "description": "Document craft with the carrel CLI: /redact, /sign, /form, /proof, /color, a document-clerk agent (redact → verify → sign manifest) and a redaction-and-provenance skill.",
-      "version": "0.3.2",
+      "version": "0.4.0",
       "author": { "name": "Colton Bearden" },
       "license": "MIT",
       "keywords": ["documents", "redact", "pii", "sign", "manifest", "forms", "acroform", "icc", "color", "wcag"]
@@ -48,7 +48,7 @@
       "name": "carrel-finance",
       "source": "./plugins/carrel-finance",
       "description": "Accounting desk work with the carrel CLI: /refs finds invoice, PO, IBAN, routing, VAT and tracking numbers across files, tags files with them, and shows which documents share a reference; /fields extracts vendor, dates, totals and currency from invoices, receipts and statements. Plus a bookkeeper agent and an accounting-inbox skill.",
-      "version": "0.3.2",
+      "version": "0.4.0",
       "author": { "name": "Colton Bearden" },
       "license": "MIT",
       "keywords": ["finance", "accounting", "invoices", "receipts", "references", "iban", "fields", "tags"]
@@ -57,7 +57,7 @@
       "name": "carrel-mail",
       "source": "./plugins/carrel-mail",
       "description": "Email archives with the carrel CLI: /mail saves attachments, splits an mbox into messages, groups eml/mbox files into threads and converts Outlook .pst exports; eml/mbox are first-class desk files for index, search, pack, refs and the Read guard; plus a mail-archive skill.",
-      "version": "0.3.2",
+      "version": "0.4.0",
       "author": { "name": "Colton Bearden" },
       "license": "MIT",
       "keywords": ["email", "eml", "mbox", "pst", "attachments", "threads", "archive"]
@@ -66,7 +66,7 @@
       "name": "carrel-watch",
       "source": "./plugins/carrel-watch",
       "description": "Watch folders and file inboxes with the carrel CLI: /watch-folder runs actions on file events (recursive, settle-wait, polling, done/error dirs, service definitions); /intake reads each arriving document, names it, files it by date or fiscal period, indexes it and tags it with its reference numbers. Plus a watch-automation recipe skill.",
-      "version": "0.3.2",
+      "version": "0.4.0",
       "author": { "name": "Colton Bearden" },
       "license": "MIT",
       "keywords": ["files", "watch", "automation", "watchdog", "folder-actions", "intake", "filing"]
@@ -75,7 +75,7 @@
       "name": "carrel-agent",
       "source": "./plugins/carrel-agent",
       "description": "Agentic file librarian for carrel desks: /index, /doctor, /catalog, /completion, a file-librarian agent, an agent-workflows skill, the carrel MCP server (14 tools + carrel:// resources), and a PostToolUse hook that re-indexes files Claude writes.",
-      "version": "0.3.2",
+      "version": "0.4.0",
       "author": { "name": "Colton Bearden" },
       "license": "MIT",
       "keywords": ["agent", "mcp", "index", "search", "catalog", "doctor", "hooks", "librarian"]
@@ -84,7 +84,7 @@
       "name": "carrel-guard",
       "source": "./plugins/carrel-guard",
       "description": "Hooks that let Claude read what it otherwise cannot: a PreToolUse guard converts PDFs, Office/ebook files and images to text via carrel before Read sees them, and a SessionStart hook reports what carrel can do in this environment.",
-      "version": "0.3.2",
+      "version": "0.4.0",
       "author": { "name": "Colton Bearden" },
       "license": "MIT",
       "keywords": ["hooks", "read", "pdf", "docx", "ocr", "guard", "capabilities"]

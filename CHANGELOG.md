@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## v0.4.0 — 2026-09-10
+
+The accounting inbox. carrel reads what a document says, links documents by the
+numbers they share, files them where they belong, and answers questions about them —
+and email is a first-class file type throughout.
 
 - **Added:** `carrel meta` — typed key/value fields on desk files (`set/get/ls/rm/find/export`),
   stored in the new schema-v2 `meta` table. Kinds (str/num/date/bool) are inferred and values
