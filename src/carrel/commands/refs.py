@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import functools
 import re
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -60,21 +60,30 @@ def tag_for(ref: dict[str, Any]) -> str:
     return f"ref:{ref['kind']}:{value}".lower()
 
 
-def _candidates(paths: Sequence[Path], *, ocr: bool) -> Iterator[Path]:
-    """Explicit files as given; directories walked like `index` (hidden/ignored skipped)."""
-    from carrel.commands.index import _walk
+def _candidates(paths: Sequence[Path], *, ocr: bool, root: Path | None) -> list[Path]:
+    """Explicit files as given; directories walked like `index` (hidden/ignored skipped).
 
+    Every path is checked before anything is scanned, so a typo in the last
+    argument fails the run (exit 4) without partial work. The `.gitignore`
+    rules of the ancestors up to `root` (or the repo root) seed the walk, as
+    `index_paths` does, so `refs repo/sub` honours `repo/.gitignore`.
+    """
+    from carrel.commands.index import _walk
+    from carrel.core.ignore import ancestor_ignores
+
+    out: list[Path] = []
     for p in paths:
         if not p.exists():
             raise CarrelInputError(f"no such path: {p}")
         if p.is_file():
-            yield p
+            out.append(p)
             continue
-        for f in _walk(p):
+        for f in _walk(p, ancestor_ignores(p.resolve(), root)):
             ftype = detect(f)
             if ftype is FileType.UNKNOWN or (ftype.is_image and not ocr):
                 continue
-            yield f
+            out.append(f)
+    return out
 
 
 def refs_in_file(
@@ -91,42 +100,48 @@ def scan_refs(
     extra: Sequence[str] = (),
     ocr: bool = False,
     tag_root: Path | str | None = None,
+    root: Path | str | None = None,
 ) -> list[dict[str, Any]]:
     """One record per scanned file: {path, refs: [...]}, plus `tags` when tagging.
 
     `kinds` are registry names (default: every reference + identifier kind);
     `extra` are `NAME=REGEX` specs. With `tag_root`, every reference becomes a
-    `ref:<kind>:<value>` tag on the file in the desk under that root. A file
-    whose text cannot be extracted yields {path, refs: [], error, kind} with
-    kind `missing_dependency` (a binary is absent), `bad_input` or `error`, so
-    one bad file never aborts the scan. Directories that do not exist raise
-    CarrelInputError.
+    `ref:<kind>:<value>` tag on the file in the desk under that root — written
+    in one short transaction after the scan, so a long OCR run never holds the
+    desk locked and a failed run leaves no half-written tags. `root` bounds the
+    ancestor `.gitignore` walk (default: the git repo root). A file whose text
+    cannot be extracted yields {path, refs: [], error, kind} with kind
+    `missing_dependency` (a binary is absent), `bad_input` or `error`, so one
+    bad file never aborts the scan. A path that does not exist raises
+    CarrelInputError before anything is scanned.
     """
     chosen = pat.resolve_kinds(kinds) + [pat.parse_extra(e) for e in extra]
-    targets = [Path(p) for p in paths]
+    bound = Path(root).resolve() if root is not None else None
+    targets = _candidates([Path(p) for p in paths], ocr=ocr, root=bound)
     ctx = click.get_current_context(silent=True)
     records: list[dict[str, Any]] = []
-    db = DeskDB(tag_root).__enter__() if tag_root is not None else None
-    try:
-        for f in _candidates(targets, ocr=ocr):
-            progress(f"refs: {f}", ctx)
-            record: dict[str, Any] = {"path": str(f), "refs": []}
-            try:
-                record["refs"] = refs_in_file(f, chosen, ocr=ocr)
-            except MissingDependencyError as e:
-                record.update({"error": str(e), "kind": "missing_dependency"})
-            except CarrelInputError as e:
-                record.update({"error": str(e), "kind": "bad_input"})
-            except CarrelError as e:  # e.g. a tool timeout: report, keep scanning
-                record.update({"error": str(e), "kind": "error"})
-            if db is not None and record["refs"]:
-                tags = sorted({tag_for(r) for r in record["refs"]})
-                db.add_tags(f.resolve(), tags)
-                record["tags"] = tags
-            records.append(record)
-    finally:
-        if db is not None:
-            db.__exit__(None, None, None)
+    for f in targets:
+        progress(f"refs: {f}", ctx)
+        record: dict[str, Any] = {"path": str(f), "refs": []}
+        try:
+            record["refs"] = refs_in_file(f, chosen, ocr=ocr)
+        except MissingDependencyError as e:
+            record.update({"error": str(e), "kind": "missing_dependency"})
+        except CarrelInputError as e:
+            record.update({"error": str(e), "kind": "bad_input"})
+        except CarrelError as e:  # e.g. a tool timeout: report, keep scanning
+            record.update({"error": str(e), "kind": "error"})
+        except Exception as e:  # noqa: BLE001 — an unreadable/odd file (PermissionError, csv.Error, …) is a record, never an abort
+            record.update({"error": f"{e.__class__.__name__}: {e}", "kind": "error"})
+        if tag_root is not None and record["refs"]:
+            record["tags"] = sorted({tag_for(r) for r in record["refs"]})
+        records.append(record)
+    if tag_root is not None:
+        tagged = [r for r in records if r.get("tags")]
+        if tagged:
+            with DeskDB(tag_root) as db:
+                for record in tagged:
+                    db.add_tags(Path(record["path"]).resolve(), record["tags"])
     return records
 
 
@@ -258,7 +273,12 @@ def cmd(
         raise click.UsageError("--all only applies with --link")
 
     records = scan_refs(
-        list(paths), kinds=kinds, extra=extra, ocr=ocr, tag_root=_root_of(ctx) if tag_ else None
+        list(paths),
+        kinds=kinds,
+        extra=extra,
+        ocr=ocr,
+        tag_root=_root_of(ctx) if tag_ else None,
+        root=_root_of(ctx),
     )
     if link:
         emit(ctx, link_refs(records, all_=all_), human=_human_links)

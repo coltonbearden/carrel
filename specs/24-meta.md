@@ -18,15 +18,15 @@ CREATE INDEX meta_key_value ON meta(key, value);
 
 ## Values
 - Keys: `[a-z0-9][a-z0-9_.-]{0,63}` after lower-casing (`normalize_meta_key`).
-- Kinds `str|num|date|bool`, inferred by `coerce_meta(value, None)`: `true/false` → bool; `[-+]?\d+(,\d{3})*(\.\d+)?` → num stored as plain decimal text without separators or trailing zeros (`1,234.50` → `1234.5`); `YYYY-MM-DD` (a real date) → date; else str. Explicit `--kind` is strict (`yes/no/1/0/on/off` for bool; `Decimal` for num; ISO date) and raises `CarrelInputError` (exit 4) otherwise.
+- Kinds `str|num|date|bool`, inferred by `coerce_meta(value, None)`: `true/false` → bool; `[-+]?\d+(,\d{3})*(\.\d+)?` → num stored as plain decimal text without separators or trailing zeros (`1,234.50` → `1234.5`) **unless the digits carry a leading zero** (`02134`, `0042` stay str — they are identifiers); `YYYY-MM-DD` (a real date) → date; else str. Explicit `--kind` is strict (`yes/no/1/0/on/off` for bool; `Decimal` for num; ISO date) and raises `CarrelInputError` (exit 4) otherwise.
 - `source` is free text: `user` (CLI default), `agent` (MCP default), `fields`, `intake`.
 
 ## DeskDB API
 `set_meta(path, key, value, *, kind=None, source="user") -> row`, `meta_of(path) -> [rows]`, `get_meta(path, key)`, `rm_meta(path, keys) -> n`, `meta_keys() -> {key: n}`, `find_by_meta(conditions) -> [paths]`, `meta_table(keys=None) -> (columns, rows)`, `counts()["meta"]`.
-Conditions (`parse_meta_condition`): `key OP value` with OP `= != > >= < <= ~` or bare `key?`. A numeric value compares as `CAST(value AS REAL)` against `num` fields; `=`/`!=` on text are `COLLATE NOCASE`; `~` is an escaped `LIKE '%…%'`; `?` is existence. Conditions AND together. `!=` matches only files that *have* the key with another value.
+Conditions (`parse_meta_condition`): `key OP value` with OP `= != > >= < <= ~` or bare `key?`; a value may not start with an operator character (`vendor>>x` is a usage error, not a comparison against `>x`). A numeric literal compares as `CAST(value AS REAL)` against `num` fields *and* as text against every other kind (so `zip=02134` finds a str field); `=`/`!=` on text are `COLLATE NOCASE` and accept bool spellings (`paid=yes`); ordering on non-num kinds is lexical, which is chronological for ISO dates and lets a `due<2027` prefix work; `~` is an escaped `LIKE '%…%'`; `?` is existence. Conditions AND together. `!=` matches only files that *have* the key with another value.
 
 ## Catalog (schema 2)
-Export selects files with tags OR notes OR meta; each entry gains `"meta": [{key, value, kind, source}]` sorted by key (no `updated`, so exports stay byte-identical). Import: `_validate_catalog` accepts an optional `meta` list (shape-checked, kinds validated, keys normalised); rows are upserted and counted under `meta_set` only when the stored triple changed; `--replace` clears meta too (`meta_removed`). Schema-1 documents import unchanged.
+Export selects files with tags OR notes OR meta; each entry gains `"meta": [{key, value, kind, source}]` sorted by key (no `updated`, so exports stay byte-identical). Import: `_validate_catalog` accepts an optional `meta` list (shape-checked, keys normalised, every value canonicalised through `coerce_meta(value, kind)` so a document cannot smuggle `abc` under `num`); rows are upserted and counted under `meta_set` only when the stored triple changed; `--replace` clears meta too (`meta_removed`). Schema-1 documents import unchanged.
 
 ## CLI (`carrel meta`, a click group)
 - `set PATH KEY=VALUE... [--kind K] [--source S]` → `{path, set: [keys], meta: {k: v}}`; registers the file (exit 4 if missing); bad pair / key → exit 2; bad value for an explicit kind → exit 4.

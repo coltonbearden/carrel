@@ -24,6 +24,7 @@ the whole match (the pii kinds). Validators receive the normalised value.
 from __future__ import annotations
 
 import re
+from bisect import bisect_right
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from functools import cache
@@ -404,6 +405,11 @@ def find_refs(
     Rows come back in registry order, then by first occurrence.
     """
     chosen = list(patterns) if patterns is not None else resolve_kinds(None)
+    # offsets of every page break / newline, computed once: a match's page and
+    # line are then a bisect, not a rescan of the text (a 50k-line export with a
+    # hit per line stays linear)
+    feeds = [m.start() for m in re.finditer("\f", text)]
+    newlines = [m.start() for m in re.finditer("\n", text)]
     found: dict[tuple[str, str], dict[str, Any]] = {}
     order: list[tuple[str, str]] = []
     for pattern in chosen:
@@ -424,8 +430,8 @@ def find_refs(
                 order.append(key)
             row["count"] += 1
             start = m.start()
-            row["pages"].add(text.count("\f", 0, start) + 1)
-            row["lines"].add(text.count("\n", 0, start) + 1)
+            row["pages"].add(bisect_right(feeds, start - 1) + 1)
+            row["lines"].add(bisect_right(newlines, start - 1) + 1)
     return [
         {
             **row,

@@ -750,9 +750,9 @@ Usage: carrel meta set [OPTIONS] PATH KEY=VALUE...
 Options:
   --kind [str|num|date|bool]  Force the kind of every field in this call (default: inferred —
                               true/false → bool, 1234.5 → num, an ISO YYYY-MM-DD date → date, else
-                              str).
-  --source TEXT               Who is writing the field (automation names itself, e.g. fields,
-                              intake).  [default: user]
+                              str; digits with a leading zero such as 02134 stay str).
+  --source TEXT               Who is writing the field (automation should pass its own name).
+                              [default: user]
   --json                      Machine-readable JSON output.
   --help                      Show this message and exit.
 ```

@@ -5,7 +5,7 @@ Fields live in `.carrel/carrel.db` next to tags and notes: `vendor=Acme`,
 inferred from the value unless --kind forces it, and numbers and dates are
 stored canonically so `find total>1000` compares numerically and
 `find due<2026-11-01` compares chronologically. `source` records who wrote a
-field (user by default; `fields --save` and `intake` write their own names).
+field (user by default; automation passes its own name with --source).
 
 Read-only subcommands (get, ls, find, export) never create a `.carrel/`
 directory; `set` registers the file in the desk db like `tag add` does.
@@ -27,7 +27,7 @@ from typing import Any
 import click
 
 from carrel._product import PRODUCT
-from carrel.core.db import META_KINDS, META_OPS, DeskDB, normalize_meta_key
+from carrel.core.db import META_KINDS, DeskDB, normalize_meta_key
 from carrel.core.output import CarrelError, CarrelInputError, ExitCode, emit, fail
 
 
@@ -73,16 +73,21 @@ def cmd() -> None:
 # ------------------------------------------------------------------- set
 
 
+def _usage_key(key: str) -> str:
+    """A bad key on the command line is a usage error (exit 2) in every subcommand."""
+    try:
+        return normalize_meta_key(key)
+    except CarrelInputError as e:
+        raise click.UsageError(str(e)) from e
+
+
 def _parse_pairs(pairs: tuple[str, ...]) -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
     for spec in pairs:
         key, sep, value = spec.partition("=")
         if not sep or not key.strip():
             raise click.UsageError(f"expected KEY=VALUE (got: {spec!r})")
-        try:
-            out.append((normalize_meta_key(key), value))
-        except CarrelInputError as e:
-            raise click.UsageError(str(e)) from e
+        out.append((_usage_key(key), value))
     return out
 
 
@@ -94,13 +99,14 @@ def _parse_pairs(pairs: tuple[str, ...]) -> list[tuple[str, str]]:
     type=click.Choice(META_KINDS),
     default=None,
     help="Force the kind of every field in this call (default: inferred — "
-    "true/false → bool, 1234.5 → num, an ISO YYYY-MM-DD date → date, else str).",
+    "true/false → bool, 1234.5 → num, an ISO YYYY-MM-DD date → date, else str; "
+    "digits with a leading zero such as 02134 stay str).",
 )
 @click.option(
     "--source",
     default="user",
     show_default=True,
-    help="Who is writing the field (automation names itself, e.g. fields, intake).",
+    help="Who is writing the field (automation should pass its own name).",
 )
 @click.pass_context
 @_handled
@@ -131,7 +137,7 @@ def get(ctx: click.Context, path: Path, key: str, fail_empty: bool) -> None:
     """Print one field of PATH (its value alone in human mode; null when absent)."""
     root = _root_of(ctx)
     path = path.resolve()
-    key = normalize_meta_key(key)
+    key = _usage_key(key)
     row = None
     if DeskDB.exists(root):
         with DeskDB(root) as db:
@@ -209,8 +215,9 @@ def rm(ctx: click.Context, path: Path, keys: tuple[str, ...]) -> None:
     if not DeskDB.exists(root):
         emit(ctx, {"path": str(path), "removed": 0, "meta": {}}, human=_echo_file_meta)
         return
+    wanted = [_usage_key(k) for k in keys]
     with DeskDB(root) as db:
-        removed = db.rm_meta(path, list(keys))
+        removed = db.rm_meta(path, wanted)
         data = {"path": db.rel(path), "removed": removed, "meta": meta_map(db, path)}
     emit(ctx, data, human=_echo_file_meta)
 
@@ -248,7 +255,8 @@ def find(ctx: click.Context, conditions: tuple[str, ...]) -> None:
                 paths = db.find_by_meta(list(conditions))
             except CarrelInputError as e:
                 raise click.UsageError(str(e)) from e
-            rows = [{"path": p, "meta": meta_map(db, db.root / p)} for p in paths]
+            by_path = db.meta_for_paths(paths)
+            rows = [{"path": p, "meta": by_path[p]} for p in paths]
     else:
         try:  # validate the syntax even without a desk, so typos fail loudly
             from carrel.core.db import parse_meta_condition
@@ -301,8 +309,9 @@ def export(ctx: click.Context, keys: tuple[str, ...], out: Path | None, force: b
         raise CarrelInputError(
             f"no desk db under {root} (.carrel/carrel.db) — run `{PRODUCT['cli']} meta set` first"
         )
+    wanted = [_usage_key(k) for k in keys]
     with DeskDB(root) as db:
-        columns, rows = db.meta_table(list(keys) or None)
+        columns, rows = db.meta_table(wanted or None)
     as_json = bool(ctx.obj and ctx.obj.get("json"))
     if out is None:
         if as_json:
@@ -329,6 +338,3 @@ def export(ctx: click.Context, keys: tuple[str, ...], out: Path | None, force: b
             f"wrote {d['out']}: {d['files']} file(s), {len(d['keys'])} key(s) [{d['format']}]"
         ),
     )
-
-
-_ = META_OPS  # re-exported for --help authors; the parser owns the list

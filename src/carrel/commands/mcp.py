@@ -375,6 +375,14 @@ def _iso(ts: float) -> str:
     return datetime.fromtimestamp(ts).isoformat(timespec="seconds")
 
 
+def _rel(path: Path, root: Path) -> str:
+    """Root-relative POSIX path like `DeskDB.rel`, without opening a desk."""
+    try:
+        return path.resolve().relative_to(root).as_posix()
+    except ValueError:
+        return path.resolve().as_posix()
+
+
 def _check_required(name: str, args: dict[str, Any]) -> None:
     missing = [k for k in _SCHEMA_BY_NAME[name].get("required", []) if args.get(k) is None]
     if missing:
@@ -647,7 +655,8 @@ def _tool_meta(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
             return {"root": str(root), "conditions": conditions, "files": []}
         with DeskDB(root) as db:
             paths = db.find_by_meta(conditions)
-            files = [{"path": p, "meta": meta_map(db, db.root / p)} for p in paths]
+            by_path = db.meta_for_paths(paths)
+            files = [{"path": p, "meta": by_path[p]} for p in paths]
         return {"root": str(root), "conditions": conditions, "files": files}
 
     if action == "ls" and not args.get("path"):
@@ -670,22 +679,32 @@ def _tool_meta(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
         fields = args.get("fields")
         if not isinstance(fields, dict) or not fields:
             raise CarrelInputError("carrel_meta set requires a non-empty `fields` object")
+        for k, v in fields.items():
+            if v is None:
+                raise CarrelInputError(f"field {k!r} is null — use action `rm` to clear a field")
+            if not isinstance(v, (str, int, float)):  # bool is an int: JSON true → "true"
+                raise CarrelInputError(
+                    f"field {k!r} must be a string, number or boolean, got {type(v).__name__}"
+                )
         if not path.is_file():
             raise CarrelInputError(f"no such file: {path}")
         source = str(args.get("source") or "agent")
         with DeskDB(root) as db:
-            for key, value in fields.items():
-                db.set_meta(path, str(key), str(value), source=source)
+            for k, v in fields.items():
+                db.set_meta(
+                    path, str(k), str(v).lower() if isinstance(v, bool) else str(v), source=source
+                )
             return {"path": db.rel(path), "meta": meta_map(db, path)}
 
-    # get / ls / rm never create a desk db as a side effect (same as the CLI)
+    # get / ls / rm never create a desk db as a side effect (same as the CLI);
+    # the payload shape does not depend on whether a desk exists
+    rel = _rel(path, root)
     if not DeskDB.exists(root):
-        empty: dict[str, Any] = {"path": str(path), "meta": {}}
         if action == "get":
-            empty.update({"key": key, "value": None})
+            return {"path": rel, "key": key, "value": None, "kind": None, "source": None}
         if action == "rm":
-            empty["removed"] = 0
-        return empty
+            return {"path": rel, "removed": 0, "meta": {}}
+        return {"path": rel, "meta": {}, "fields": []}
     with DeskDB(root) as db:
         if action == "get":
             row = db.get_meta(path, key)

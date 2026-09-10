@@ -199,3 +199,54 @@ def test_pdf_pages_are_reported(tmp_path: Path):
 def test_help_and_json_flag():
     out = run("refs", "--help").output
     assert "Usage:" in out and "--json" in out and "--link" in out and "--tag" in out
+
+
+# ------------------------------------------------ regressions from the PR A review
+
+
+def test_tag_validates_paths_before_touching_the_desk(desk: Path):
+    run("--root", str(desk), "refs", "--tag", str(desk / "nowhere"), expect=4)
+    assert not (desk / ".carrel").exists()
+    run(
+        "--root",
+        str(desk),
+        "refs",
+        "--tag",
+        str(desk / "inv.txt"),
+        str(desk / "ghost.txt"),
+        expect=4,
+    )
+    assert not (desk / ".carrel").exists()  # nothing scanned, nothing tagged
+
+
+def test_unreadable_file_is_a_record_not_an_abort(desk: Path):
+    bad = desk / "bad.json"
+    bad.write_bytes(b"\xff\xfe{not utf8")
+    records = run_json("refs", str(bad), str(desk / "inv.txt"))
+    assert records[0]["path"].endswith("bad.json") and records[0]["refs"] == []
+    assert records[0]["kind"] in ("bad_input", "error") and records[0]["error"]
+    assert records[1]["refs"]  # the good file was still scanned
+
+
+def test_walk_honours_ancestor_gitignore(tmp_path: Path):
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    (repo / ".gitignore").write_text("build/\n", encoding="utf-8")
+    sub = repo / "sub"
+    (sub / "build").mkdir(parents=True)
+    (sub / "build" / "x.txt").write_text("Invoice # INV-IGNORED\n", encoding="utf-8")
+    (sub / "ok.txt").write_text("Invoice # INV-KEPT\n", encoding="utf-8")
+    records = run_json("--root", str(repo), "refs", str(sub))
+    assert [Path(r["path"]).name for r in records] == ["ok.txt"]
+
+
+def test_large_input_stays_fast():
+    import time
+
+    from carrel.core.patterns import PATTERNS, find_refs
+
+    text = "\n".join(f"row {n} routing 021000021" for n in range(20000))
+    start = time.monotonic()
+    (row,) = find_refs(text, [PATTERNS["routing"]])
+    assert row["count"] == 20000 and row["lines"][:3] == [1, 2, 3]
+    assert time.monotonic() - start < 5.0  # was ~5 s quadratic at 20k lines; now well under 1 s

@@ -21,7 +21,9 @@ Accounting folders are linked by numbers, not names: the invoice PDF, the remitt
 - Directories walk like `index` (`index._walk`: hidden and `.gitignore`d entries skipped; images only with `--ocr`); explicit files are scanned as given; text via `extract_text`.
 - Default kinds: `REFERENCE_KINDS`; PII kinds only when named. Bad `--kind`/`--pattern` → exit 2; a missing path → exit 4.
 - JSON: `[{path, refs: [...], (tags), (error, kind)}]`; `--link`: `[{kind, value, files, count}]` for values in ≥2 files (`--all` lifts). Per-file extraction failures are recorded, never abort the scan; when *every* file failed for a missing binary → exit 3 with the hint; `--fail-empty` → exit 5 when nothing was found.
-- `--tag` opens the desk under `--root` and adds `ref:<kind>:<value>` (whitespace squeezed, lower-cased by DeskDB) to each file that had references; files without references are not registered. Without `--tag`, no `.carrel/` is ever created.
+- `--tag` adds `ref:<kind>:<value>` (whitespace squeezed, lower-cased by DeskDB) to each file that had references, written in **one short transaction after the scan** (a long OCR run never holds the desk locked; a failed run leaves no half-written tags); files without references are not registered. Every path is validated before anything is scanned, so a bad argument exits 4 without creating `.carrel/`. Without `--tag`, no `.carrel/` is ever created.
+- Directories are seeded with the ancestor `.gitignore` rules up to `--root` (as `index_paths` does), so `refs repo/sub` honours `repo/.gitignore`. Any exception while extracting one file (permission denied, a non-UTF-8 JSON, a csv field overflow) becomes that file's `{error, kind: "error"}` record.
+- `find_refs` precomputes newline and form-feed offsets once and bisects per match, so a 50k-line export with a hit per line stays linear.
 - Library seams: `scan_refs(paths, kinds, extra, ocr, tag_root)`, `link_refs(records, all_)`, `tag_for(ref)`.
 
 ## MCP

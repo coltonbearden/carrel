@@ -8,7 +8,8 @@ stored version inside one transaction and then stamps the new version.
 Version 1 is the v0.1.2 layout exactly, so a pre-v0.2.0 database (user_version
 0 with the tables already present) is recognised and stamped 1 untouched.
 Version 2 (v0.4.0) adds the `meta` table: typed key/value fields per file
-(`carrel meta`, `search --meta`, `fields --save`, `intake`).
+(`carrel meta`, `search --meta`; automation that writes fields names itself
+in `source`).
 
 **Adding a migration is the only sanctioned way to change the schema.** Never
 edit `_SCHEMA` or an existing migration in place: append a new
@@ -81,9 +82,14 @@ META_OPS: tuple[str, ...] = ("!=", ">=", "<=", "=", ">", "<", "~", "?")
 _META_KEY_RE = re.compile(r"[a-z0-9][a-z0-9_.-]{0,63}\Z")
 _NUM_RE = re.compile(r"[-+]?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?\Z")
 _ISO_DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}\Z")
-_COND_RE = re.compile(r"([A-Za-z0-9_.\-]+)\s*(!=|>=|<=|=|>|<|~|\?)\s*(.*)\Z", re.DOTALL)
-_SQL_OPS: dict[str, str] = {"=": "=", "!=": "!=", ">": ">", ">=": ">=", "<": "<", "<=": "<="}
+_COND_RE = re.compile(r"([A-Za-z0-9_.\-]+)\s*(!=|>=|<=|=|>|<|~|\?)\s*(?![=<>!~?])(.*)\Z", re.DOTALL)
+_COMPARE_OPS = frozenset({"=", "!=", ">", ">=", "<", "<="})  # interpolated into SQL only from here
 _META_EXISTS = "EXISTS (SELECT 1 FROM meta m WHERE m.file_id=f.id AND m.key=? {cmp})"
+_LEADING_ZERO_RE = re.compile(r"[-+]?0\d")
+_BOOL_WORDS: dict[str, str] = {
+    "true": "true", "yes": "true", "on": "true",
+    "false": "false", "no": "false", "off": "false",
+}  # fmt: skip
 
 SCHEMA_VERSION: int = MIGRATIONS[-1][0]
 
@@ -435,30 +441,27 @@ class DeskDB:
         clauses: list[str] = []
         params: list[Any] = []
         for key, op, value in parsed:
-            params.append(key)
-            if op == "?":
-                clauses.append(_META_EXISTS.format(cmp=""))
-                continue
-            if op == "~":
-                escaped = value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-                clauses.append(_META_EXISTS.format(cmp="AND m.value LIKE ? ESCAPE '\\'"))
-                params.append(f"%{escaped}%")
-                continue
-            sql_op = _SQL_OPS[op]  # the operator is validated by parse_meta_condition
-            if _NUM_RE.match(value.strip()):
-                clauses.append(
-                    _META_EXISTS.format(
-                        cmp=f"AND m.kind='num' AND CAST(m.value AS REAL) {sql_op} ?"
-                    )
-                )
-                params.append(float(Decimal(canonical_number(value))))
-                continue
-            _kind, canonical = coerce_meta(value, None)
-            collate = " COLLATE NOCASE" if op in ("=", "!=") else ""
-            clauses.append(_META_EXISTS.format(cmp=f"AND m.value {sql_op} ?{collate}"))
-            params.append(canonical)
+            cmp, cmp_params = _meta_comparison(op, value)
+            clauses.append(_META_EXISTS.format(cmp=cmp))
+            params.extend([key, *cmp_params])
         sql = "SELECT f.path FROM files f WHERE " + " AND ".join(clauses) + " ORDER BY f.path"  # noqa: S608 — fragments are fixed templates; every user value is a `?` parameter
         return [r["path"] for r in self.conn.execute(sql, params)]
+
+    def meta_for_paths(self, paths: list[str]) -> dict[str, dict[str, str]]:
+        """{path: {key: value}} for the given root-relative paths, in one query per 500 paths."""
+        out: dict[str, dict[str, str]] = {p: {} for p in paths}
+        for start in range(0, len(paths), 500):
+            chunk = paths[start : start + 500]
+            marks = ",".join("?" for _ in chunk)
+            rows = self.conn.execute(
+                f"""SELECT f.path AS path, m.key AS key, m.value AS value FROM meta m
+                    JOIN files f ON f.id = m.file_id WHERE f.path IN ({marks})
+                    ORDER BY f.path, m.key""",  # noqa: S608 — only `?` marks are interpolated
+                chunk,
+            )
+            for r in rows:
+                out[r["path"]][r["key"]] = r["value"]
+        return out
 
     def meta_table(self, keys: list[str] | None = None) -> tuple[list[str], list[dict[str, str]]]:
         """(columns, rows) for every file carrying at least one field, sorted by path.
@@ -667,15 +670,11 @@ def _validate_catalog(data: Any) -> list[dict[str, Any]]:
                 )
             try:
                 key = normalize_meta_key(field["key"])
+                kind, value = coerce_meta(field["value"], kind)  # canonical, or refuse
             except CarrelInputError as e:
                 raise CarrelInputError(f"invalid catalog: {where}.meta[{j}]: {e}") from e
             fields.append(
-                {
-                    "key": key,
-                    "value": field["value"],
-                    "kind": kind,
-                    "source": field.get("source", "user"),
-                }
+                {"key": key, "value": value, "kind": kind, "source": field.get("source", "user")}
             )
         for j, note in enumerate(notes):
             if (
@@ -735,7 +734,8 @@ def coerce_meta(value: str, kind: str | None) -> tuple[str, str]:
         low = text.lower()
         if low in ("true", "false"):
             return "bool", low
-        if _NUM_RE.match(text):
+        if _NUM_RE.match(text) and not _LEADING_ZERO_RE.match(text):
+            # `02134`, `0042`: an identifier that happens to be digits, not a number
             return "num", canonical_number(text)
         if _ISO_DATE_RE.match(text):
             try:
@@ -756,11 +756,50 @@ def coerce_meta(value: str, kind: str | None) -> tuple[str, str]:
         except ValueError as e:
             raise CarrelInputError(f"not an ISO date (YYYY-MM-DD): {text!r}") from e
     low = text.lower()
-    if low in ("true", "yes", "1", "on"):
-        return "bool", "true"
-    if low in ("false", "no", "0", "off"):
-        return "bool", "false"
+    if low in _BOOL_WORDS:
+        return "bool", _BOOL_WORDS[low]
+    if low in ("1", "0"):
+        return "bool", "true" if low == "1" else "false"
     raise CarrelInputError(f"not a boolean: {text!r}")
+
+
+def _meta_comparison(op: str, value: str) -> tuple[str, list[Any]]:
+    """SQL fragment (against alias `m`) and parameters for one condition operator.
+
+    A numeric literal compares numerically against `num` fields *and* as text
+    against everything else (so `zip=02134` on a str field still matches);
+    `=`/`!=` are case-insensitive on text and also accept bool spellings
+    (`paid=yes`); ordering on text is lexical, which is chronological for ISO
+    dates and lets a `due<2027` prefix work.
+    """
+    if op == "?":
+        return "", []
+    if op == "~":
+        escaped = value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        return "AND m.value LIKE ? ESCAPE '\\'", [f"%{escaped}%"]
+    if op not in _COMPARE_OPS:  # parse_meta_condition guarantees this; belt and braces
+        raise CarrelInputError(f"unsupported operator {op!r}")
+    text = value.strip()
+    literals: list[str] = [text]
+    if text.lower() in _BOOL_WORDS:
+        literals.append(_BOOL_WORDS[text.lower()])
+    if op in ("=", "!="):
+        # "equal under any interpretation": as text (case-insensitive), as a bool
+        # spelling, or numerically against a num field; != is the negation
+        equal = " OR ".join("m.value = ? COLLATE NOCASE" for _ in literals)
+        params: list[Any] = list(literals)
+        if _NUM_RE.match(text):
+            equal += " OR (m.kind='num' AND CAST(m.value AS REAL) = ?)"
+            params.append(float(Decimal(canonical_number(text))))
+        return (f"AND ({equal})" if op == "=" else f"AND NOT ({equal})"), params
+    if _NUM_RE.match(text):
+        number = float(Decimal(canonical_number(text)))
+        fragment = (
+            f"AND ((m.kind='num' AND CAST(m.value AS REAL) {op} ?) "
+            f"OR (m.kind<>'num' AND m.value {op} ?))"
+        )
+        return fragment, [number, text]
+    return f"AND m.value {op} ?", [text]
 
 
 def parse_meta_condition(cond: str) -> tuple[str, str, str]:

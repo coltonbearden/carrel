@@ -99,9 +99,9 @@ Usage: carrel meta set [OPTIONS] PATH KEY=VALUE...
 Options:
   --kind [str|num|date|bool]  Force the kind of every field in this call (default: inferred —
                               true/false → bool, 1234.5 → num, an ISO YYYY-MM-DD date → date, else
-                              str).
-  --source TEXT               Who is writing the field (automation names itself, e.g. fields,
-                              intake).  [default: user]
+                              str; digits with a leading zero such as 02134 stay str).
+  --source TEXT               Who is writing the field (automation should pass its own name).
+                              [default: user]
   --json                      Machine-readable JSON output.
   --help                      Show this message and exit.
 ```
@@ -110,7 +110,7 @@ Options:
 - Choose the subcommand from intent: "record that X is from Acme and totals 1,234.50" → `set X vendor="Acme" total=1234.50`; "what's the due date on X" → `get X due`; "which files are over 1000 / unpaid / due before November" → `find total>1000`, `find paid=false`, `find due<2026-11-01`; "give me a spreadsheet of these fields" → `export -o fields.csv`.
 - Kinds are inferred (`1234.5` → num, `2026-10-01` → date, `true` → bool) so `find` compares numbers numerically and dates chronologically; use `--kind str` to keep a zip code's leading zero.
 - `find` conditions AND together: `=`, `!=`, `>`, `>=`, `<`, `<=`, `~` (contains), `KEY?` (has the field).
-- `/carrel-finance:refs --tag` and `carrel fields --save` fill fields automatically; `/carrel-agent:catalog` exports and imports them with tags and notes.
+- `/carrel-finance:refs --tag` writes `ref:<kind>:<value>` *tags* (not fields); fields and tags combine in `/carrel-inspect:search --tag ... --meta ...`. `/carrel-agent:catalog` exports and imports fields together with tags and notes.
 - If the user's desk is elsewhere, put `--root DIR` before `meta` (`carrel --root DIR meta set ...`).
 
 Report what changed (or list the results) conversationally. Fields combine with `/carrel-inspect:search --meta CONDITION` for filtered full-text search — mention that when relevant.

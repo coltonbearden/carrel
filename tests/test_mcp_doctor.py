@@ -836,6 +836,55 @@ class TestMcpMetaRefs:
         call_tool("carrel_meta", {"action": "set", "path": "f.txt", "fields": {"a": "1"}}, tmp_path)
         assert (tmp_path / ".carrel").exists()
 
+    def test_meta_shapes_do_not_depend_on_a_desk(self, tmp_path):
+        (tmp_path / "f.txt").write_text("x")
+        before = {
+            a: call_tool("carrel_meta", args, tmp_path)["payload"]
+            for a, args in (
+                ("get", {"action": "get", "path": "f.txt", "key": "k"}),
+                ("ls", {"action": "ls", "path": "f.txt"}),
+                ("rm", {"action": "rm", "path": "f.txt", "keys": ["k"]}),
+            )
+        }
+        assert before["get"] == {
+            "path": "f.txt",
+            "key": "k",
+            "value": None,
+            "kind": None,
+            "source": None,
+        }
+        assert before["ls"] == {"path": "f.txt", "meta": {}, "fields": []}
+        assert before["rm"] == {"path": "f.txt", "removed": 0, "meta": {}}
+        call_tool("carrel_meta", {"action": "set", "path": "f.txt", "fields": {"a": "1"}}, tmp_path)
+        call_tool("carrel_meta", {"action": "rm", "path": "f.txt", "keys": ["a"]}, tmp_path)
+        after = {
+            a: call_tool("carrel_meta", args, tmp_path)["payload"]
+            for a, args in (
+                ("get", {"action": "get", "path": "f.txt", "key": "k"}),
+                ("ls", {"action": "ls", "path": "f.txt"}),
+                ("rm", {"action": "rm", "path": "f.txt", "keys": ["k"]}),
+            )
+        }
+        assert after == before  # same keys, same relative path, with and without a desk
+
+    def test_meta_set_rejects_null_and_nested_values(self, tmp_path):
+        (tmp_path / "f.txt").write_text("x")
+        for fields, needle in (
+            ({"n": None}, "null"),
+            ({"l": [1, 2]}, "list"),
+            ({"o": {"a": 1}}, "dict"),
+        ):
+            res = call_tool(
+                "carrel_meta", {"action": "set", "path": "f.txt", "fields": fields}, tmp_path
+            )
+            assert res["isError"] is True and needle in res["payload"]["error"], fields
+        ok = call_tool(
+            "carrel_meta",
+            {"action": "set", "path": "f.txt", "fields": {"n": 5, "b": True, "z": "02134"}},
+            tmp_path,
+        )["payload"]
+        assert ok["meta"] == {"b": "true", "n": "5", "z": "02134"}
+
     def test_refs_scan_link_and_tag(self, tmp_path):
         (tmp_path / "inv.txt").write_text(
             "Invoice # INV-2026-0042\nIBAN GB82 WEST 1234 5698 7654 32\n"

@@ -470,3 +470,83 @@ def test_catalog_carries_meta(filled: Path, tmp_path: Path):
 def test_help_and_json_flag(sub: list[str]):
     result = run("meta", *sub, "--help")
     assert "Usage:" in result.output and "--json" in result.output
+
+
+# ------------------------------------------------ regressions from the PR A review
+
+
+def test_find_matches_str_digits_bool_words_and_date_prefixes(desk: Path):
+    """Numeric-looking literals must not require a num field; bool spellings and ISO prefixes work."""
+    with DeskDB(desk) as db:
+        inv = desk / "inv.txt"
+        db.set_meta(inv, "zip", "02134", kind="str")
+        db.set_meta(inv, "due", "2026-11-15")
+        db.set_meta(inv, "paid", "yes", kind="bool")
+        db.set_meta(inv, "total", "1000")
+        f = db.find_by_meta
+        assert f(["zip=02134"]) == ["inv.txt"]
+        assert f(["zip!=02134"]) == []
+        assert f(["zip!=99999"]) == ["inv.txt"]
+        assert f(["due<2027"]) == ["inv.txt"] and f(["due>2027"]) == []
+        assert f(["paid=yes"]) == ["inv.txt"] and f(["paid=on"]) == ["inv.txt"]
+        assert f(["paid!=true"]) == [] and f(["paid!=no"]) == ["inv.txt"]
+        assert f(["total=1,000"]) == ["inv.txt"] and f(["total=1000.0"]) == ["inv.txt"]
+        assert f(["total!=1000"]) == [] and f(["total!=5"]) == ["inv.txt"]
+
+
+def test_condition_value_may_not_start_with_an_operator():
+    for bad in ("vendor>>x", "vendor==acme", "total=>5", "paid?yes"):
+        with pytest.raises(CarrelInputError, match="bad condition"):
+            parse_meta_condition(bad)
+
+
+def test_leading_zero_digits_stay_str():
+    assert coerce_meta("02134", None) == ("str", "02134")
+    assert coerce_meta("0042", None) == ("str", "0042")
+    assert coerce_meta("0", None) == ("num", "0")
+    assert coerce_meta("0.5", None) == ("num", "0.5")
+    assert coerce_meta("-0042", None) == ("str", "-0042")
+    assert coerce_meta("0042", "num") == ("num", "42")  # explicit kind still parses
+
+
+def test_catalog_import_canonicalises_and_validates_meta(desk: Path):
+    with DeskDB(desk) as db:
+        doc = {
+            "schema": 2,
+            "files": [
+                {
+                    "path": "inv.txt",
+                    "meta": [
+                        {"key": "total", "value": "1,000", "kind": "num"},
+                        {"key": "flag", "value": "yes", "kind": "bool"},
+                        {"key": "when", "value": "2026-1-5", "kind": "str"},
+                    ],
+                }
+            ],
+        }
+        assert db.import_catalog(doc)["meta_set"] == 3
+        assert db.get_meta(desk / "inv.txt", "total")["value"] == "1000"
+        assert db.get_meta(desk / "inv.txt", "flag")["value"] == "true"
+        assert db.find_by_meta(["total>=1000"]) == ["inv.txt"]
+        for bad in (
+            {"key": "total", "value": "abc", "kind": "num"},
+            {"key": "flag", "value": "maybe", "kind": "bool"},
+            {"key": "when", "value": "soon", "kind": "date"},
+        ):
+            with pytest.raises(CarrelInputError, match="invalid catalog"):
+                db.import_catalog({"schema": 2, "files": [{"path": "inv.txt", "meta": [bad]}]})
+
+
+def test_meta_for_paths_single_query(filled: Path):
+    with DeskDB(filled) as db:
+        assert db.meta_for_paths(["receipt.md", "ghost.txt"]) == {
+            "receipt.md": {"paid": "true", "total": "4.75", "vendor": "Beanery"},
+            "ghost.txt": {},
+        }
+        assert db.meta_for_paths([]) == {}
+
+
+def test_bad_key_is_a_usage_error_in_every_subcommand(filled: Path):
+    r, f = str(filled), str(filled / "inv.txt")
+    for args in (["get", f, "bad key"], ["rm", f, "bad key"], ["export", "--key", "bad key"]):
+        assert "invalid meta key" in run("--root", r, "meta", *args, expect=2).stderr
