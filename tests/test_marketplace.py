@@ -640,7 +640,7 @@ def test_read_guard_converts_pdf_and_rewrites_read_input(tmp_path: Path):
     ctx = hso["additionalContext"]
     assert ctx.startswith("carrel-guard: ")
     assert str(src.resolve()) in ctx and str(txt) in ctx
-    assert f"({len(txt.read_text())} chars)" in ctx
+    assert f"({len(txt.read_bytes().decode())} chars)" in ctx  # wc -m counts CR too
     assert "Original left untouched" in ctx
     assert src.read_bytes() == (REPO / "tests" / "fixtures" / "b.pdf").read_bytes()
 

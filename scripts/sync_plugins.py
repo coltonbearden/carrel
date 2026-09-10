@@ -158,7 +158,7 @@ def main(check: bool, plugins_dir: Path) -> None:
             continue
         changed.append(path)
         if not check:
-            path.write_text(new_text, encoding="utf-8")
+            path.write_text(new_text, encoding="utf-8", newline="\n")
 
     if check:
         if changed:

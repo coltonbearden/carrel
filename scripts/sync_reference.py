@@ -182,7 +182,7 @@ def main(check: bool, output: Path) -> None:
         click.echo(f"{rel}: unchanged")
         return
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(text, encoding="utf-8")
+    output.write_text(text, encoding="utf-8", newline="\n")
     click.echo(f"{rel}: written ({text.count(chr(10))} lines)")
 
 

@@ -11,12 +11,12 @@
   0.3.0 indexed 0. Repo `coltonbearden/carrel`, docs at https://coltonbearden.github.io/carrel/,
   PyPI package `carrel`.
 - **In flight:** nothing.
-- **Next:** make the test suite pass on Windows from the per-module table in
-  docs/BUILD_PLAN.md (test-side encoding/newline/`bash` fixes first, then the `src/` defects
-  listed under Open issues), then promote `test-minimal (windows)` to required once it has
-  been green on `main` for two consecutive weeks. Plus two repo-settings steps only the owner
-  can apply — add `test-minimal (macos)` to the `main` ruleset's required checks and to
-  `REQUIRED_CHECKS` in `scripts/github-harden.sh` (see docs/REPO_SETTINGS.md).
+- **Next:** cut v0.3.2 (CHANGELOG "Unreleased": Windows fixes, note order, `search` score
+  format) per docs/RELEASING.md. Promote `test-minimal (windows)` to required once it has
+  been green on `main` for two consecutive weeks (drop `continue-on-error`; the ruleset
+  entry is the owner's step). Plus two repo-settings steps only the owner can apply — add
+  `test-minimal (macos)` to the `main` ruleset's required checks and to `REQUIRED_CHECKS`
+  in `scripts/github-harden.sh` (see docs/REPO_SETTINGS.md).
 
 ## Done
 
@@ -36,6 +36,11 @@
 - 2026-09-09 (v0.3.1): the ancestor `.gitignore` walk is bounded at the repo root or the
   caller's root; an unbounded walk contributes nothing (found verifying v0.3.0 from PyPI:
   `uv venv` writes a `*` gitignore that blanked a desk created inside it).
+- 2026-09-09 Windows (PR #22): the full suite passes on `windows-latest`. Real defects fixed:
+  `watch` crashed on action timeout (`os.killpg`), `CARREL_BIN_*` overrides counted any file
+  as executable (`os.access(X_OK)`), notes tied on a coarse clock, the read-guard hook treated
+  `C:\…` paths as relative, and the sync scripts wrote CRLF. Tests run hook scripts through
+  Git for Windows' bash (the `bash` on PATH there is the WSL stub) and write fixtures as LF.
 - 2026-09-09 doc-drift gate (D-g): `tests/test_docs_drift.py` fails when README or
   docs/MARKETPLACE.md lack a marketplace plugin, when docs/FEATURES.md grows an "In flight"
   section, or when any doc sample prints a version other than `product.json`'s; the `lint`
@@ -44,19 +49,11 @@
 
 ## Open issues
 
-- Windows `src/` defects behind the advisory job's failures (table: docs/BUILD_PLAN.md):
-  `os.killpg` in `commands/watch.py` is Windows-absent, so the `--action-timeout` guarantee
-  is void there; `os.access(X_OK)` in `core/adapters.py` collapses to existence, breaking
-  D-008's no-silent-fallback promise; `core/db.py` orders notes by `created` alone (ties on
-  a coarse clock); ~30 text-IO sites without `encoding="utf-8"` (`pack.py`,
-  `textextract.py`, `desk/app.py`); no `.gitattributes`, so CRLF checkout shifts fixture
-  byte sizes. Test-side: hook scripts executed directly instead of via `bash`,
-  `write_text`/`read_text` without encoding or newline.
-- `tests/test_mcp_doctor.py::test_index_unavailable_without_index_paths_is_tool_error` skips
-  in every build (`index_paths` is a module-level def, never None) and guards a dead branch
-  in `commands/mcp.py` `_tool_index`. Delete both.
-- `carrel search` prints bm25 scores as `-0.00` (`:.2f` in `commands/search.py`); `pack`
-  uses `:.3g`. Match it.
+- Windows, latent (not covered by the suite): ~30 text-IO sites read or write without
+  `encoding="utf-8"` (`commands/pack.py`, `core/textextract.py`, `desk/app.py`). CI sets
+  `PYTHONUTF8=1`, so they pass there; a user on a cp1252 console would see mojibake on
+  non-ASCII documents. `scripts/sync_product.py` writes without an encoding too (run on
+  Linux only today).
 - 16 of 26 commands are not exposed over MCP; `ocr`, `edit`, `sign`, `catalog`, `thumb`,
   `dedupe`, `organize`, `form`, `color` already have `_file()`/`_paths()` entry points, and
   six headline `pack` flags are agent-invisible. Its own spec.
