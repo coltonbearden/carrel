@@ -42,7 +42,8 @@ Commands:
   form            Build HTML forms from JSON specs; list and fill PDF AcroForms.
   index           Index PATH...
   inspect         Show metadata for one file.
-  mcp             Serve the desk as an MCP server on stdio: 12 tools (search, pack, inspect,...
+  mail            Attachments, mailbox splitting, threads and Outlook exports for eml/mbox files.
+  mcp             Serve the desk as an MCP server on stdio: 13 tools (search, pack, inspect,...
   meta            Typed key/value fields on desk files (.carrel/carrel.db under --root).
   note            Attach notes to files (desk db) and annotations to PDFs (pypdf).
   ocr             OCR an image or PDF into text (txt/md) or a searchable PDF.
@@ -67,7 +68,7 @@ Commands:
 
 ## Commands
 
-28 commands:
+29 commands:
 
 [audiobook](#carrel-audiobook) ·
 [catalog](#carrel-catalog) ·
@@ -83,6 +84,7 @@ Commands:
 [form](#carrel-form) ·
 [index](#carrel-index) ·
 [inspect](#carrel-inspect) ·
+[mail](#carrel-mail) ·
 [mcp](#carrel-mcp) ·
 [meta](#carrel-meta) ·
 [note](#carrel-note) ·
@@ -293,7 +295,8 @@ Usage: carrel convert [OPTIONS] SRC...
 
   Office and ebook sources (docx, odt, epub, rtf) are read by pandoc and can go to md/html/txt/pdf
   (pdf also needs weasyprint); md/html/txt can be written as docx or odt, and docx <-> epub round-
-  trips. xlsx reads need the `office` extra (openpyxl) and go to csv or json only.
+  trips. xlsx reads need the `office` extra (openpyxl) and go to csv or json only. Email (eml) goes
+  to md/txt/html/pdf and a mailbox (mbox) to md/txt, with no external binary (pdf needs weasyprint).
 
 Options:
   --to EXT             Target type: pdf, md, txt, html, json, xml, csv, png, jpg, ico, docx, odt,
@@ -312,11 +315,13 @@ Options:
   Supported conversions (SRC type → --to targets):
     csv   → html, json, md
     docx  → epub, html, md, pdf, txt
+    eml   → html, md, pdf, txt
     epub  → docx, html, md, pdf, txt
     html  → docx, md, odt, pdf, txt
     ico   → jpg, pdf, png
     jpg   → ico, pdf, png
     json  → csv, html, xml
+    mbox  → md, txt
     md    → docx, html, odt, pdf, txt
     odt   → html, md, pdf, txt
     pdf   → html, jpg, md, png, txt
@@ -624,8 +629,9 @@ Usage: carrel inspect [OPTIONS] PATH
   xml (root tag, element count, depth), html (title, headings outline, link/img counts), md
   (headings outline, word count), txt (lines/words/chars), docx (paragraphs, words,
   title/author/created), epub (title, creator, language, spine items, words), odt/rtf (words), xlsx
-  (sheets with row/column counts; needs the `office` extra). Word counts for office/ebook files use
-  pandoc and are null without it.
+  (sheets with row/column counts; needs the `office` extra), eml (from/to/cc, date, subject, message
+  id, in-reply-to, parts, attachments), mbox (message count, first/last date, top senders). Word
+  counts for office/ebook files use pandoc and are null without it.
 
 Options:
   --json  Machine-readable JSON output.
@@ -634,13 +640,101 @@ Options:
   --help  Show this message and exit.
 ```
 
+## carrel mail
+
+```text
+Usage: carrel mail [OPTIONS] COMMAND [ARGS]...
+
+  Attachments, mailbox splitting, threads and Outlook exports for eml/mbox files.
+
+Options:
+  --json  Machine-readable JSON output.
+  --help  Show this message and exit.
+
+Commands:
+  attachments  Save every attachment of FILES (eml or mbox) into --out-dir.
+  pst          Convert an Outlook SRC (.pst/.ost) into eml or mbox files via readpst.
+  split        Split BOX (an mbox) into one .eml file per message under --out-dir.
+  threads      Group the messages in PATHS (eml/mbox files or directories) into threads.
+```
+
+### carrel mail attachments
+
+```text
+Usage: carrel mail attachments [OPTIONS] FILES...
+
+  Save every attachment of FILES (eml or mbox) into --out-dir.
+
+  File names are sanitised (no separators, no leading dots); collisions get -1, -2, … suffixes
+  unless --force. JSON: one record per message with the written paths, sizes and sha256 digests.
+
+Options:
+  --out-dir DIRECTORY  Directory to write attachments into (created if missing).  [required]
+  --force              Overwrite same-named files instead of suffixing -1, -2, …
+  --fail-empty         Exit 5 when no attachment was found.
+  --json               Machine-readable JSON output.
+  --help               Show this message and exit.
+```
+
+### carrel mail pst
+
+```text
+Usage: carrel mail pst [OPTIONS] SRC
+
+  Convert an Outlook SRC (.pst/.ost) into eml or mbox files via readpst.
+
+  Needs readpst (sudo apt install pst-utils); exit 3 with that hint otherwise. JSON: {src, out_dir,
+  format, files, via}.
+
+Options:
+  --out-dir DIRECTORY  Directory readpst writes into (one subfolder per mail folder).  [required]
+  --format [eml|mbox]  One .eml per message, or one mbox per folder.  [default: eml]
+  --json               Machine-readable JSON output.
+  --help               Show this message and exit.
+```
+
+### carrel mail split
+
+```text
+Usage: carrel mail split [OPTIONS] BOX
+
+  Split BOX (an mbox) into one .eml file per message under --out-dir.
+
+  Names come from --template; messages are numbered in mailbox order and the bytes are written as
+  stored. Refuses to overwrite without --force. JSON: [{n, path, subject, date, message_id}].
+
+Options:
+  --out-dir DIRECTORY  Directory to write the .eml files into (created if missing).  [required]
+  --template TEXT      File name template: {n} index, {date} YYYY-MM-DD, {subject} slug, {id}
+                       message id.  [default: {n}_{date}_{subject}.eml]
+  --force              Overwrite existing files.
+  --json               Machine-readable JSON output.
+  --help               Show this message and exit.
+```
+
+### carrel mail threads
+
+```text
+Usage: carrel mail threads [OPTIONS] PATHS...
+
+  Group the messages in PATHS (eml/mbox files or directories) into threads.
+
+  Threads follow Message-ID / In-Reply-To / References; `depth` is the reply-chain length when the
+  parent is present. JSON: [{root_subject, first_date, messages: [{where, message_id, date, from,
+  subject, depth}]}].
+
+Options:
+  --json  Machine-readable JSON output.
+  --help  Show this message and exit.
+```
+
 ## carrel mcp
 
 ```text
 Usage: carrel mcp [OPTIONS]
 
-  Serve the desk as an MCP server on stdio: 12 tools (search, pack, inspect, tag, note, index,
-  convert, diff, redact, doctor, meta, refs) and carrel:// file/search resources.
+  Serve the desk as an MCP server on stdio: 13 tools (search, pack, inspect, tag, note, index,
+  convert, diff, redact, doctor, meta, mail, refs) and carrel:// file/search resources.
 
 Options:
   --json  Machine-readable JSON output.
@@ -865,9 +959,9 @@ Usage: carrel organize [OPTIONS] DIRECTORY
 
 Options:
   --by [type|date|exif-date]  Grouping: 'type' -> pdf/, images/ (jpg, png, ico), data/ (json, xml,
-                              csv), docs/ (md, txt, html); 'date' -> YYYY/MM from mtime; 'exif-date'
-                              -> YYYY/MM from EXIF DateTimeOriginal, mtime fallback (images only;
-                              other files are skipped).  [default: type]
+                              csv), docs/ (md, txt, html), mail/ (eml, mbox); 'date' -> YYYY/MM from
+                              mtime; 'exif-date' -> YYYY/MM from EXIF DateTimeOriginal, mtime
+                              fallback (images only; other files are skipped).  [default: type]
   --into CATEGORY=DIR         Override a type category's destination subdir, e.g. --into images=pics
                               (only with --by type; repeatable).
   --apply / --dry-run         Execute the moves. Default is a dry-run that only prints the plan.

@@ -21,9 +21,9 @@ Usage: carrel organize [OPTIONS] DIRECTORY
 
 Options:
   --by [type|date|exif-date]  Grouping: 'type' -> pdf/, images/ (jpg, png, ico), data/ (json, xml,
-                              csv), docs/ (md, txt, html); 'date' -> YYYY/MM from mtime; 'exif-date'
-                              -> YYYY/MM from EXIF DateTimeOriginal, mtime fallback (images only;
-                              other files are skipped).  [default: type]
+                              csv), docs/ (md, txt, html), mail/ (eml, mbox); 'date' -> YYYY/MM from
+                              mtime; 'exif-date' -> YYYY/MM from EXIF DateTimeOriginal, mtime
+                              fallback (images only; other files are skipped).  [default: type]
   --into CATEGORY=DIR         Override a type category's destination subdir, e.g. --into images=pics
                               (only with --by type; repeatable).
   --apply / --dry-run         Execute the moves. Default is a dry-run that only prints the plan.

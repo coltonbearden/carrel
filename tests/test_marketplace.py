@@ -45,6 +45,7 @@ EXPECTED_PLUGINS: dict[str, set[str]] = {
     "carrel-inspect": {"inspect.md", "diff.md", "search.md", "pack.md"},
     "carrel-organize": {"organize.md", "dedupe.md", "tag.md", "note-file.md", "meta.md"},
     "carrel-finance": {"refs.md"},
+    "carrel-mail": {"mail.md"},
     "carrel-documents": {"redact.md", "sign.md", "form.md", "proof.md", "color.md"},
     "carrel-watch": {"watch-folder.md"},
     "carrel-agent": {"index.md", "doctor.md", "catalog.md", "completion.md"},
@@ -181,7 +182,7 @@ def test_marketplace_json_parses_with_required_fields():
     assert data["name"] == "carrel"
     assert data["owner"]["name"], "owner.name required"
     assert isinstance(data["plugins"], list)
-    assert len(data["plugins"]) == len(EXPECTED_PLUGINS) == 8
+    assert len(data["plugins"]) == len(EXPECTED_PLUGINS) == 9
 
 
 def test_marketplace_entries_complete_and_sources_exist():
@@ -400,6 +401,7 @@ def test_expected_agents_and_skills_exist():
     assert (PLUGINS_DIR / "carrel-inspect" / "skills" / "context-packing" / "SKILL.md").is_file()
     assert (PLUGINS_DIR / "carrel-watch" / "skills" / "watch-automation" / "SKILL.md").is_file()
     assert (PLUGINS_DIR / "carrel-agent" / "skills" / "agent-workflows" / "SKILL.md").is_file()
+    assert (PLUGINS_DIR / "carrel-mail" / "skills" / "mail-archive" / "SKILL.md").is_file()
     assert (
         PLUGINS_DIR / "carrel-documents" / "skills" / "redaction-and-provenance" / "SKILL.md"
     ).is_file()
@@ -422,7 +424,7 @@ def test_agent_workflows_skill_lists_mcp_surface():
         assert f"`{tool['name']}`" in text, f"skill must list MCP tool {tool['name']}"
     for template in RESOURCE_TEMPLATES:
         assert template["uriTemplate"] in text, f"skill must list {template['uriTemplate']}"
-    assert len(TOOLS) == 12
+    assert len(TOOLS) == 13
 
 
 def test_document_clerk_refuses_silent_overwrite():

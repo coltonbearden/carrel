@@ -54,6 +54,15 @@
       "keywords": ["finance", "accounting", "invoices", "references", "iban", "tags"]
     },
     {
+      "name": "carrel-mail",
+      "source": "./plugins/carrel-mail",
+      "description": "Email archives with the carrel CLI: /mail saves attachments, splits an mbox into messages, groups eml/mbox files into threads and converts Outlook .pst exports; eml/mbox are first-class desk files for index, search, pack, refs and the Read guard; plus a mail-archive skill.",
+      "version": "0.3.2",
+      "author": { "name": "Colton Bearden" },
+      "license": "MIT",
+      "keywords": ["email", "eml", "mbox", "pst", "attachments", "threads", "archive"]
+    },
+    {
       "name": "carrel-watch",
       "source": "./plugins/carrel-watch",
       "description": "Watch folders and run carrel actions on file events: /watch-folder plus a watch-automation recipe skill.",
@@ -65,7 +74,7 @@
     {
       "name": "carrel-agent",
       "source": "./plugins/carrel-agent",
-      "description": "Agentic file librarian for carrel desks: /index, /doctor, /catalog, /completion, a file-librarian agent, an agent-workflows skill, the carrel MCP server (12 tools + carrel:// resources), and a PostToolUse hook that re-indexes files Claude writes.",
+      "description": "Agentic file librarian for carrel desks: /index, /doctor, /catalog, /completion, a file-librarian agent, an agent-workflows skill, the carrel MCP server (13 tools + carrel:// resources), and a PostToolUse hook that re-indexes files Claude writes.",
       "version": "0.3.2",
       "author": { "name": "Colton Bearden" },
       "license": "MIT",

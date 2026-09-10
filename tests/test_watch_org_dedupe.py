@@ -424,7 +424,7 @@ def test_helps_work():
     watch_help = run("watch", "--help").output
     assert "{path}" in watch_help
     organize_help = run("organize", "--help").output
-    for word in ("pdf/", "images/", "data/", "docs/"):
+    for word in ("pdf/", "images/", "data/", "docs/", "mail/"):
         assert word in organize_help
     dedupe_help = run("dedupe", "--help").output
     assert "--near" in dedupe_help and "--apply" in dedupe_help

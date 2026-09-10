@@ -61,3 +61,23 @@ in: `DeskDB.rel()` and `sign._manifest_entry_path()` now return `.as_posix()`, s
 `files.path` is what `export_catalog` writes and a native separator made a catalog written on
 Windows unimportable on Linux.
 
+## D-011 (2026-09-10) — Outlook `.msg` is cut; Outlook comes in through `.pst`
+
+`tests/test_core_filetypes.py::test_support_matrix_covered` requires a generated fixture for every `FileType`, and `tests/fixtures/generate.py` may only produce fixtures programmatically (never hand-edited binaries). No pure-Python writer exists for Outlook's OLE `.msg` container, so a `FileType.MSG` could not be tested honestly. Consequence: `.eml` and `.mbox` ship (stdlib), `carrel mail pst` converts Outlook exports through `readpst` (`pst-utils`), and `.msg` is logged in the FEATURES cuts. Revisit if a maintained pure-Python MSG writer appears.
+
+## D-012 (2026-09-10) — Text-format sniffing never overrides a mapped extension
+
+`detect()` keeps "bytes beat names" for binary signatures (`%PDF`, PNG, zip containers). Email has no signature, only a shape (an RFC 5322 header block; an mbox `From ` separator line), and a shape sniff that outranked extensions would turn any `.txt` beginning with `From:` into a message. Rule: shape sniffs run only for files whose extension is not in `_EXT_MAP` (after the source-file check). Consequence: `.eml`/`.mbox`/`.mbx` by name, extension-less exports by shape, everything else unchanged.
+
+## D-013 (2026-09-10) — `batch` shares `watch`'s direct-subprocess exception
+
+User-authored shell actions cannot go through the adapter registry. Rather than a second ad-hoc `subprocess` site, `watch`'s quoting, rendering and process-group killing move to `core/actions.py`, and `batch` (spec 26) is the second and last command that runs them; CLAUDE.md and ARCHITECTURE name both. Consequence: one place owns Windows quoting (`list2cmdline`) and tree kills (`taskkill /T`).
+
+## D-014 (2026-09-10) — `intake` never destroys its input
+
+When `intake` OCRs a scanned PDF, the OCRed copy is what gets filed and the original moves to `DEST/_originals/<filed name>`; without `ocrmypdf` the file is filed un-OCRed with `ocr: "unavailable"` in its record (never exit 3 mid-batch; `--ocr` requested explicitly with the binary absent exits 3 before any move). Every move is collision-safe and dry-run is the default. Consequence: an intake run can always be undone by moving files back.
+
+## D-015 (2026-09-10) — Schema v2 adds `meta`; values are canonical and typed
+
+`.carrel/carrel.db` gains a `meta(file_id, key, value, kind, source, updated)` table through the migration mechanism of D-009. Kinds (`str|num|date|bool`) are inferred unless forced, values are stored canonically (`1,234.50` → `1234.5`, ISO dates, `true`/`false`; digit strings with a leading zero stay `str`), and every write path — CLI, MCP, `catalog import` — goes through the same `coerce_meta`, so a comparison such as `total>1000` or `due<2026-11` is meaningful. Catalog documents are `schema: 2`; schema-1 documents still import. Consequence: any automation that fills fields names itself in `source`.
+

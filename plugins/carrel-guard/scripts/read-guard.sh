@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # PreToolUse hook (matcher: Read). When Claude is about to Read a document it
-# cannot parse natively (pdf, docx, odt, epub, rtf, xlsx) or an image (png,
+# cannot parse natively (pdf, docx, odt, epub, rtf, xlsx, eml, mbox) or an image (png,
 # jpg, ico), convert it to text with carrel into a per-file cache directory and
 # rewrite the Read's file_path to the text file. The source file is never
 # touched. Every path out of this script is `exit 0`; when anything is off
@@ -75,7 +75,7 @@ esac
 ext="$(printf '%s' "${name##*.}" | tr '[:upper:]' '[:lower:]')"
 mode=""
 case "$ext" in
-    pdf|docx|odt|epub|rtf|xlsx) mode="convert" ;;
+    pdf|docx|odt|epub|rtf|xlsx|eml|mbox|mbx) mode="convert" ;;
     png|jpg|jpeg|ico) mode="ocr" ;;
     *) exit 0 ;;
 esac

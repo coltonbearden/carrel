@@ -10,6 +10,7 @@ collisions get a ``-1``, ``-2``, … suffix before the extension.
     jpg, png, ico  -> images/
     json, xml, csv -> data/
     md, txt, html  -> docs/
+    eml, mbox      -> mail/
     anything else  -> skipped
 """
 
@@ -38,8 +39,10 @@ TYPE_DIRS: dict[FileType, str] = {
     FileType.MD: "docs",
     FileType.TXT: "docs",
     FileType.HTML: "docs",
+    FileType.EML: "mail",
+    FileType.MBOX: "mail",
 }
-TYPE_CATEGORIES = ("pdf", "images", "data", "docs")
+TYPE_CATEGORIES = ("pdf", "images", "data", "docs", "mail")
 
 
 def _handled(fn: Callable) -> Callable:
@@ -151,7 +154,7 @@ def _human_plan(applied: bool) -> Callable[[list[dict[str, Any]]], None]:
     default="type",
     show_default=True,
     help="Grouping: 'type' -> pdf/, images/ (jpg, png, ico), "
-    "data/ (json, xml, csv), docs/ (md, txt, html); "
+    "data/ (json, xml, csv), docs/ (md, txt, html), mail/ (eml, mbox); "
     "'date' -> YYYY/MM from mtime; 'exif-date' -> YYYY/MM from "
     "EXIF DateTimeOriginal, mtime fallback (images only; other "
     "files are skipped).",

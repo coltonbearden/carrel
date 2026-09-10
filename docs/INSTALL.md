@@ -166,6 +166,14 @@ sudo apt install icoutils                  # .ico build/extract (icotool)
 sudo apt install libimage-exiftool-perl    # deep metadata (inspect --deep)
 ```
 
+### Email
+
+```bash
+sudo apt install pst-utils          # readpst — Outlook .pst/.ost → eml/mbox (mail pst)
+```
+
+`.eml` and `.mbox` need nothing: the standard library reads them.
+
 ### Audio / text-to-speech (audiobook)
 
 ```bash

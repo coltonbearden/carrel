@@ -69,7 +69,7 @@ def _resolve_mode(ta: FileType, tb: FileType) -> str:
 
 def _textlike(t: FileType) -> bool:
     """Anything `--mode text` can read: text formats, source files, extractable documents."""
-    return t.is_text or t.is_code or t.is_document or t is FileType.XLSX
+    return t.is_text or t.is_code or t.is_document or t.is_mail or t is FileType.XLSX
 
 
 # ---------------------------------------------------------------------------
@@ -78,7 +78,7 @@ def _textlike(t: FileType) -> bool:
 
 
 def _read_text(path: Path, ftype: FileType) -> str:
-    if ftype is FileType.PDF or ftype.is_document or ftype is FileType.XLSX:
+    if ftype is FileType.PDF or ftype.is_document or ftype.is_mail or ftype is FileType.XLSX:
         return extract_text(path)
     if ftype.is_image:
         raise CarrelInputError(f"--mode text cannot read an image: {path}")

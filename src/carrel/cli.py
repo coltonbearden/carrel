@@ -25,6 +25,7 @@ COMMANDS: dict[str, str] = {
     "note": "note",
     "meta": "meta",
     "refs": "refs",
+    "mail": "mail",
     "catalog": "catalog",
     "thumb": "thumb",
     "extract-images": "extract_images",
