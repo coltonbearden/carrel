@@ -13,14 +13,14 @@ Run the carrel CLI via Bash. `carrel catalog` is a group with `export`, `import`
 ```text
 Usage: carrel catalog [OPTIONS] COMMAND [ARGS]...
 
-  Export, import and check the desk catalog (tags + notes in .carrel/carrel.db).
+  Export, import and check the desk catalog (tags, notes, meta in .carrel/carrel.db).
 
 Options:
   --json  Machine-readable JSON output.
   --help  Show this message and exit.
 
 Commands:
-  export  Export every tagged or annotated file's tags and notes as JSON.
+  export  Export every file's tags, notes and meta fields as JSON (files with at least one).
   import  Merge FILE (a `catalog export` document) into the desk under --root.
   status  Report the desk db: schema version, row counts, and stale index entries.
 ```
@@ -28,12 +28,13 @@ Commands:
 ```text
 Usage: carrel catalog export [OPTIONS]
 
-  Export every tagged or annotated file's tags and notes as JSON.
+  Export every file's tags, notes and meta fields as JSON (files with at least one).
 
   Document: {"schema", "product", "version", "exported", "root", "files": [{"path": <root-relative>,
-  "tags": [...sorted], "notes": [{"created", "body"}]}]}, sorted by path — byte-identical across
-  runs apart from "exported". Without -o the document itself is printed (always JSON); with -o a
-  short summary is printed instead. Exit 4 when no desk db exists.
+  "tags": [...sorted], "notes": [{"created", "body"}], "meta": [{"key", "value", "kind",
+  "source"}]}]}, sorted by path — byte-identical across runs apart from "exported". Without -o the
+  document itself is printed (always JSON); with -o a short summary is printed instead. Exit 4 when
+  no desk db exists.
 
 Options:
   -o, --out FILE  Write the catalog to FILE instead of stdout (refuses to overwrite without
@@ -48,14 +49,16 @@ Usage: carrel catalog import [OPTIONS] FILE
 
   Merge FILE (a `catalog export` document) into the desk under --root.
 
-  Tags already present are kept (INSERT OR IGNORE); notes are deduplicated on (file, created, body),
-  so importing the same document twice adds nothing. Entries whose path does not exist under the
-  root are counted in skipped_missing and not created. Exit 4 for unreadable/invalid JSON or a
-  "schema" newer than this build supports. JSON output: {tags_added, notes_added, files_touched,
-  skipped_missing, tags_removed, notes_removed}.
+  Tags already present are kept (INSERT OR IGNORE); notes are deduplicated on (file, created, body);
+  meta fields take the document's value (counted only when it changed), so importing the same
+  document twice adds nothing. Entries whose path does not exist under the root are counted in
+  skipped_missing and not created. Exit 4 for unreadable/invalid JSON or a "schema" newer than this
+  build supports. JSON output: {tags_added, notes_added, meta_set, files_touched, skipped_missing,
+  tags_removed, notes_removed, meta_removed, skipped_outside}.
 
 Options:
-  --replace  Delete ALL existing tags and notes first, then import (prints what was removed).
+  --replace  Delete ALL existing tags, notes and fields first, then import (prints what was
+             removed).
   --json     Machine-readable JSON output.
   --help     Show this message and exit.
 ```

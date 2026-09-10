@@ -15,7 +15,7 @@ from click.testing import CliRunner
 from conftest import needs
 
 from carrel.cli import cli
-from carrel.core.db import DeskDB
+from carrel.core.db import SCHEMA_VERSION, DeskDB
 from carrel.core.output import CarrelInputError
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -168,10 +168,10 @@ def test_doctor_human_output_keeps_extra_brackets():
 
 def test_deskdb_opens_existing_root_and_reports_version(tmp_path: Path):
     with DeskDB(tmp_path) as db:
-        assert db.schema_version() == 1
+        assert db.schema_version() == SCHEMA_VERSION
     assert (
         sqlite3.connect(tmp_path / ".carrel" / "carrel.db")
         .execute("PRAGMA user_version")
         .fetchone()[0]
-        == 1
+        == SCHEMA_VERSION
     )

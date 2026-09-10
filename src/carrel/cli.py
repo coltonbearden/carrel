@@ -23,6 +23,8 @@ COMMANDS: dict[str, str] = {
     "search": "search",
     "tag": "tag",
     "note": "note",
+    "meta": "meta",
+    "refs": "refs",
     "catalog": "catalog",
     "thumb": "thumb",
     "extract-images": "extract_images",

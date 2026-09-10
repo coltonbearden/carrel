@@ -36,7 +36,7 @@ src/carrel/
 ### CLI shape
 
 - Root: `carrel <command> [args]`. Every command: `--help` works, `--json` (where output is data) prints ONE JSON object/array to stdout and nothing else, human mode may use rich.
-- Commands are registered in `cli.py` via a `COMMANDS: dict[str, str]` name→module map with lazy import (startup stays fast; a broken optional import breaks only its command). 26 commands as of v0.2.0.
+- Commands are registered in `cli.py` via a `COMMANDS: dict[str, str]` name→module map with lazy import (startup stays fast; a broken optional import breaks only its command). 28 commands as of v0.4.0.
 - Global `--debug` (tracebacks), `--root PATH` (desk root for db-backed commands; default: cwd).
 - `carrel completion bash|zsh|fish` prints click's completion script in-process (no subprocess); `--install-hint` appends the per-shell enable lines as a comment block; an unknown shell exits 2.
 
@@ -89,21 +89,25 @@ files(id INTEGER PK, path TEXT UNIQUE, size INT, mtime REAL, hash TEXT, type TEX
 docs  (FTS5: content, path UNINDEXED)     -- contentless-delete FTS5 table keyed by files.id
 tags  (file_id INT, tag TEXT, UNIQUE(file_id, tag))
 notes (id INTEGER PK, file_id INT, created REAL, body TEXT)
+meta  (file_id INT, key TEXT, value TEXT, kind TEXT, source TEXT, updated REAL, UNIQUE(file_id, key))  -- v2
 ```
 
-`DeskDB(root)` context manager; opening applies `MIGRATIONS` (tracked by `PRAGMA user_version`, v1 = the layout above) and adding a migration is the only way to change the schema (D-009); all db-backed commands (index/search/tag/note/catalog, plus `pack --query`) share it.
+`DeskDB(root)` context manager; opening applies `MIGRATIONS` (tracked by `PRAGMA user_version`; v1 = the first four tables, v2 adds `meta`) and adding a migration is the only way to change the schema (D-009); all db-backed commands (index/search/tag/note/meta/refs --tag/catalog, plus `pack --query`) share it.
 
-**Migrations.** A fresh DB is created at version 1. A pre-v0.2.0 DB (`user_version` 0) is recognised as the version-1 layout and stamped 1 on open, data intact. `carrel catalog status` (alias `carrel index --status`) reports `schema_version`, `db_path`, row counts and stale rows (`changed` = size/mtime differ, `missing` = file gone, `unindexed` = on disk but not in the DB), always exit 0 — exit 4 only when no `.carrel/` exists under the root.
+**Meta (v2, D-015).** `meta` holds typed key/value fields per file: `kind` is `str|num|date|bool`, inferred from the value unless forced, and the value is stored canonically (`1,234.50` → `1234.5`, ISO dates, `true`/`false`) so `meta find total>1000` compares numerically and `due<2026-11-01` chronologically (`CAST(value AS REAL)` for `num`, text order otherwise). `source` names the writer (`user`, `fields`, `intake`, `agent`). Keys are `[a-z0-9_.-]` up to 64 chars. `search --meta COND` and the MCP tools post-filter through `DeskDB.find_by_meta`.
 
-**Catalog export/import.** Tags and notes are the only data the desk cannot regenerate, so `carrel catalog export` writes them as one deterministic JSON document (sorted by path, byte-identical apart from `exported`):
+**Migrations.** A fresh DB is created at the current version (2). A pre-v0.2.0 DB (`user_version` 0) is recognised as the version-1 layout, stamped 1, then migrated to 2 on open, data intact. `carrel catalog status` (alias `carrel index --status`) reports `schema_version`, `db_path`, row counts and stale rows (`changed` = size/mtime differ, `missing` = file gone, `unindexed` = on disk but not in the DB), always exit 0 — exit 4 only when no `.carrel/` exists under the root.
+
+**Catalog export/import.** Tags, notes and meta fields are the data the desk cannot regenerate, so `carrel catalog export` writes them as one deterministic JSON document (sorted by path, byte-identical apart from `exported`; `schema` is the DB schema version):
 
 ```json
-{"schema": 1, "product": "carrel", "version": "0.3.2", "exported": "…", "root": "/abs/root",
+{"schema": 2, "product": "carrel", "version": "0.3.2", "exported": "…", "root": "/abs/root",
  "files": [{"path": "guides/release-checklist.md", "tags": ["process", "release"],
-            "notes": [{"created": 1788522679.0094275, "body": "Step 4 needs …"}]}]}
+            "notes": [{"created": 1788522679.0094275, "body": "Step 4 needs …"}],
+            "meta": [{"key": "owner", "value": "release", "kind": "str", "source": "user"}]}]}
 ```
 
-`catalog import FILE` merges (tags `INSERT OR IGNORE`, notes deduplicated on `(file, created, body)`, so a second import adds nothing); `--replace` deletes all tags and notes first and prints what it removed; entries whose file is missing on disk count as `skipped_missing`. Exit 4 for invalid JSON or a `schema` newer than the build supports.
+`catalog import FILE` merges (tags `INSERT OR IGNORE`, notes deduplicated on `(file, created, body)`, meta set to the document's value and counted only when it changed, so a second import adds nothing); `--replace` deletes all tags, notes and fields first and prints what it removed; schema-1 documents (no `meta`) still import; entries whose file is missing on disk count as `skipped_missing`. Exit 4 for invalid JSON or a `schema` newer than the build supports.
 
 ### Product identity
 
@@ -126,18 +130,18 @@ plugins/
 ├── carrel-watch/     # /watch-folder + watch-loop skill
 └── carrel-agent/     # file-librarian agent, agent-workflows skill,
                       # PostToolUse hook: re-index files Claude writes (if .carrel exists),
-                      # .mcp.json: the carrel MCP server (10 tools + resources, below)
+                      # .mcp.json: the carrel MCP server (12 tools + resources, below)
 ```
 
 The plugin set is growing in v0.2.0 (spec 20 adds `carrel-documents` and `carrel-guard` and generates every usage block from `--help`); [MARKETPLACE.md](MARKETPLACE.md) is authoritative for the current list. Slash commands are thin: they document flags and run `carrel …` via Bash, never duplicate logic. Plugins require carrel on PATH; each command's markdown says so and points to INSTALL.
 
 ### MCP server
 
-`carrel mcp` = newline-delimited JSON-RPC 2.0 over stdio, pure stdlib, no SDK. `initialize` returns `capabilities: {"tools": {}, "resources": {}}` and `serverInfo: {"name": "carrel", "version": …}`. `tools/list` returns exactly ten tools whose bodies delegate to the same implementation functions the CLI uses (`search.search_index`, `pack.pack_paths`, `inspect.inspect_path`, the `DeskDB` tag/note methods, …) — `mcp.py` owns no walk or token-estimate of its own.
+`carrel mcp` = newline-delimited JSON-RPC 2.0 over stdio, pure stdlib, no SDK. `initialize` returns `capabilities: {"tools": {}, "resources": {}}` and `serverInfo: {"name": "carrel", "version": …}`. `tools/list` returns exactly twelve tools whose bodies delegate to the same implementation functions the CLI uses (`search.search_index`, `pack.pack_paths`, `inspect.inspect_path`, `refs.scan_refs`, the `DeskDB` tag/note/meta methods, …) — `mcp.py` owns no walk or token-estimate of its own.
 
 | Tool | Required | Optional |
 |---|---|---|
-| `carrel_search` | `query` | `root`, `limit`, `types`, `tags` |
+| `carrel_search` | `query` | `root`, `limit`, `types`, `tags`, `meta` |
 | `carrel_pack` | `path` | `max_bytes`, `tree_only`, `format`, `include`, `exclude`, `root`, `query`, `top` |
 | `carrel_inspect` | `path` | `deep`, `root` |
 | `carrel_tag` | `action` (`add`/`rm`/`ls`/`find`) | `path`, `tags`, `root` |
@@ -147,10 +151,12 @@ The plugin set is growing in v0.2.0 (spec 20 adds `carrel-documents` and `carrel
 | `carrel_diff` | `a`, `b` | `mode`, `root` |
 | `carrel_redact` | `path` | `builtin`, `pattern`, `replacement`, `root` |
 | `carrel_doctor` | — | — |
+| `carrel_meta` | `action` (`set`/`get`/`ls`/`rm`/`find`) | `path`, `fields`, `key`, `keys`, `conditions`, `source`, `root` |
+| `carrel_refs` | `path` | `kinds`, `patterns`, `tag`, `link`, `all`, `ocr`, `root` |
 
-Relative paths resolve against the server's `--root` (cwd by default); `root` overrides per call. Failures come back as `isError: true` with the CLI's message (install hint included for missing binaries), never a crash. `carrel_redact` never writes and rejects PDFs (the CLI's raster redaction is the path for those); `carrel_diff` reports `differ` as data, never as an error.
+Relative paths resolve against the server's `--root` (cwd by default); `root` overrides per call. Failures come back as `isError: true` with the CLI's message (install hint included for missing binaries), never a crash. `carrel_redact` never writes and rejects PDFs (the CLI's raster redaction is the path for those); `carrel_diff` reports `differ` as data, never as an error; `carrel_meta` get/ls/rm/find and `carrel_refs` without `tag` never create a desk db.
 
-Resources: `resources/templates/list` returns `carrel://file/{path}` (`text/plain`, extracted text of one file) and `carrel://search/{query}` (`application/json`, the `carrel_search` payload); `resources/list` is empty by design (enumerating a desk is `carrel_pack --tree-only`'s job); an unknown URI is JSON-RPC error `-32002`. Ships in the `carrel-agent` plugin's `.mcp.json` as the plain command `carrel mcp`. The one-line purpose of each tool is in [AGENTS.md](AGENTS.md#the-mcp-server-ten-tools-two-resources).
+Resources: `resources/templates/list` returns `carrel://file/{path}` (`text/plain`, extracted text of one file) and `carrel://search/{query}` (`application/json`, the `carrel_search` payload); `resources/list` is empty by design (enumerating a desk is `carrel_pack --tree-only`'s job); an unknown URI is JSON-RPC error `-32002`. Ships in the `carrel-agent` plugin's `.mcp.json` as the plain command `carrel mcp`. The one-line purpose of each tool is in [AGENTS.md](AGENTS.md#the-mcp-server-tools-and-resources).
 
 ## Flagship: `carrel desk` (textual, `tui` extra)
 
@@ -167,9 +173,13 @@ Generated artifacts are gated in CI's `lint` job so they cannot drift from the c
 
 CI matrix (`.github/workflows/test.yml`): `test` on Linux for Python 3.12/3.13/3.14 with every apt tool and `--all-extras`, enforcing a coverage floor (`--cov-fail-under=80`, measured 86% when set); `test-minimal` (Linux) and `test-minimal (macos)` with no extras and no optional binaries — both required checks; `test-minimal (windows)` runs advisory (`continue-on-error: true`) until it has been green on `main` for two weeks (BUILD_PLAN scope guard). Docs build with `mkdocs build --strict`.
 
+### Patterns (`core.patterns`)
+
+One registry of `Pattern(name, regex, group, validator, normalize)` rows in three groups: `pii` (email, phone, ssn, ipv4, cc), `reference` (label-driven: invoice, po, order, check, account, tracking, ticket) and `identifier` (iban, routing, ein, vat, isbn, gtin, doi, ups, usps). A regex may carry named groups `v1`/`v2` for alternatives — that group is the *value* (reported by `refs`, replaced by `redact`; the label survives). Validators (Luhn, IBAN mod-97 + length table, ABA 3-7-1 + prefix, ISBN-10/13, GTIN mod-10) reject a raw regex hit, so a nine-digit number is a routing number only when its checksum holds. `redact --builtin` and `carrel refs` both read this registry; `find_refs(text)` aggregates distinct values per kind with counts, pages (form feeds from pdftotext) and lines.
+
 ## Data flow notes
 
-- `textextract.extract_text` is the shared spine: convert(pdf→txt), pack, index, diff(pdf), audiobook all reuse it — the office/ebook branch made every one of them handle docx/odt/epub/rtf/xlsx at once.
+- `textextract.extract_text` is the shared spine: convert(pdf→txt), pack, index, diff(pdf), audiobook and refs all reuse it — the office/ebook branch made every one of them handle docx/odt/epub/rtf/xlsx at once.
 - `pack --query` is search-then-pack: `DeskDB.fts_search(query, limit=top)` ranks, the normal PATH/include/exclude/ignore filters intersect, and files are emitted in relevance order with a per-file `score`. Only indexed files can be ranked; `index` covers the document types plus plain-text source and config files as `FileType.CODE` (spec 22, D-010), sharing `pack`'s `.gitignore` matcher via `carrel.core.ignore`, so query-driven packing works on source trees as well as document trees ([FEATURES.md](FEATURES.md#explicit-scope-notes)).
 - `pack --since REF` / `--changed` run `git diff --name-only` (plus `git ls-files --others --exclude-standard` for `--changed`) through the `git` adapter with cwd = the PATH's repository root; the result is intersected with the walk, and deleted files are listed in the header as `removed`.
 - Long operations print progress to stderr (human mode only) so `--json` stdout stays clean.

@@ -156,6 +156,8 @@ EXPECTED_TOOLS = [
     "carrel_diff",
     "carrel_redact",
     "carrel_doctor",
+    "carrel_meta",
+    "carrel_refs",
 ]
 
 
@@ -194,11 +196,11 @@ class TestMcpProtocol:
         assert len(responses) == 1  # nothing emitted for the notification
         assert responses[0] == {"jsonrpc": "2.0", "id": 2, "result": {}}
 
-    def test_tools_list_has_ten_tools(self):
+    def test_tools_list_matches_registry(self):
         (resp,) = rpc([{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}])
         tools = resp["result"]["tools"]
         assert [t["name"] for t in tools] == EXPECTED_TOOLS
-        assert len(tools) == 10
+        assert len(tools) == len(EXPECTED_TOOLS) == 12
         assert tools == TOOLS
 
     @pytest.mark.parametrize("tool", TOOLS, ids=[t["name"] for t in TOOLS])
@@ -211,7 +213,9 @@ class TestMcpProtocol:
         # required lists only declared properties
         assert set(schema["required"]) <= set(schema["properties"])
         for name, prop in schema["properties"].items():
-            assert prop["type"] in ("string", "integer", "boolean", "array"), name
+            assert prop["type"] in ("string", "integer", "boolean", "array", "object"), name
+            if prop["type"] == "object":
+                assert prop["additionalProperties"] == {"type": "string"}, name
             if prop["type"] == "array":
                 assert prop["items"] == {"type": "string"}
 
@@ -223,7 +227,7 @@ class TestMcpProtocol:
         assert {"max_bytes", "tree_only", "format", "include", "exclude"} <= set(
             by_name["carrel_pack"]["properties"]
         )
-        assert {"types", "tags"} <= set(by_name["carrel_search"]["properties"])
+        assert {"types", "tags", "meta"} <= set(by_name["carrel_search"]["properties"])
         assert "deep" in by_name["carrel_inspect"]["properties"]
 
     def test_unknown_method_errors_and_server_keeps_serving(self):
@@ -749,6 +753,198 @@ class TestMcpFileTools:
             "note": CAPABILITIES["mcp"]["note"],
         }
         assert p["commands"] == build_report()["commands"]
+
+
+# ---------------------------------------------------------------------------
+# mcp: meta / refs (specs 23 and 24)
+# ---------------------------------------------------------------------------
+
+
+class TestMcpMetaRefs:
+    def test_meta_set_get_ls_rm_find_round_trip(self, tmp_path):
+        (tmp_path / "inv.txt").write_text("Invoice INV-1 from Acme\n")
+        res = call_tool(
+            "carrel_meta",
+            {"action": "set", "path": "inv.txt", "fields": {"Vendor": "Acme", "total": "1,200"}},
+            tmp_path,
+        )
+        assert res["isError"] is False, res["payload"]
+        assert res["payload"] == {"path": "inv.txt", "meta": {"total": "1200", "vendor": "Acme"}}
+        got = call_tool(
+            "carrel_meta", {"action": "get", "path": "inv.txt", "key": "total"}, tmp_path
+        )
+        assert got["payload"] == {
+            "path": "inv.txt",
+            "key": "total",
+            "value": "1200",
+            "kind": "num",
+            "source": "agent",
+        }
+        ls = call_tool("carrel_meta", {"action": "ls", "path": "inv.txt"}, tmp_path)["payload"]
+        assert ls["meta"] == {"total": "1200", "vendor": "Acme"}
+        assert [f["key"] for f in ls["fields"]] == ["total", "vendor"]
+        keys = call_tool("carrel_meta", {"action": "ls"}, tmp_path)["payload"]
+        assert keys == {"root": str(tmp_path), "keys": {"total": 1, "vendor": 1}}
+        found = call_tool(
+            "carrel_meta", {"action": "find", "conditions": ["total>1000", "vendor~acm"]}, tmp_path
+        )["payload"]
+        assert found["files"] == [{"path": "inv.txt", "meta": {"total": "1200", "vendor": "Acme"}}]
+        rm = call_tool(
+            "carrel_meta", {"action": "rm", "path": "inv.txt", "keys": ["total", "x"]}, tmp_path
+        )
+        assert rm["payload"] == {"path": "inv.txt", "removed": 1, "meta": {"vendor": "Acme"}}
+
+    def test_meta_without_db_returns_empty_and_creates_nothing(self, tmp_path):
+        (tmp_path / "f.txt").write_text("x")
+        assert call_tool("carrel_meta", {"action": "ls"}, tmp_path)["payload"]["keys"] == {}
+        assert (
+            call_tool("carrel_meta", {"action": "get", "path": "f.txt", "key": "k"}, tmp_path)[
+                "payload"
+            ]["value"]
+            is None
+        )
+        assert (
+            call_tool("carrel_meta", {"action": "rm", "path": "f.txt", "keys": ["k"]}, tmp_path)[
+                "payload"
+            ]["removed"]
+            == 0
+        )
+        assert (
+            call_tool("carrel_meta", {"action": "find", "conditions": ["k?"]}, tmp_path)["payload"][
+                "files"
+            ]
+            == []
+        )
+        assert not (tmp_path / ".carrel").exists()
+
+    def test_meta_argument_errors(self, tmp_path):
+        (tmp_path / "f.txt").write_text("x")
+        for args, needle in (
+            ({"action": "set", "path": "f.txt"}, "fields"),
+            ({"action": "set", "path": "ghost.txt", "fields": {"a": "1"}}, "no such file"),
+            ({"action": "set", "fields": {"a": "1"}}, "requires `path`"),
+            ({"action": "get", "path": "f.txt"}, "key"),
+            ({"action": "rm", "path": "f.txt"}, "keys"),
+            ({"action": "find"}, "conditions"),
+            ({"action": "find", "conditions": ["nonsense"]}, "bad condition"),
+            ({"action": "nope"}, "action"),
+        ):
+            res = call_tool("carrel_meta", args, tmp_path)
+            assert res["isError"] is True, args
+            assert needle in res["payload"]["error"], (args, res["payload"])
+        # the seeded set above happened inside the error loop only for valid calls: still no db
+        call_tool("carrel_meta", {"action": "set", "path": "f.txt", "fields": {"a": "1"}}, tmp_path)
+        assert (tmp_path / ".carrel").exists()
+
+    def test_meta_shapes_do_not_depend_on_a_desk(self, tmp_path):
+        (tmp_path / "f.txt").write_text("x")
+        before = {
+            a: call_tool("carrel_meta", args, tmp_path)["payload"]
+            for a, args in (
+                ("get", {"action": "get", "path": "f.txt", "key": "k"}),
+                ("ls", {"action": "ls", "path": "f.txt"}),
+                ("rm", {"action": "rm", "path": "f.txt", "keys": ["k"]}),
+            )
+        }
+        assert before["get"] == {
+            "path": "f.txt",
+            "key": "k",
+            "value": None,
+            "kind": None,
+            "source": None,
+        }
+        assert before["ls"] == {"path": "f.txt", "meta": {}, "fields": []}
+        assert before["rm"] == {"path": "f.txt", "removed": 0, "meta": {}}
+        call_tool("carrel_meta", {"action": "set", "path": "f.txt", "fields": {"a": "1"}}, tmp_path)
+        call_tool("carrel_meta", {"action": "rm", "path": "f.txt", "keys": ["a"]}, tmp_path)
+        after = {
+            a: call_tool("carrel_meta", args, tmp_path)["payload"]
+            for a, args in (
+                ("get", {"action": "get", "path": "f.txt", "key": "k"}),
+                ("ls", {"action": "ls", "path": "f.txt"}),
+                ("rm", {"action": "rm", "path": "f.txt", "keys": ["k"]}),
+            )
+        }
+        assert after == before  # same keys, same relative path, with and without a desk
+
+    def test_meta_set_rejects_null_and_nested_values(self, tmp_path):
+        (tmp_path / "f.txt").write_text("x")
+        for fields, needle in (
+            ({"n": None}, "null"),
+            ({"l": [1, 2]}, "list"),
+            ({"o": {"a": 1}}, "dict"),
+        ):
+            res = call_tool(
+                "carrel_meta", {"action": "set", "path": "f.txt", "fields": fields}, tmp_path
+            )
+            assert res["isError"] is True and needle in res["payload"]["error"], fields
+        ok = call_tool(
+            "carrel_meta",
+            {"action": "set", "path": "f.txt", "fields": {"n": 5, "b": True, "z": "02134"}},
+            tmp_path,
+        )["payload"]
+        assert ok["meta"] == {"b": "true", "n": "5", "z": "02134"}
+
+    def test_refs_scan_link_and_tag(self, tmp_path):
+        (tmp_path / "inv.txt").write_text(
+            "Invoice # INV-2026-0042\nIBAN GB82 WEST 1234 5698 7654 32\n"
+        )
+        (tmp_path / "remit.md").write_text("paid INV-2026-0042 today\n")
+        res = call_tool("carrel_refs", {"path": "."}, tmp_path)
+        assert res["isError"] is False, res["payload"]
+        p = res["payload"]
+        assert p["root"] == str(tmp_path) and len(p["files"]) == 2
+        inv = next(f for f in p["files"] if f["path"].endswith("inv.txt"))
+        assert {(r["kind"], r["value"]) for r in inv["refs"]} == {
+            ("invoice", "INV-2026-0042"),
+            ("iban", "GB82WEST12345698765432"),
+        }
+        linked = call_tool("carrel_refs", {"path": ".", "link": True}, tmp_path)["payload"]
+        assert [(g["kind"], g["value"], len(g["files"])) for g in linked["references"]] == [
+            ("invoice", "INV-2026-0042", 2)
+        ]
+        only = call_tool("carrel_refs", {"path": "inv.txt", "kinds": ["iban"]}, tmp_path)["payload"]
+        assert [r["kind"] for r in only["files"][0]["refs"]] == ["iban"]
+        assert not (tmp_path / ".carrel").exists()
+        tagged = call_tool("carrel_refs", {"path": ".", "tag": True}, tmp_path)["payload"]
+        assert "ref:invoice:inv-2026-0042" in tagged["files"][0]["tags"]
+        found = call_tool(
+            "carrel_tag", {"action": "find", "tags": ["ref:invoice:inv-2026-0042"]}, tmp_path
+        )
+        assert found["payload"]["paths"] == ["inv.txt", "remit.md"]
+
+    def test_refs_custom_pattern_and_errors(self, tmp_path):
+        (tmp_path / "n.txt").write_text("job JOB-77 and ACME-5\n")
+        res = call_tool(
+            "carrel_refs",
+            {"path": "n.txt", "kinds": ["ticket"], "patterns": ["acme=ACME-(?P<v1>\\d+)"]},
+            tmp_path,
+        )
+        assert [(r["kind"], r["value"]) for r in res["payload"]["files"][0]["refs"]] == [
+            ("ticket", "JOB-77"),
+            ("acme", "5"),
+        ]
+        for args, needle in (
+            ({"path": "ghost.txt"}, "no such path"),
+            ({"path": "n.txt", "kinds": ["dna"]}, "unknown kind"),
+            ({"path": "n.txt", "patterns": ["broken"]}, "NAME=REGEX"),
+        ):
+            res = call_tool("carrel_refs", args, tmp_path)
+            assert res["isError"] is True and needle in res["payload"]["error"], args
+
+    def test_search_meta_filter(self, tmp_path):
+        (tmp_path / "a.txt").write_text("shared word bumfuzzle\n")
+        (tmp_path / "b.txt").write_text("also bumfuzzle here\n")
+        seed_index(tmp_path, "a.txt", "b.txt")
+        call_tool(
+            "carrel_meta", {"action": "set", "path": "a.txt", "fields": {"total": "5"}}, tmp_path
+        )
+        hits = call_tool("carrel_search", {"query": "bumfuzzle", "meta": ["total>1"]}, tmp_path)[
+            "payload"
+        ]
+        assert [h["path"] for h in hits["results"]] == ["a.txt"]
+        bad = call_tool("carrel_search", {"query": "bumfuzzle", "meta": ["???"]}, tmp_path)
+        assert bad["isError"] is True and "bad condition" in bad["payload"]["error"]
 
 
 # ---------------------------------------------------------------------------

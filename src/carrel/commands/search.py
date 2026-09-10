@@ -1,9 +1,10 @@
 """carrel search — FTS5 full-text search over the desk index.
 
 Ranking and snippets come from core.db.DeskDB.fts_search (bm25 + snippet()).
---type/--tag filters are applied here by post-filtering the ranked rows
-(type from the files table, tags via DeskDB.tags_of), so core stays lean;
-when filters are active we over-fetch so `--limit` still fills up.
+--type/--tag/--meta filters are applied here by post-filtering the ranked rows
+(type from the files table, tags via DeskDB.tags_of, meta via
+DeskDB.find_by_meta), so core stays lean; when filters are active we over-fetch
+so `--limit` still fills up.
 """
 
 from __future__ import annotations
@@ -69,14 +70,16 @@ def search_index(
     limit: int = 20,
     types: set[str] | None = None,
     tags: list[str] | None = None,
+    meta: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Ranked hits [{"path", "score", "snippet"}] for QUERY over the desk index at `root`.
 
     Library entry point (reused by the MCP server); the click command wraps
     it. Filters combine with AND: `types` are FileType values, `tags` must
-    all be present on a file. Raises CarrelError when no index exists under
-    `root` and CarrelInputError for an invalid type name or an FTS5 query
-    that SQLite rejects.
+    all be present on a file, `meta` conditions (`vendor=acme`, `total>100`,
+    see `carrel meta find`) must all hold. Raises CarrelError when no index
+    exists under `root` and CarrelInputError for an invalid type name, a bad
+    meta condition or an FTS5 query that SQLite rejects.
     """
     root = Path(root).resolve()
     if limit < 1:
@@ -92,11 +95,13 @@ def search_index(
             f"(choose from {', '.join(sorted(_valid_types()))})"
         )
     wanted_tags = {t.strip().lower() for t in (tags or []) if t.strip()}
-    filtered = bool(wanted_types or wanted_tags)
+    conditions = [c for c in (meta or []) if c.strip()]
+    filtered = bool(wanted_types or wanted_tags or conditions)
     fetch = max(limit * 25, _FILTER_FETCH_MIN) if filtered else limit
 
     hits: list[dict[str, Any]] = []
     with DeskDB(root) as db:
+        wanted_paths = set(db.find_by_meta(conditions)) if conditions else None
         try:
             rows = db.fts_search(query, limit=fetch)
         except sqlite3.OperationalError as e:
@@ -105,6 +110,8 @@ def search_index(
             if wanted_types and row["type"] not in wanted_types:
                 continue
             if wanted_tags and not wanted_tags <= set(db.tags_of(db.root / row["path"])):
+                continue
+            if wanted_paths is not None and row["path"] not in wanted_paths:
                 continue
             hits.append({"path": row["path"], "score": row["score"], "snippet": row["snip"]})
             if len(hits) >= limit:
@@ -139,6 +146,14 @@ def _human_hits(hits: list[dict[str, Any]]) -> None:
     metavar="TAG",
     help="Only files carrying TAG (repeatable — every TAG must match).",
 )
+@click.option(
+    "--meta",
+    "meta",
+    multiple=True,
+    metavar="CONDITION",
+    help="Only files whose fields satisfy CONDITION, e.g. vendor=acme, total>1000, "
+    "due<2026-11, paid? (repeatable — every one must hold; see `meta find`).",
+)
 @click.option("--fail-empty", is_flag=True, help="Exit 5 when there are no hits.")
 @click.pass_context
 @_handled
@@ -148,6 +163,7 @@ def cmd(
     limit: int,
     types_csv: str | None,
     tags: tuple[str, ...],
+    meta: tuple[str, ...],
     fail_empty: bool,
 ) -> None:
     """Full-text search the desk index for QUERY (FTS5 syntax, bm25-ranked).
@@ -163,8 +179,10 @@ def cmd(
     if not DeskDB.exists(root):  # missing input, not a usage error: exit 4 like pack --query
         raise CarrelInputError(f"no index under {root} — run `{PRODUCT['cli']} index` there first")
     try:
-        hits = search_index(root, query, limit=limit, types=wanted_types, tags=list(tags))
-    except CarrelInputError as e:  # bad FTS5 syntax is a usage error at the CLI (exit 2)
+        hits = search_index(
+            root, query, limit=limit, types=wanted_types, tags=list(tags), meta=list(meta)
+        )
+    except CarrelInputError as e:  # bad FTS5 syntax / meta condition is a usage error (exit 2)
         raise click.UsageError(str(e)) from e
 
     if not hits and fail_empty:

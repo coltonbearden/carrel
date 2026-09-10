@@ -3,12 +3,12 @@
 Transport per the MCP stdio spec: newline-delimited JSON — ONE JSON-RPC
 message per line on stdin/stdout, no Content-Length framing, no SDK.
 
-Ten tools, each a thin shim over a command module's library entry point
-(pack.pack_paths, search.search_index, inspect.inspect_path, convert.convert_file,
-diff.diff_files, redact's text engine, doctor.build_report, DeskDB for tags and
-notes, index.index_paths when the build provides it). Nothing here walks a
-tree or estimates tokens on its own. Two resource templates expose file text
-and desk search as `carrel://` URIs.
+Every tool (see TOOLS) is a thin shim over a command module's library entry
+point (pack.pack_paths, search.search_index, inspect.inspect_path,
+convert.convert_file, diff.diff_files, redact's text engine, doctor.build_report,
+refs.scan_refs, DeskDB for tags, notes and meta fields, index.index_paths).
+Nothing here walks a tree or estimates tokens on its own. Two resource
+templates expose file text and desk search as `carrel://` URIs.
 
 Every tool failure is returned as `isError: true` carrying the same message the
 CLI would print (CarrelError text, install hints included) — never a crash.
@@ -31,6 +31,7 @@ from carrel._product import PRODUCT
 from carrel.core.db import DeskDB
 from carrel.core.filetypes import FileType, detect_or_die
 from carrel.core.output import CarrelError, CarrelInputError
+from carrel.core.patterns import PATTERNS
 from carrel.core.textextract import extract_text
 
 DEFAULT_PROTOCOL_VERSION = "2025-06-18"
@@ -72,6 +73,10 @@ TOOLS: list[dict[str, Any]] = [
                 "limit": {"type": "integer", "description": "Max results.", "default": 20},
                 "types": _str_array('Only these file types (e.g. ["pdf", "md"]).'),
                 "tags": _str_array("Only files carrying every one of these tags."),
+                "meta": _str_array(
+                    "Only files whose fields satisfy every condition "
+                    "(vendor=acme, total>1000, due<2026-11-01, paid?)."
+                ),
             },
             "required": ["query"],
         },
@@ -245,7 +250,7 @@ TOOLS: list[dict[str, Any]] = [
             "type": "object",
             "properties": {
                 "path": {"type": "string", "description": "Text file (txt/md/html/json/csv/xml)."},
-                "builtin": _str_array("Builtin patterns: email, phone, ssn, ipv4, cc."),
+                "builtin": _str_array(f"Builtin patterns: {', '.join(PATTERNS)}."),
                 "pattern": _str_array("Custom regexes to redact."),
                 "replacement": {
                     "type": "string",
@@ -262,6 +267,72 @@ TOOLS: list[dict[str, Any]] = [
         "description": "Environment report: external tools found (with versions or install "
         "hints), per-command status, and the capability table gating each command.",
         "inputSchema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "carrel_meta",
+        "description": "Typed key/value fields on desk files: set, get, ls or rm fields on a "
+        "file, or find files by conditions (vendor=acme, total>1000, due<2026-11-01, paid?).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "enum": ["set", "get", "ls", "rm", "find"]},
+                "path": {"type": "string", "description": "File (set/get/ls/rm)."},
+                "fields": {
+                    "type": "object",
+                    "additionalProperties": {"type": "string"},
+                    "description": "Fields to set, {key: value}; kinds are inferred (set).",
+                },
+                "key": {"type": "string", "description": "Field name (get)."},
+                "keys": _str_array("Field names to remove (rm)."),
+                "conditions": _str_array("Conditions every file must satisfy (find)."),
+                "source": {
+                    "type": "string",
+                    "description": "Who writes the fields (set).",
+                    "default": "agent",
+                },
+                "root": _ROOT_PROP,
+            },
+            "required": ["action"],
+        },
+    },
+    {
+        "name": "carrel_refs",
+        "description": "Find reference numbers (invoice, PO, order, check, account, tracking, "
+        "ticket, IBAN, routing, EIN, VAT, ISBN, GTIN, DOI, UPS, USPS) in a file or directory; "
+        "optionally tag files with ref:<kind>:<value> or group files by shared value.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "File or directory to scan."},
+                "kinds": _str_array(
+                    f"Only these kinds (default: reference + identifier kinds). Known: "
+                    f"{', '.join(PATTERNS)}."
+                ),
+                "patterns": _str_array("Extra NAME=REGEX kinds; a (?P<v1>…) group is the value."),
+                "tag": {
+                    "type": "boolean",
+                    "description": "Tag each file in the desk under root with ref:<kind>:<value>.",
+                    "default": False,
+                },
+                "link": {
+                    "type": "boolean",
+                    "description": "Return {references: [{kind, value, files, count}]} instead.",
+                    "default": False,
+                },
+                "all": {
+                    "type": "boolean",
+                    "description": "With link, include values seen in one file only.",
+                    "default": False,
+                },
+                "ocr": {
+                    "type": "boolean",
+                    "description": "OCR images and scanned PDFs (needs tesseract / ocrmypdf).",
+                    "default": False,
+                },
+                "root": _ROOT_PROP,
+            },
+            "required": ["path"],
+        },
     },
 ]
 
@@ -304,6 +375,14 @@ def _iso(ts: float) -> str:
     return datetime.fromtimestamp(ts).isoformat(timespec="seconds")
 
 
+def _rel(path: Path, root: Path) -> str:
+    """Root-relative POSIX path like `DeskDB.rel`, without opening a desk."""
+    try:
+        return path.resolve().relative_to(root).as_posix()
+    except ValueError:
+        return path.resolve().as_posix()
+
+
 def _check_required(name: str, args: dict[str, Any]) -> None:
     missing = [k for k in _SCHEMA_BY_NAME[name].get("required", []) if args.get(k) is None]
     if missing:
@@ -322,7 +401,10 @@ def _tool_search(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
     query = str(args["query"])
     types = set(_str_list(args, "types")) or None
     tags = _str_list(args, "tags") or None
-    hits = search_index(root, query, limit=int(args.get("limit") or 20), types=types, tags=tags)
+    meta = _str_list(args, "meta") or None
+    hits = search_index(
+        root, query, limit=int(args.get("limit") or 20), types=types, tags=tags, meta=meta
+    )
     return {"query": query, "root": str(root), "count": len(hits), "results": hits}
 
 
@@ -555,6 +637,110 @@ def _tool_doctor(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
     return report
 
 
+def _tool_meta(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
+    from carrel.commands.meta import meta_map
+
+    action = _choice(args, "action", ("set", "get", "ls", "rm", "find"), "")
+    root = _root(args, default_root)
+
+    if action == "find":
+        from carrel.core.db import parse_meta_condition
+
+        conditions = _str_list(args, "conditions")
+        if not conditions:
+            raise CarrelInputError("carrel_meta find requires a non-empty `conditions` array")
+        for c in conditions:  # syntax is checked even without a desk, so typos fail loudly
+            parse_meta_condition(c)
+        if not DeskDB.exists(root):
+            return {"root": str(root), "conditions": conditions, "files": []}
+        with DeskDB(root) as db:
+            paths = db.find_by_meta(conditions)
+            by_path = db.meta_for_paths(paths)
+            files = [{"path": p, "meta": by_path[p]} for p in paths]
+        return {"root": str(root), "conditions": conditions, "files": files}
+
+    if action == "ls" and not args.get("path"):
+        if not DeskDB.exists(root):
+            return {"root": str(root), "keys": {}}
+        with DeskDB(root) as db:
+            return {"root": str(root), "keys": db.meta_keys()}
+
+    if not args.get("path"):
+        raise CarrelInputError(f"carrel_meta {action} requires `path`")
+    path = _resolve(args["path"], root).resolve()
+    key = str(args.get("key") or "")
+    keys = _str_list(args, "keys")
+    if action == "get" and not key:
+        raise CarrelInputError("carrel_meta get requires `key`")
+    if action == "rm" and not keys:
+        raise CarrelInputError("carrel_meta rm requires a non-empty `keys` array")
+
+    if action == "set":
+        fields = args.get("fields")
+        if not isinstance(fields, dict) or not fields:
+            raise CarrelInputError("carrel_meta set requires a non-empty `fields` object")
+        for k, v in fields.items():
+            if v is None:
+                raise CarrelInputError(f"field {k!r} is null — use action `rm` to clear a field")
+            if not isinstance(v, (str, int, float)):  # bool is an int: JSON true → "true"
+                raise CarrelInputError(
+                    f"field {k!r} must be a string, number or boolean, got {type(v).__name__}"
+                )
+        if not path.is_file():
+            raise CarrelInputError(f"no such file: {path}")
+        source = str(args.get("source") or "agent")
+        with DeskDB(root) as db:
+            for k, v in fields.items():
+                db.set_meta(
+                    path, str(k), str(v).lower() if isinstance(v, bool) else str(v), source=source
+                )
+            return {"path": db.rel(path), "meta": meta_map(db, path)}
+
+    # get / ls / rm never create a desk db as a side effect (same as the CLI);
+    # the payload shape does not depend on whether a desk exists
+    rel = _rel(path, root)
+    if not DeskDB.exists(root):
+        if action == "get":
+            return {"path": rel, "key": key, "value": None, "kind": None, "source": None}
+        if action == "rm":
+            return {"path": rel, "removed": 0, "meta": {}}
+        return {"path": rel, "meta": {}, "fields": []}
+    with DeskDB(root) as db:
+        if action == "get":
+            row = db.get_meta(path, key)
+            return {
+                "path": db.rel(path),
+                "key": key,
+                "value": row["value"] if row else None,
+                "kind": row["kind"] if row else None,
+                "source": row["source"] if row else None,
+            }
+        if action == "rm":
+            removed = db.rm_meta(path, keys)
+            return {"path": db.rel(path), "removed": removed, "meta": meta_map(db, path)}
+        rows = [{**r, "updated": _iso(r["updated"])} for r in db.meta_of(path)]
+        return {"path": db.rel(path), "meta": meta_map(db, path), "fields": rows}
+
+
+def _tool_refs(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
+    from carrel.commands.refs import link_refs, scan_refs
+
+    root = _root(args, default_root)
+    path = _resolve(args["path"], root)
+    kinds = _str_list(args, "kinds") or None
+    records = scan_refs(
+        [path],
+        kinds=kinds,
+        extra=_str_list(args, "patterns"),
+        ocr=bool(args.get("ocr") or False),
+        tag_root=root if args.get("tag") else None,
+    )
+    if args.get("link"):
+        groups = link_refs(records, all_=bool(args.get("all") or False))
+        return {"root": str(root), "path": str(path), "references": groups}
+    return {"root": str(root), "path": str(path), "files": records}
+
+
 _TOOL_IMPLS: dict[str, Callable[[dict[str, Any], Path], dict[str, Any]]] = {
     "carrel_search": _tool_search,
     "carrel_pack": _tool_pack,
@@ -566,6 +752,8 @@ _TOOL_IMPLS: dict[str, Callable[[dict[str, Any], Path], dict[str, Any]]] = {
     "carrel_diff": _tool_diff,
     "carrel_redact": _tool_redact,
     "carrel_doctor": _tool_doctor,
+    "carrel_meta": _tool_meta,
+    "carrel_refs": _tool_refs,
 }
 
 
@@ -714,10 +902,15 @@ def serve(stdin: TextIO, stdout: TextIO, default_root: Path | str = ".") -> None
             stdout.flush()
 
 
-@click.command(name="mcp")
+_TOOL_SUMMARY = ", ".join(t["name"].removeprefix("carrel_") for t in TOOLS)
+
+
+@click.command(
+    name="mcp",
+    help=f"Serve the desk as an MCP server on stdio: {len(TOOLS)} tools ({_TOOL_SUMMARY}) "
+    "and carrel:// file/search resources.",
+)
 @click.pass_context
 def cmd(ctx: click.Context) -> None:
-    """Serve the desk as an MCP server on stdio: 10 tools (search, pack, inspect,
-    tag, note, index, convert, diff, redact, doctor) and carrel:// file/search resources."""
     ctx.ensure_object(dict)
     serve(sys.stdin, sys.stdout, default_root=ctx.obj.get("root", "."))

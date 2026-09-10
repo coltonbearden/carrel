@@ -1,8 +1,10 @@
 """carrel redact — remove sensitive strings from text files and PDFs.
 
-Text types (txt/md/html/json/csv/xml) get plain regex replacement on the raw
-text; JSON/XML outputs are re-parsed afterwards so a redaction can never ship
-a broken file. PDFs get *true* redaction: every page is rasterized (pdftoppm,
+Builtin kinds come from core.patterns (shared with `carrel refs`): the PII
+kinds (email, phone, ssn, ipv4, cc) plus reference numbers (invoice, po, iban,
+routing, …). Text types (txt/md/html/json/csv/xml) get plain regex replacement
+on the raw text; JSON/XML outputs are re-parsed afterwards so a redaction can
+never ship a broken file. PDFs get *true* redaction: every page is rasterized (pdftoppm,
 200 dpi), tesseract's TSV word boxes are matched against the patterns (with
 adjacent words joined per line so multi-word patterns work), matched boxes are
 painted black, and the pages are reassembled into an image-only PDF — no text
@@ -26,6 +28,7 @@ import click
 from carrel.core import adapters
 from carrel.core.filetypes import FileType, detect_or_die
 from carrel.core.output import CarrelError, CarrelInputError, ExitCode, emit, fail, progress
+from carrel.core.patterns import PATTERNS, Pattern
 
 RASTER_DPI = 200
 BOX_PAD = 2  # px of padding around each blacked-out word box
@@ -33,57 +36,39 @@ BOX_PAD = 2  # px of padding around each blacked-out word box
 
 # ------------------------------------------------------------------ patterns
 
-
-def _luhn_ok(digits: str) -> bool:
-    total = 0
-    for i, ch in enumerate(reversed(digits)):
-        d = int(ch)
-        if i % 2 == 1:
-            d *= 2
-            if d > 9:
-                d -= 9
-        total += d
-    return total % 10 == 0
-
-
-def _cc_valid(match: re.Match) -> bool:
-    digits = re.sub(r"[ -]", "", match.group(0))
-    return 13 <= len(digits) <= 19 and _luhn_ok(digits)
-
-
-# name -> (regex, validator) — validator may reject a raw regex hit (cc/Luhn)
-BUILTINS: dict[str, tuple[str, Callable[[re.Match], bool] | None]] = {
-    "email": (r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", None),
-    "phone": (r"(?<!\d)(?:\+?1[-. ])?(?:\(\d{3}\)[-. ]?|\d{3}[-. ])\d{3}[-. ]\d{4}(?!\d)", None),
-    "ssn": (r"(?<!\d)\d{3}-\d{2}-\d{4}(?!\d)", None),
-    "ipv4": (
-        r"(?<!\d)(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)(?!\d)",
-        None,
-    ),
-    "cc": (r"(?<!\d)\d(?:[ -]?\d){12,18}(?!\d)", _cc_valid),
-}
+# Every kind in the shared registry is a redact builtin: the original five PII
+# kinds plus the reference/identifier kinds `carrel refs` reports. For the
+# label-driven kinds only the value is replaced ("Invoice # ████", the label
+# survives) — see core.patterns.Pattern.span.
+BUILTINS: dict[str, Pattern] = dict(PATTERNS)
 
 
 @dataclass
 class Rule:
     name: str
-    regex: re.Pattern
-    validator: Callable[[re.Match], bool] | None = None
+    regex: re.Pattern[str]
+    pattern: Pattern | None = None  # builtin: validator + value span; None for a custom regex
 
-    def hits(self, text: str) -> list[re.Match]:
-        return [m for m in self.regex.finditer(text) if self.validator is None or self.validator(m)]
+    def hits(self, text: str) -> list[re.Match[str]]:
+        return [
+            m for m in self.regex.finditer(text) if self.pattern is None or self.pattern.accepts(m)
+        ]
+
+    def span(self, m: re.Match[str]) -> tuple[int, int]:
+        """The character span to paint over: the value group when the kind has one."""
+        return self.pattern.span(m) if self.pattern is not None else m.span()
 
 
 def _compile_rules(patterns: tuple[str, ...], builtin_csv: str | None) -> list[Rule]:
     rules: list[Rule] = []
     if builtin_csv:
-        for name in (n.strip() for n in builtin_csv.split(",") if n.strip()):
+        for name in (n.strip().lower() for n in builtin_csv.split(",") if n.strip()):
             if name not in BUILTINS:
                 raise click.UsageError(
                     f"unknown --builtin {name!r} (choose from: {', '.join(BUILTINS)})"
                 )
-            pattern, validator = BUILTINS[name]
-            rules.append(Rule(name, re.compile(pattern), validator))
+            builtin = BUILTINS[name]
+            rules.append(Rule(name, builtin.compiled(), builtin))
     for pattern in patterns:
         try:
             rules.append(Rule(pattern, re.compile(pattern)))
@@ -104,10 +89,12 @@ def _redact_text(content: str, rules: list[Rule], replacement: str) -> tuple[str
 
         def repl(m: re.Match[str], rule: Rule = rule) -> str:
             nonlocal n
-            if rule.validator is not None and not rule.validator(m):
+            if rule.pattern is not None and not rule.pattern.accepts(m):
                 return m.group(0)
             n += 1
-            return replacement
+            start, end = rule.span(m)
+            whole = m.group(0)
+            return whole[: start - m.start()] + replacement + whole[end - m.start() :]
 
         content = rule.regex.sub(repl, content)
         counts[rule.name] = n
@@ -211,7 +198,8 @@ def _redact_pdf(
                     for m in rule.hits(text):
                         counts[rule.name] += 1
                         page_counts[str(page_no)] = page_counts.get(str(page_no), 0) + 1
-                        hit_boxes += [w.box for a, b, w in spans if a < m.end() and b > m.start()]
+                        start, end = rule.span(m)
+                        hit_boxes += [w.box for a, b, w in spans if a < end and b > start]
             for left, top, width, height in hit_boxes:
                 draw.rectangle(
                     (
@@ -290,7 +278,8 @@ def _human(record: dict[str, Any]) -> None:
     "--builtin",
     "builtin_csv",
     metavar="LIST",
-    help=f"Comma-separated builtins: {', '.join(BUILTINS)}.",
+    help=f"Comma-separated builtins: {', '.join(BUILTINS)} "
+    "(label-driven kinds like invoice keep the label and replace the value).",
 )
 @click.option(
     "--replacement",

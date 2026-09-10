@@ -20,12 +20,14 @@ Usage: carrel search [OPTIONS] QUERY
   build the index under --root.
 
 Options:
-  --limit INTEGER  Maximum number of hits.  [default: 20]
-  --type T1,T2     Only these file types, comma-separated (e.g. pdf,md).
-  --tag TAG        Only files carrying TAG (repeatable — every TAG must match).
-  --fail-empty     Exit 5 when there are no hits.
-  --json           Machine-readable JSON output.
-  --help           Show this message and exit.
+  --limit INTEGER   Maximum number of hits.  [default: 20]
+  --type T1,T2      Only these file types, comma-separated (e.g. pdf,md).
+  --tag TAG         Only files carrying TAG (repeatable — every TAG must match).
+  --meta CONDITION  Only files whose fields satisfy CONDITION, e.g. vendor=acme, total>1000,
+                    due<2026-11, paid? (repeatable — every one must hold; see `meta find`).
+  --fail-empty      Exit 5 when there are no hits.
+  --json            Machine-readable JSON output.
+  --help            Show this message and exit.
 ```
 <!-- usage:end -->
 

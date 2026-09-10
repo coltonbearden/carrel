@@ -1,6 +1,6 @@
-"""carrel catalog — export, import and check the desk catalog (tags + notes).
+"""carrel catalog — export, import and check the desk catalog (tags, notes, meta).
 
-Tags and notes are the only desk data `carrel index` cannot regenerate.
+Tags, notes and meta fields are the desk data `carrel index` cannot regenerate.
 `export` writes them as one deterministic JSON document (root-relative paths,
 sorted), `import` merges such a document back (idempotent; `--replace` clears
 first), and `status` reports schema version, row counts and index staleness.
@@ -76,7 +76,7 @@ def _dump(doc: dict[str, Any]) -> str:
 
 @click.group(name="catalog")
 def cmd() -> None:
-    """Export, import and check the desk catalog (tags + notes in .carrel/carrel.db)."""
+    """Export, import and check the desk catalog (tags, notes, meta in .carrel/carrel.db)."""
 
 
 @cmd.command("export")
@@ -90,13 +90,14 @@ def cmd() -> None:
 @click.pass_context
 @_handled
 def export(ctx: click.Context, out: Path | None, force: bool) -> None:
-    """Export every tagged or annotated file's tags and notes as JSON.
+    """Export every file's tags, notes and meta fields as JSON (files with at least one).
 
     Document: {"schema", "product", "version", "exported", "root", "files":
     [{"path": <root-relative>, "tags": [...sorted], "notes": [{"created",
-    "body"}]}]}, sorted by path — byte-identical across runs apart from
-    "exported". Without -o the document itself is printed (always JSON); with
-    -o a short summary is printed instead. Exit 4 when no desk db exists.
+    "body"}], "meta": [{"key", "value", "kind", "source"}]}]}, sorted by path —
+    byte-identical across runs apart from "exported". Without -o the document
+    itself is printed (always JSON); with -o a short summary is printed
+    instead. Exit 4 when no desk db exists.
     """
     root = _root_of(ctx)
     _require_desk(root)
@@ -114,12 +115,14 @@ def export(ctx: click.Context, out: Path | None, force: bool) -> None:
         "files": len(doc["files"]),
         "tags": sum(len(f["tags"]) for f in doc["files"]),
         "notes": sum(len(f["notes"]) for f in doc["files"]),
+        "meta": sum(len(f["meta"]) for f in doc["files"]),
     }
     emit(
         ctx,
         summary,
         human=lambda d: click.echo(
-            f"wrote {d['out']}: {d['files']} file(s), {d['tags']} tag(s), {d['notes']} note(s)"
+            f"wrote {d['out']}: {d['files']} file(s), {d['tags']} tag(s), {d['notes']} note(s), "
+            f"{d['meta']} field(s)"
         ),
     )
 
@@ -144,11 +147,14 @@ def _load_catalog(file: Path) -> dict[str, Any]:
 
 
 def _human_import(data: dict[str, Any]) -> None:
-    if data["tags_removed"] or data["notes_removed"]:
-        click.echo(f"removed {data['tags_removed']} tag(s) and {data['notes_removed']} note(s)")
+    if data["tags_removed"] or data["notes_removed"] or data["meta_removed"]:
+        click.echo(
+            f"removed {data['tags_removed']} tag(s), {data['notes_removed']} note(s) "
+            f"and {data['meta_removed']} field(s)"
+        )
     click.echo(
-        f"imported {data['tags_added']} tag(s), {data['notes_added']} note(s) "
-        f"across {data['files_touched']} file(s)"
+        f"imported {data['tags_added']} tag(s), {data['notes_added']} note(s), "
+        f"{data['meta_set']} field(s) across {data['files_touched']} file(s)"
     )
     if data["skipped_missing"]:
         click.echo(f"skipped {data['skipped_missing']} entry(ies) whose file is missing", err=True)
@@ -159,7 +165,7 @@ def _human_import(data: dict[str, Any]) -> None:
 @click.option(
     "--replace",
     is_flag=True,
-    help="Delete ALL existing tags and notes first, then import (prints what was removed).",
+    help="Delete ALL existing tags, notes and fields first, then import (prints what was removed).",
 )
 @click.pass_context
 @_handled
@@ -167,11 +173,13 @@ def import_(ctx: click.Context, file: Path, replace: bool) -> None:
     """Merge FILE (a `catalog export` document) into the desk under --root.
 
     Tags already present are kept (INSERT OR IGNORE); notes are deduplicated on
-    (file, created, body), so importing the same document twice adds nothing.
+    (file, created, body); meta fields take the document's value (counted only
+    when it changed), so importing the same document twice adds nothing.
     Entries whose path does not exist under the root are counted in
     skipped_missing and not created. Exit 4 for unreadable/invalid JSON or a
     "schema" newer than this build supports. JSON output: {tags_added,
-    notes_added, files_touched, skipped_missing, tags_removed, notes_removed}.
+    notes_added, meta_set, files_touched, skipped_missing, tags_removed,
+    notes_removed, meta_removed, skipped_outside}.
     """
     root = _root_of(ctx)
     data = _load_catalog(file.resolve())
@@ -229,11 +237,11 @@ def _human_status(data: dict[str, Any]) -> None:
     console = Console()
     console.print(f"[bold]{data['db_path']}[/bold]  (schema {data['schema_version']})")
     table = Table(title="desk catalog")
-    for col in ("files", "docs", "tags", "notes", "changed", "missing", "unindexed"):
+    for col in ("files", "docs", "tags", "notes", "meta", "changed", "missing", "unindexed"):
         table.add_column(col, justify="right")
     c, s = data["counts"], data["stale"]
     table.add_row(
-        *(str(c[k]) for k in ("files", "docs", "tags", "notes")),
+        *(str(c[k]) for k in ("files", "docs", "tags", "notes", "meta")),
         *(str(s[k]) for k in ("changed", "missing", "unindexed")),
     )
     console.print(table)

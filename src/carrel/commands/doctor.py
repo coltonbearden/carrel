@@ -51,6 +51,12 @@ CAPABILITIES: dict[str, dict[str, Any]] = {
     "search": {"required": (), "optional": (), "note": "sqlite FTS5 (stdlib)"},
     "tag": {"required": (), "optional": (), "note": "desk db (stdlib sqlite)"},
     "note": {"required": (), "optional": (), "note": "desk db + pypdf annotations"},
+    "meta": {"required": (), "optional": (), "note": "desk db (stdlib sqlite)"},
+    "refs": {
+        "required": (),
+        "optional": ("pdftotext", "pandoc", "tesseract"),
+        "note": "regex over textextract; pdftotext/pandoc widen the types, tesseract enables --ocr",
+    },
     "thumb": {
         "required": ("pdftoppm",),
         "optional": (),
