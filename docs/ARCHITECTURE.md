@@ -38,7 +38,7 @@ src/carrel/
 ### CLI shape
 
 - Root: `carrel <command> [args]`. Every command: `--help` works, `--json` (where output is data) prints ONE JSON object/array to stdout and nothing else, human mode may use rich.
-- Commands are registered in `cli.py` via a `COMMANDS: dict[str, str]` name→module map with lazy import (startup stays fast; a broken optional import breaks only its command). 32 commands as of v0.4.0.
+- Commands are registered in `cli.py` via a `COMMANDS: dict[str, str]` name→module map with lazy import (startup stays fast; a broken optional import breaks only its command). 33 commands as of v0.4.0.
 - Global `--debug` (tracebacks), `--root PATH` (desk root for db-backed commands; default: cwd).
 - `carrel completion bash|zsh|fish` prints click's completion script in-process (no subprocess); `--install-hint` appends the per-shell enable lines as a comment block; an unknown shell exits 2.
 

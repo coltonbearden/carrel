@@ -25,7 +25,7 @@
 
 </div>
 
-A *carrel* is a private study desk in a library: your materials close at hand, organized your way. **carrel** is that desk for your local files — pdf, docx, odt, epub, rtf, xlsx, md, html, txt, json, xml, csv, and png/jpg/ico images — with 32 commands to convert, OCR, inspect, diff, index, search, pack, watch, and more. And it treats AI agents as first-class users of the desk: every data-producing command speaks `--json` with stable exit codes, `carrel pack` turns file trees into LLM-ready context, and the repo doubles as a [Claude Code plugin marketplace](#the-marketplace) whose plugins drive the same CLI.
+A *carrel* is a private study desk in a library: your materials close at hand, organized your way. **carrel** is that desk for your local files — pdf, docx, odt, epub, rtf, xlsx, md, html, txt, json, xml, csv, and png/jpg/ico images — with 33 commands to convert, OCR, inspect, diff, index, search, pack, watch, file an inbox, and more. And it treats AI agents as first-class users of the desk: every data-producing command speaks `--json` with stable exit codes, `carrel pack` turns file trees into LLM-ready context, and the repo doubles as a [Claude Code plugin marketplace](#the-marketplace) whose plugins drive the same CLI.
 
 ## What can it do
 
@@ -99,10 +99,10 @@ claude plugin install carrel-inspect@carrel
 | `carrel-inspect` | `/inspect`, `/diff`, `/search`, `/pack` + a context-packing skill |
 | `carrel-convert` | `/convert`, `/ocr`, `/thumb`, `/edit`, `/extract-images`, `/audiobook` + a batch doc-converter agent |
 | `carrel-organize` | `/organize`, `/dedupe`, `/tag`, `/note-file`, `/meta`, `/rename`, `/batch` |
-| `carrel-finance` | `/refs`, `/fields` — find and cross-link invoice, PO, IBAN, routing and tracking numbers; extract vendor, dates and totals from invoices, receipts and statements |
+| `carrel-finance` | `/refs`, `/fields` — find and cross-link invoice, PO, IBAN, routing and tracking numbers; extract vendor, dates and totals from invoices, receipts and statements + a bookkeeper agent and an accounting-inbox skill |
 | `carrel-documents` | `/redact`, `/sign`, `/form`, `/proof`, `/color` + a document-clerk agent (redact → verify → sign) and a redaction-and-provenance skill |
 | `carrel-mail` | `/mail` — attachments, mbox split, threads, Outlook .pst via readpst; eml/mbox are desk file types + a mail-archive skill |
-| `carrel-watch` | `/watch-folder` + a watch-automation recipe skill |
+| `carrel-watch` | `/watch-folder`, `/intake` — file an inbox by what the documents say + a watch-automation recipe skill |
 | `carrel-agent` | `/index`, `/doctor`, `/catalog`, `/completion`, a file-librarian agent, the carrel MCP server, and a hook that re-indexes files Claude writes |
 | `carrel-guard` | A `PreToolUse` hook that turns PDFs, Office/ebook files, email and images into text before `Read` sees them, and a `SessionStart` hook that reports what carrel can do here |
 

@@ -435,7 +435,7 @@ Details per shell in [INSTALL.md](INSTALL.md#shell-completions).
 
 ## Where to next
 
-- Full flag-by-flag docs for all 32 commands: [REFERENCE.md](REFERENCE.md) —
+- Full flag-by-flag docs for all 33 commands: [REFERENCE.md](REFERENCE.md) —
   including OCR, dedupe, organize, redact, sign, audiobook, and the MCP server
   (fourteen tools, two resource templates — see [AGENTS.md](AGENTS.md)).
 - Runnable recipes: [COOKBOOK.md](COOKBOOK.md) (`examples/cookbook/` and

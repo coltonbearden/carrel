@@ -1,8 +1,8 @@
 {
   "name": "carrel-watch",
-  "description": "Watch folders and run carrel actions on file events: /watch-folder plus a watch-automation recipe skill.",
+  "description": "Watch folders and file inboxes with the carrel CLI: /watch-folder runs actions on file events (recursive, settle-wait, polling, done/error dirs, service definitions); /intake reads each arriving document, names it, files it by date or fiscal period, indexes it and tags it with its reference numbers. Plus a watch-automation recipe skill.",
   "version": "0.3.2",
   "author": { "name": "Colton Bearden" },
   "license": "MIT",
-  "keywords": ["files", "watch", "automation", "watchdog", "folder-actions"]
+  "keywords": ["files", "watch", "automation", "watchdog", "folder-actions", "intake", "filing"]
 }

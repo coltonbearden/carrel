@@ -47,11 +47,11 @@
     {
       "name": "carrel-finance",
       "source": "./plugins/carrel-finance",
-      "description": "Accounting desk work with the carrel CLI: /refs finds invoice, PO, IBAN, routing, VAT and tracking numbers across files, tags files with them, and shows which documents share a reference; /fields extracts vendor, dates, totals and currency from invoices, receipts and statements.",
+      "description": "Accounting desk work with the carrel CLI: /refs finds invoice, PO, IBAN, routing, VAT and tracking numbers across files, tags files with them, and shows which documents share a reference; /fields extracts vendor, dates, totals and currency from invoices, receipts and statements. Plus a bookkeeper agent and an accounting-inbox skill.",
       "version": "0.3.2",
       "author": { "name": "Colton Bearden" },
       "license": "MIT",
-      "keywords": ["finance", "accounting", "invoices", "references", "iban", "tags"]
+      "keywords": ["finance", "accounting", "invoices", "receipts", "references", "iban", "fields", "tags"]
     },
     {
       "name": "carrel-mail",
@@ -65,11 +65,11 @@
     {
       "name": "carrel-watch",
       "source": "./plugins/carrel-watch",
-      "description": "Watch folders and run carrel actions on file events: /watch-folder plus a watch-automation recipe skill.",
+      "description": "Watch folders and file inboxes with the carrel CLI: /watch-folder runs actions on file events (recursive, settle-wait, polling, done/error dirs, service definitions); /intake reads each arriving document, names it, files it by date or fiscal period, indexes it and tags it with its reference numbers. Plus a watch-automation recipe skill.",
       "version": "0.3.2",
       "author": { "name": "Colton Bearden" },
       "license": "MIT",
-      "keywords": ["files", "watch", "automation", "watchdog", "folder-actions"]
+      "keywords": ["files", "watch", "automation", "watchdog", "folder-actions", "intake", "filing"]
     },
     {
       "name": "carrel-agent",

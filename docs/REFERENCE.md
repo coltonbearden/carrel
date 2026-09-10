@@ -44,6 +44,7 @@ Commands:
   form            Build HTML forms from JSON specs; list and fill PDF AcroForms.
   index           Index PATH...
   inspect         Show metadata for one file.
+  intake          File everything waiting in INBOX into --to, named after what the documents say.
   mail            Attachments, mailbox splitting, threads and Outlook exports for eml/mbox files.
   mcp             Serve the desk as an MCP server on stdio: 14 tools (search, pack, inspect,...
   meta            Typed key/value fields on desk files (.carrel/carrel.db under --root).
@@ -71,7 +72,7 @@ Commands:
 
 ## Commands
 
-32 commands:
+33 commands:
 
 [audiobook](#carrel-audiobook) ·
 [batch](#carrel-batch) ·
@@ -89,6 +90,7 @@ Commands:
 [form](#carrel-form) ·
 [index](#carrel-index) ·
 [inspect](#carrel-inspect) ·
+[intake](#carrel-intake) ·
 [mail](#carrel-mail) ·
 [mcp](#carrel-mcp) ·
 [meta](#carrel-meta) ·
@@ -707,6 +709,52 @@ Options:
   --deep  Add exiftool's full tag table when exiftool is installed; without it the output notes 'not
           installed' (never an error).
   --help  Show this message and exit.
+```
+
+## carrel intake
+
+```text
+Usage: carrel intake [OPTIONS] INBOX
+
+  File everything waiting in INBOX into --to, named after what the documents say.
+
+  Per file: read its fields (vendor, invoice number, dates, totals), find its reference numbers,
+  build a name from the --template, move it into --to/YYYY/MM (or FY<year>/Q<n> with --by period),
+  then re-index it, save the fields as desk metadata and tag it with every reference — all against
+  the desk under the global --root (default: --to).
+
+  Scanned PDFs are OCRed into a searchable copy which becomes the filed document; the untouched
+  original moves to --to/_originals. Nothing is overwritten (colliding names get -1, -2, … suffixes)
+  and nothing is deleted. JSON: [{src, dest, action: plan|filed|skip|error, fields, refs, tags, ocr,
+  reason}].
+
+Options:
+  --to DIRECTORY          Where filed documents land (created if missing).  [required]
+  --apply / --dry-run     Perform the intake. Default is a dry-run that only prints the plan.
+  --watch                 Keep watching INBOX and file what arrives (implies --apply).
+  --once                  With --watch: stop after the first batch.
+  --timeout SECS          With --watch: stop after SECS.  [x>0]
+  --glob PATTERN          Only take files whose name matches (e.g. '*.pdf').
+  --recursive             Take files from subdirectories of INBOX too.
+  --stable SECS           With --watch: wait until a file's size and mtime hold still for SECS.
+                          [default: 2.0; x>0]
+  --template TEXT         Name template (see `carrel rename --help` for the placeholders).
+                          [default: {date}_{vendor}_{ref}{ext}]
+  --by [ym|period|flat]   Folder layout under --to: ym = YYYY/MM, period = FY<year>/Q<n>, flat = no
+                          subfolders.  [default: ym]
+  --fiscal-start MM       With --by period: the month the fiscal year starts in.  [default: 1;
+                          1<=x<=12]
+  --date-order [mdy|dmy]  How to read an ambiguous slashed date in the document.  [default: mdy]
+  --ocr / --no-ocr        Force or forbid OCR of scanned PDFs. Default: OCR them when ocrmypdf is
+                          installed.
+  --refs / --no-refs      Find reference numbers and tag the filed file with them.  [default: refs]
+  --index / --no-index    Re-index the filed file in the desk under --root.  [default: index]
+  --tag TAG               Extra tag for every filed file (repeatable).
+  --fallback TEXT         Use TEXT for a name placeholder that has no value instead of skipping the
+                          file.
+  --fail-empty            Exit 5 when there was nothing to file.
+  --json                  Machine-readable JSON output.
+  --help                  Show this message and exit.
 ```
 
 ## carrel mail

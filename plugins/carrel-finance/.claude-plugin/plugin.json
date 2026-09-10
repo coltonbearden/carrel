@@ -1,8 +1,8 @@
 {
   "name": "carrel-finance",
-  "description": "Accounting desk work with the carrel CLI: /refs finds invoice, PO, IBAN, routing, VAT and tracking numbers across files, tags files with them, and shows which documents share a reference; /fields extracts vendor, dates, totals and currency from invoices, receipts and statements.",
+  "description": "Accounting desk work with the carrel CLI: /refs finds invoice, PO, IBAN, routing, VAT and tracking numbers across files, tags files with them, and shows which documents share a reference; /fields extracts vendor, dates, totals and currency from invoices, receipts and statements. Plus a bookkeeper agent and an accounting-inbox skill.",
   "version": "0.3.2",
   "author": { "name": "Colton Bearden" },
   "license": "MIT",
-  "keywords": ["finance", "accounting", "invoices", "references", "iban", "tags"]
+  "keywords": ["finance", "accounting", "invoices", "receipts", "references", "iban", "fields", "tags"]
 }

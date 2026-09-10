@@ -29,6 +29,7 @@ COMMANDS: dict[str, str] = {
     "fields": "fields",
     "rename": "rename",
     "batch": "batch",
+    "intake": "intake",
     "catalog": "catalog",
     "thumb": "thumb",
     "extract-images": "extract_images",

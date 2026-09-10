@@ -55,7 +55,7 @@ EXPECTED_PLUGINS: dict[str, set[str]] = {
     "carrel-finance": {"refs.md", "fields.md"},
     "carrel-mail": {"mail.md"},
     "carrel-documents": {"redact.md", "sign.md", "form.md", "proof.md", "color.md"},
-    "carrel-watch": {"watch-folder.md"},
+    "carrel-watch": {"watch-folder.md", "intake.md"},
     "carrel-agent": {"index.md", "doctor.md", "catalog.md", "completion.md"},
     "carrel-guard": set(),
 }
@@ -410,6 +410,8 @@ def test_expected_agents_and_skills_exist():
     assert (PLUGINS_DIR / "carrel-watch" / "skills" / "watch-automation" / "SKILL.md").is_file()
     assert (PLUGINS_DIR / "carrel-agent" / "skills" / "agent-workflows" / "SKILL.md").is_file()
     assert (PLUGINS_DIR / "carrel-mail" / "skills" / "mail-archive" / "SKILL.md").is_file()
+    assert (PLUGINS_DIR / "carrel-finance" / "agents" / "bookkeeper.md").is_file()
+    assert (PLUGINS_DIR / "carrel-finance" / "skills" / "accounting-inbox" / "SKILL.md").is_file()
     assert (
         PLUGINS_DIR / "carrel-documents" / "skills" / "redaction-and-provenance" / "SKILL.md"
     ).is_file()
