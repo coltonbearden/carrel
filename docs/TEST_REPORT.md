@@ -179,7 +179,7 @@ $ echo x >> reference/exit-codes.md && rm notes/topics.csv && carrel --json inde
 Live stdio round trip (`initialize → notifications/initialized → tools/list → resources/templates/list → resources/read`), one JSON object per stdout line, exit 0:
 
 - `initialize` → `capabilities: {"tools": {}, "resources": {}}`, `serverInfo: {"name": "carrel", "version": "0.1.2"}`.
-- `tools/list` → exactly 10 tools: `carrel_search`, `carrel_pack`, `carrel_inspect`, `carrel_tag`, `carrel_note`, `carrel_index`, `carrel_convert`, `carrel_diff`, `carrel_redact`, `carrel_doctor` (arguments in [AGENTS.md](AGENTS.md#the-mcp-server-ten-tools-two-resources)).
+- `tools/list` → exactly 10 tools: `carrel_search`, `carrel_pack`, `carrel_inspect`, `carrel_tag`, `carrel_note`, `carrel_index`, `carrel_convert`, `carrel_diff`, `carrel_redact`, `carrel_doctor` (arguments in [AGENTS.md](AGENTS.md#the-mcp-server-tools-and-resources)).
 - `resources/templates/list` → `carrel://file/{path}` (`text/plain`) and `carrel://search/{query}` (`application/json`).
 - `resources/read carrel://file/tests/fixtures/sample.txt` → the fixture text (`Carrel sample text fixture. …`).
 

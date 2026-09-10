@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+- **Added:** `carrel meta` — typed key/value fields on desk files (`set/get/ls/rm/find/export`),
+  stored in the new schema-v2 `meta` table. Kinds (str/num/date/bool) are inferred and values
+  stored canonically, so `meta find total>1000` compares numerically and `due<2026-11-01`
+  chronologically; `meta export` writes the desk as a CSV/JSON table; `search --meta COND`
+  filters hits; `catalog export/import` carry fields with tags and notes (schema 2; schema-1
+  documents still import). Existing desks migrate on open (D-009).
+- **Added:** `carrel refs` — find reference numbers in any supported file: label-driven
+  invoice/PO/order/check/account/tracking/ticket kinds and check-digit-verified IBAN, ABA
+  routing, EIN, VAT, ISBN, GTIN, DOI, UPS and USPS identifiers, with page numbers for PDFs.
+  `--tag` writes `ref:<kind>:<value>` tags so `tag find` / `search --tag` link the documents
+  that share a reference; `--link` prints that grouping; `--pattern NAME=REGEX` adds house
+  formats. The kinds live in the new `core/patterns.py`.
+- **Changed:** `redact --builtin` accepts every kind of the shared registry (`iban`, `routing`,
+  `invoice`, …); label-driven kinds replace only the value, so `Invoice # ████` keeps its label.
+- **Added (MCP):** `carrel_meta` and `carrel_refs` tools (12 tools); `carrel_search` takes `meta`.
+- **Added (marketplace):** `carrel-finance` plugin (`/refs`); `/meta` in `carrel-organize`.
+
 ## v0.3.2 — 2026-09-10
 
 - **Fixed (Windows):** `carrel watch --action-timeout` crashed with `module 'os' has no

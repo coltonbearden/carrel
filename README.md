@@ -25,7 +25,7 @@
 
 </div>
 
-A *carrel* is a private study desk in a library: your materials close at hand, organized your way. **carrel** is that desk for your local files — pdf, docx, odt, epub, rtf, xlsx, md, html, txt, json, xml, csv, and png/jpg/ico images — with 26 commands to convert, OCR, inspect, diff, index, search, pack, watch, and more. And it treats AI agents as first-class users of the desk: every data-producing command speaks `--json` with stable exit codes, `carrel pack` turns file trees into LLM-ready context, and the repo doubles as a [Claude Code plugin marketplace](#the-marketplace) whose plugins drive the same CLI.
+A *carrel* is a private study desk in a library: your materials close at hand, organized your way. **carrel** is that desk for your local files — pdf, docx, odt, epub, rtf, xlsx, md, html, txt, json, xml, csv, and png/jpg/ico images — with 28 commands to convert, OCR, inspect, diff, index, search, pack, watch, and more. And it treats AI agents as first-class users of the desk: every data-producing command speaks `--json` with stable exit codes, `carrel pack` turns file trees into LLM-ready context, and the repo doubles as a [Claude Code plugin marketplace](#the-marketplace) whose plugins drive the same CLI.
 
 ## What can it do
 
@@ -47,7 +47,7 @@ A *carrel* is a private study desk in a library: your materials close at hand, o
 | | `carrel note` | Sidecar notes on any file; real text annotations on PDFs |
 | | `carrel catalog` | Export/import tags + notes as JSON (move a desk, commit it next to a repo); `status` shows schema version and stale index rows |
 | **Agents & context** | `carrel pack` | Bundle files/trees into one LLM-ready document — md/xml/json; `--query` packs what the desk index ranks relevant, `--since REF`/`--changed` packs what git touched; include/exclude globs, `.gitignore`-aware (with `!` negation), chunking, `--dedupe-content`, `--outline`, token estimates or exact counts (`--tokenizer exact`) |
-| | `carrel mcp` | Serve the whole desk over MCP on stdio: 10 tools (search, pack, inspect, tag, note, index, convert, diff, redact, doctor) plus `carrel://file/{path}` and `carrel://search/{query}` resources |
+| | `carrel mcp` | Serve the whole desk over MCP on stdio: 12 tools (search, pack, inspect, tag, note, index, convert, diff, redact, doctor, meta, refs) plus `carrel://file/{path}` and `carrel://search/{query}` resources |
 | **Housekeeping** | `carrel organize` | Sort a folder by type/date/EXIF date — dry-run by default |
 | | `carrel dedupe` | Exact (BLAKE2) and near (perceptual hash) duplicate detection |
 | | `carrel watch` | Watch a folder and run shell actions on file events |
@@ -98,7 +98,8 @@ claude plugin install carrel-inspect@carrel
 |---|---|
 | `carrel-inspect` | `/inspect`, `/diff`, `/search`, `/pack` + a context-packing skill |
 | `carrel-convert` | `/convert`, `/ocr`, `/thumb`, `/edit`, `/extract-images`, `/audiobook` + a batch doc-converter agent |
-| `carrel-organize` | `/organize`, `/dedupe`, `/tag`, `/note-file` |
+| `carrel-organize` | `/organize`, `/dedupe`, `/tag`, `/note-file`, `/meta` |
+| `carrel-finance` | `/refs` — find invoice, PO, IBAN, routing, VAT and tracking numbers, tag files with them, link the documents that share one |
 | `carrel-documents` | `/redact`, `/sign`, `/form`, `/proof`, `/color` + a document-clerk agent (redact → verify → sign) and a redaction-and-provenance skill |
 | `carrel-watch` | `/watch-folder` + a watch-automation recipe skill |
 | `carrel-agent` | `/index`, `/doctor`, `/catalog`, `/completion`, a file-librarian agent, the carrel MCP server, and a hook that re-indexes files Claude writes |

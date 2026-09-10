@@ -29,7 +29,7 @@ Options:
 
 Commands:
   audiobook       Narrate SRC (txt, md, pdf) into an audiobook.
-  catalog         Export, import and check the desk catalog (tags + notes in .carrel/carrel.db).
+  catalog         Export, import and check the desk catalog (tags, notes, meta in...
   color           Color tools: dominant palette, ICC profile conversion, WCAG contrast.
   completion      Print a completion script for SHELL (bash, zsh, or fish).
   convert         Convert SRC...
@@ -42,13 +42,15 @@ Commands:
   form            Build HTML forms from JSON specs; list and fill PDF AcroForms.
   index           Index PATH...
   inspect         Show metadata for one file.
-  mcp             Serve the desk as an MCP server on stdio: 10 tools (search, pack, inspect,...
+  mcp             Serve the desk as an MCP server on stdio: 12 tools (search, pack, inspect,...
+  meta            Typed key/value fields on desk files (.carrel/carrel.db under --root).
   note            Attach notes to files (desk db) and annotations to PDFs (pypdf).
   ocr             OCR an image or PDF into text (txt/md) or a searchable PDF.
   organize        Plan (default) or perform (--apply) sorting DIRECTORY's files.
   pack            Bundle PATH...
   proof           Soft-proof SRC against an ICC PROFILE (simulate print/display output).
   redact          Redact sensitive strings from a text file or PDF.
+  refs            Find reference numbers (invoice, PO, IBAN, routing, tracking, …) in PATH...
   search          Full-text search the desk index for QUERY (FTS5 syntax, bm25-ranked).
   sign            Sign things: stamp PDFs, hash manifests, verify both.
   tag             Tag files in the desk db (.carrel/carrel.db under --root).
@@ -65,7 +67,7 @@ Commands:
 
 ## Commands
 
-26 commands:
+28 commands:
 
 [audiobook](#carrel-audiobook) ·
 [catalog](#carrel-catalog) ·
@@ -82,12 +84,14 @@ Commands:
 [index](#carrel-index) ·
 [inspect](#carrel-inspect) ·
 [mcp](#carrel-mcp) ·
+[meta](#carrel-meta) ·
 [note](#carrel-note) ·
 [ocr](#carrel-ocr) ·
 [organize](#carrel-organize) ·
 [pack](#carrel-pack) ·
 [proof](#carrel-proof) ·
 [redact](#carrel-redact) ·
+[refs](#carrel-refs) ·
 [search](#carrel-search) ·
 [sign](#carrel-sign) ·
 [tag](#carrel-tag) ·
@@ -125,14 +129,14 @@ Options:
 ```text
 Usage: carrel catalog [OPTIONS] COMMAND [ARGS]...
 
-  Export, import and check the desk catalog (tags + notes in .carrel/carrel.db).
+  Export, import and check the desk catalog (tags, notes, meta in .carrel/carrel.db).
 
 Options:
   --json  Machine-readable JSON output.
   --help  Show this message and exit.
 
 Commands:
-  export  Export every tagged or annotated file's tags and notes as JSON.
+  export  Export every file's tags, notes and meta fields as JSON (files with at least one).
   import  Merge FILE (a `catalog export` document) into the desk under --root.
   status  Report the desk db: schema version, row counts, and stale index entries.
 ```
@@ -142,12 +146,13 @@ Commands:
 ```text
 Usage: carrel catalog export [OPTIONS]
 
-  Export every tagged or annotated file's tags and notes as JSON.
+  Export every file's tags, notes and meta fields as JSON (files with at least one).
 
   Document: {"schema", "product", "version", "exported", "root", "files": [{"path": <root-relative>,
-  "tags": [...sorted], "notes": [{"created", "body"}]}]}, sorted by path — byte-identical across
-  runs apart from "exported". Without -o the document itself is printed (always JSON); with -o a
-  short summary is printed instead. Exit 4 when no desk db exists.
+  "tags": [...sorted], "notes": [{"created", "body"}], "meta": [{"key", "value", "kind",
+  "source"}]}]}, sorted by path — byte-identical across runs apart from "exported". Without -o the
+  document itself is printed (always JSON); with -o a short summary is printed instead. Exit 4 when
+  no desk db exists.
 
 Options:
   -o, --out FILE  Write the catalog to FILE instead of stdout (refuses to overwrite without
@@ -164,14 +169,16 @@ Usage: carrel catalog import [OPTIONS] FILE
 
   Merge FILE (a `catalog export` document) into the desk under --root.
 
-  Tags already present are kept (INSERT OR IGNORE); notes are deduplicated on (file, created, body),
-  so importing the same document twice adds nothing. Entries whose path does not exist under the
-  root are counted in skipped_missing and not created. Exit 4 for unreadable/invalid JSON or a
-  "schema" newer than this build supports. JSON output: {tags_added, notes_added, files_touched,
-  skipped_missing, tags_removed, notes_removed}.
+  Tags already present are kept (INSERT OR IGNORE); notes are deduplicated on (file, created, body);
+  meta fields take the document's value (counted only when it changed), so importing the same
+  document twice adds nothing. Entries whose path does not exist under the root are counted in
+  skipped_missing and not created. Exit 4 for unreadable/invalid JSON or a "schema" newer than this
+  build supports. JSON output: {tags_added, notes_added, meta_set, files_touched, skipped_missing,
+  tags_removed, notes_removed, meta_removed, skipped_outside}.
 
 Options:
-  --replace  Delete ALL existing tags and notes first, then import (prints what was removed).
+  --replace  Delete ALL existing tags, notes and fields first, then import (prints what was
+             removed).
   --json     Machine-readable JSON output.
   --help     Show this message and exit.
 ```
@@ -632,12 +639,122 @@ Options:
 ```text
 Usage: carrel mcp [OPTIONS]
 
-  Serve the desk as an MCP server on stdio: 10 tools (search, pack, inspect, tag, note, index,
-  convert, diff, redact, doctor) and carrel:// file/search resources.
+  Serve the desk as an MCP server on stdio: 12 tools (search, pack, inspect, tag, note, index,
+  convert, diff, redact, doctor, meta, refs) and carrel:// file/search resources.
 
 Options:
   --json  Machine-readable JSON output.
   --help  Show this message and exit.
+```
+
+## carrel meta
+
+```text
+Usage: carrel meta [OPTIONS] COMMAND [ARGS]...
+
+  Typed key/value fields on desk files (.carrel/carrel.db under --root).
+
+Options:
+  --json  Machine-readable JSON output.
+  --help  Show this message and exit.
+
+Commands:
+  export  Export every file's fields as a table: one row per file, one column per key.
+  find    List files whose fields satisfy every CONDITION (paths relative to the desk root).
+  get     Print one field of PATH (its value alone in human mode; null when absent).
+  ls      List PATH's fields with kind/source, or (without PATH) every key with its file count.
+  rm      Remove KEY...
+  set     Set KEY=VALUE...
+```
+
+### carrel meta export
+
+```text
+Usage: carrel meta export [OPTIONS]
+
+  Export every file's fields as a table: one row per file, one column per key.
+
+  Without -o the table goes to stdout as CSV (or as JSON rows with --json); with -o a summary is
+  printed instead. Rows are sorted by path, columns by key (or as given with --key); a missing field
+  is empty. Exit 4 when no desk db exists under --root.
+
+Options:
+  --key KEY       Only these columns, in this order (repeatable).
+  -o, --out FILE  Write to FILE (.json → JSON rows, anything else → CSV) instead of stdout.
+  --force         Overwrite an existing --out file.
+  --json          Machine-readable JSON output.
+  --help          Show this message and exit.
+```
+
+### carrel meta find
+
+```text
+Usage: carrel meta find [OPTIONS] CONDITION...
+
+  List files whose fields satisfy every CONDITION (paths relative to the desk root).
+
+  A condition is KEY OP VALUE with OP one of = != > >= < <= ~ (contains), or KEY? (has the field):
+  `vendor=acme`, `total>1000`, `due<2026-11` (ISO dates compare chronologically, so a year-month
+  prefix works), `invoice_no~2026`, `paid?`. Numbers compare numerically, text case-insensitively.
+  JSON: [{path, meta: {key: value}}].
+
+Options:
+  --json  Machine-readable JSON output.
+  --help  Show this message and exit.
+```
+
+### carrel meta get
+
+```text
+Usage: carrel meta get [OPTIONS] PATH KEY
+
+  Print one field of PATH (its value alone in human mode; null when absent).
+
+Options:
+  --fail-empty  Exit 5 when PATH has no such field.
+  --json        Machine-readable JSON output.
+  --help        Show this message and exit.
+```
+
+### carrel meta ls
+
+```text
+Usage: carrel meta ls [OPTIONS] [PATH]
+
+  List PATH's fields with kind/source, or (without PATH) every key with its file count.
+
+Options:
+  --json  Machine-readable JSON output.
+  --help  Show this message and exit.
+```
+
+### carrel meta rm
+
+```text
+Usage: carrel meta rm [OPTIONS] PATH KEYS...
+
+  Remove KEY... from PATH (unknown keys/files are a quiet no-op).
+
+Options:
+  --json  Machine-readable JSON output.
+  --help  Show this message and exit.
+```
+
+### carrel meta set
+
+```text
+Usage: carrel meta set [OPTIONS] PATH KEY=VALUE...
+
+  Set KEY=VALUE... on PATH (registers the file in the desk db if needed).
+
+Options:
+  --kind [str|num|date|bool]  Force the kind of every field in this call (default: inferred —
+                              true/false → bool, 1234.5 → num, an ISO YYYY-MM-DD date → date, else
+                              str).
+  --source TEXT               Who is writing the field (automation names itself, e.g. fields,
+                              intake).  [default: user]
+  --json                      Machine-readable JSON output.
+  --help                      Show this message and exit.
 ```
 
 ## carrel note
@@ -854,13 +971,45 @@ Usage: carrel redact [OPTIONS] SRC
 
 Options:
   --pattern REGEX     Custom regex to redact (repeatable).
-  --builtin LIST      Comma-separated builtins: email, phone, ssn, ipv4, cc.
+  --builtin LIST      Comma-separated builtins: email, phone, ssn, ipv4, cc, invoice, po, order,
+                      check, account, tracking, ticket, iban, routing, ein, vat, isbn, gtin, doi,
+                      ups, usps (label-driven kinds like invoice keep the label and replace the
+                      value).
   --replacement TEXT  Replacement text for matches (text files only).  [default: █]
   -o, --out PATH      Output file. Default: SRC.redacted.<ext>.
   --fail-empty        Exit 5 when nothing matched.
   --force             Allow overwriting an existing output file.
   --json              Machine-readable JSON output.
   --help              Show this message and exit.
+```
+
+## carrel refs
+
+```text
+Usage: carrel refs [OPTIONS] PATHS...
+
+  Find reference numbers (invoice, PO, IBAN, routing, tracking, …) in PATH...
+
+  Directories are walked like `index` (hidden and .gitignored entries skipped; images only with
+  --ocr). Every supported file type works; the text comes from the same spine `pack` and `index`
+  use. Values with a check digit (iban, routing, isbn, gtin, cc) are reported only when it verifies.
+  JSON output is a list of {path, refs: [{kind, value, count, valid, pages, lines}]} — or, with
+  --link, [{kind, value, files, count}]. Kinds are shared with `redact --builtin`.
+
+Options:
+  --kind K1,K2          Only these kinds, comma-separated. Default: every reference and identifier
+                        kind (invoice, po, order, check, account, tracking, ticket, iban, routing,
+                        ein, vat, isbn, gtin, doi, ups, usps); PII kinds (email, phone, ssn, ipv4,
+                        cc) only when named.
+  --pattern NAME=REGEX  Extra kind to look for (repeatable). A (?P<v1>…) group is the value;
+                        otherwise the whole match is.
+  --tag                 Tag each file in the desk db under --root with ref:<kind>:<value>.
+  --link                Group by reference instead of by file: which files share each value.
+  --all                 With --link, also list values seen once.
+  --ocr                 OCR images and scanned PDFs (needs tesseract / ocrmypdf).
+  --fail-empty          Exit 5 when no reference was found.
+  --json                Machine-readable JSON output.
+  --help                Show this message and exit.
 ```
 
 ## carrel search
@@ -875,12 +1024,14 @@ Usage: carrel search [OPTIONS] QUERY
   build the index under --root.
 
 Options:
-  --limit INTEGER  Maximum number of hits.  [default: 20]
-  --type T1,T2     Only these file types, comma-separated (e.g. pdf,md).
-  --tag TAG        Only files carrying TAG (repeatable — every TAG must match).
-  --fail-empty     Exit 5 when there are no hits.
-  --json           Machine-readable JSON output.
-  --help           Show this message and exit.
+  --limit INTEGER   Maximum number of hits.  [default: 20]
+  --type T1,T2      Only these file types, comma-separated (e.g. pdf,md).
+  --tag TAG         Only files carrying TAG (repeatable — every TAG must match).
+  --meta CONDITION  Only files whose fields satisfy CONDITION, e.g. vendor=acme, total>1000,
+                    due<2026-11, paid? (repeatable — every one must hold; see `meta find`).
+  --fail-empty      Exit 5 when there are no hits.
+  --json            Machine-readable JSON output.
+  --help            Show this message and exit.
 ```
 
 ## carrel sign

@@ -1,8 +1,8 @@
 {
   "name": "carrel-organize",
-  "description": "Organize, dedupe, tag, and annotate local files with the carrel CLI: /organize, /dedupe, /tag, /note-file.",
+  "description": "Organize, dedupe, tag, annotate, and record typed fields on local files with the carrel CLI: /organize, /dedupe, /tag, /note-file, /meta.",
   "version": "0.3.2",
   "author": { "name": "Colton Bearden" },
   "license": "MIT",
-  "keywords": ["files", "organize", "dedupe", "tags", "notes"]
+  "keywords": ["files", "organize", "dedupe", "tags", "notes", "metadata"]
 }

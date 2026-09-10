@@ -29,11 +29,11 @@
     {
       "name": "carrel-organize",
       "source": "./plugins/carrel-organize",
-      "description": "Organize, dedupe, tag, and annotate local files with the carrel CLI: /organize, /dedupe, /tag, /note-file.",
+      "description": "Organize, dedupe, tag, annotate, and record typed fields on local files with the carrel CLI: /organize, /dedupe, /tag, /note-file, /meta.",
       "version": "0.3.2",
       "author": { "name": "Colton Bearden" },
       "license": "MIT",
-      "keywords": ["files", "organize", "dedupe", "tags", "notes"]
+      "keywords": ["files", "organize", "dedupe", "tags", "notes", "metadata"]
     },
     {
       "name": "carrel-documents",
@@ -43,6 +43,15 @@
       "author": { "name": "Colton Bearden" },
       "license": "MIT",
       "keywords": ["documents", "redact", "pii", "sign", "manifest", "forms", "acroform", "icc", "color", "wcag"]
+    },
+    {
+      "name": "carrel-finance",
+      "source": "./plugins/carrel-finance",
+      "description": "Accounting desk work with the carrel CLI: /refs finds invoice, PO, IBAN, routing, VAT and tracking numbers across files, tags files with them, and shows which documents share a reference.",
+      "version": "0.3.2",
+      "author": { "name": "Colton Bearden" },
+      "license": "MIT",
+      "keywords": ["finance", "accounting", "invoices", "references", "iban", "tags"]
     },
     {
       "name": "carrel-watch",
@@ -56,7 +65,7 @@
     {
       "name": "carrel-agent",
       "source": "./plugins/carrel-agent",
-      "description": "Agentic file librarian for carrel desks: /index, /doctor, /catalog, /completion, a file-librarian agent, an agent-workflows skill, the carrel MCP server (10 tools + carrel:// resources), and a PostToolUse hook that re-indexes files Claude writes.",
+      "description": "Agentic file librarian for carrel desks: /index, /doctor, /catalog, /completion, a file-librarian agent, an agent-workflows skill, the carrel MCP server (12 tools + carrel:// resources), and a PostToolUse hook that re-indexes files Claude writes.",
       "version": "0.3.2",
       "author": { "name": "Colton Bearden" },
       "license": "MIT",

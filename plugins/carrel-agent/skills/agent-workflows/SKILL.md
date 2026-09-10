@@ -1,6 +1,6 @@
 ---
 name: agent-workflows
-description: Looping and pipeline patterns that combine carrel with Claude Code — watch + claude -p pipelines, index-then-ask loops, MCP-backed desk queries (10 tools, carrel:// resources). Use when the user wants recurring or automated agentic processing of local files rather than a one-off command.
+description: Looping and pipeline patterns that combine carrel with Claude Code — watch + claude -p pipelines, index-then-ask loops, MCP-backed desk queries (12 tools, carrel:// resources). Use when the user wants recurring or automated agentic processing of local files rather than a one-off command.
 ---
 
 # Agent workflows with carrel
@@ -28,13 +28,13 @@ carrel --json --root ~/papers search 'transformer AND survey'
 carrel --root ~/papers pack ~/papers --query 'transformer AND survey' --top 10 -o ctx.md
 ```
 
-Feed the hit paths to Claude (or the `file-librarian` agent in this plugin) rather than packing the whole corpus — search first, read the top hits, cite paths. `pack --query` is the one-step version. `carrel catalog status` tells you when the index is stale; `carrel catalog export` backs up tags and notes.
+Feed the hit paths to Claude (or the `file-librarian` agent in this plugin) rather than packing the whole corpus — search first, read the top hits, cite paths. `pack --query` is the one-step version. Narrow a search with the desk's own facts: `--tag ref:invoice:inv-2026-0042` (written by `carrel refs --tag`) or `--meta 'total>1000'` (fields from `carrel meta set`). `carrel catalog status` tells you when the index is stale; `carrel catalog export` backs up tags and notes.
 
 ## Pattern: desk over MCP
 
 This plugin ships a `carrel` MCP server (`carrel mcp`, stdio, pure stdlib) via `.mcp.json`. When it is connected, prefer its structured tools over shelling out for the same operations. The server works on the desk under the session's working directory (the `root` argument overrides); run `carrel index` there first for search-backed tools.
 
-Tools (10):
+Tools (12):
 
 | Tool | Does |
 |---|---|
@@ -48,6 +48,8 @@ Tools (10):
 | `carrel_diff` | Compare two files (text / struct / pdf / image modes) |
 | `carrel_redact` | Redact builtin or custom patterns from a text file or PDF |
 | `carrel_doctor` | Environment capability report |
+| `carrel_meta` | Set / get / list / remove typed fields on a desk file, or find files by conditions (`total>1000`, `due<2026-11-01`, `paid?`) |
+| `carrel_refs` | Find reference numbers (invoice, PO, IBAN, routing, tracking, …) in a file or directory; `tag` writes `ref:<kind>:<value>` tags, `link` groups files by shared value |
 
 Resource templates (2), for `resources/read`:
 

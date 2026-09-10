@@ -95,11 +95,11 @@ def snapshot(root: Path) -> dict[str, object]:
 # ------------------------------------------------------------- migrations
 
 
-def test_fresh_db_is_schema_version_1(tmp_path: Path):
+def test_fresh_db_is_current_schema_version(tmp_path: Path):
     with DeskDB(tmp_path) as db:
-        assert db.schema_version() == 1 == SCHEMA_VERSION
+        assert db.schema_version() == 2 == SCHEMA_VERSION
     raw = sqlite3.connect(tmp_path / ".carrel" / "carrel.db")
-    assert raw.execute("PRAGMA user_version").fetchone()[0] == 1
+    assert raw.execute("PRAGMA user_version").fetchone()[0] == 2
     raw.close()
 
 
@@ -110,7 +110,7 @@ def test_migrations_are_ordered_and_v1_is_the_schema():
     assert versions[-1] == SCHEMA_VERSION
 
 
-def test_v012_database_is_stamped_1_with_data_intact(desk: Path):
+def test_v012_database_is_migrated_with_data_intact(desk: Path):
     carrel_dir = desk / ".carrel"
     carrel_dir.mkdir()
     raw = sqlite3.connect(carrel_dir / "carrel.db")
@@ -126,8 +126,8 @@ def test_v012_database_is_stamped_1_with_data_intact(desk: Path):
     raw.close()
 
     with DeskDB(desk) as db:
-        assert db.schema_version() == 1
-        assert db.counts() == {"files": 1, "docs": 1, "tags": 1, "notes": 1}
+        assert db.schema_version() == SCHEMA_VERSION  # 0 → stamped 1 → migrated to 2
+        assert db.counts() == {"files": 1, "docs": 1, "tags": 1, "notes": 1, "meta": 0}
         assert db.tags_of(desk / "sample.txt") == ["legacy"]
         assert [n["body"] for n in db.notes_of(desk / "sample.txt")] == ["old note"]
         assert [r["path"] for r in db.fts_search("quixotic")] == ["sample.txt"]
@@ -183,7 +183,7 @@ def test_migration_applies_a_new_step_once(desk: Path, monkeypatch):
 def test_counts_and_stale(desk: Path):
     run_json("--root", str(desk), "index")
     with DeskDB(desk) as db:
-        assert db.counts() == {"files": 2, "docs": 2, "tags": 0, "notes": 0}
+        assert db.counts() == {"files": 2, "docs": 2, "tags": 0, "notes": 0, "meta": 0}
         assert db.stale() == {"changed": [], "missing": []}
     txt = desk / "sample.txt"
     txt.write_text(txt.read_text() + "\nmore\n")
@@ -239,7 +239,7 @@ def test_export_stdout_shape_and_determinism(catalogued: Path):
     b = run("--root", str(catalogued), "--json", "catalog", "export").output
     da, dbb = json.loads(a), json.loads(b)
     assert list(da) == ["schema", "product", "version", "exported", "root", "files"]
-    assert da["schema"] == 1 and da["product"] == "carrel"
+    assert da["schema"] == SCHEMA_VERSION and da["product"] == "carrel"
     from carrel._product import PRODUCT
 
     assert da["version"] == PRODUCT["version"]
@@ -252,13 +252,14 @@ def test_export_stdout_shape_and_determinism(catalogued: Path):
         "notes": [
             {"created": pytest.approx(da["files"][1]["notes"][0]["created"]), "body": "first note"}
         ],
+        "meta": [],
     }
 
 
 def test_export_to_file_refuses_overwrite_without_force(catalogued: Path, tmp_path: Path):
     out = tmp_path / "exports" / "desk.json"
     summary = run_json("--root", str(catalogued), "catalog", "export", "-o", str(out))
-    assert summary == {"out": str(out), "files": 2, "tags": 3, "notes": 2}
+    assert summary == {"out": str(out), "files": 2, "tags": 3, "notes": 2, "meta": 0}
     doc = json.loads(out.read_text())
     assert len(doc["files"]) == 2
     result = run("--root", str(catalogued), "catalog", "export", "-o", str(out), expect=1)
@@ -291,10 +292,12 @@ def test_round_trip_export_wipe_index_import(catalogued: Path, tmp_path: Path):
     assert first == {
         "tags_added": 3,
         "notes_added": 2,
+        "meta_set": 0,
         "files_touched": 2,
         "skipped_missing": 0,
         "tags_removed": 0,
         "notes_removed": 0,
+        "meta_removed": 0,
         "skipped_outside": 0,
     }
     assert snapshot(catalogued) == before
@@ -318,7 +321,7 @@ def test_import_replace_restores_exactly_the_exported_set(catalogued: Path, tmp_
     assert "extra" in snapshot(catalogued)["tags:sample.txt"]["tags"]  # merge keeps extras
 
     result = run("--root", str(catalogued), "catalog", "import", str(out), "--replace")
-    assert "removed 4 tag(s) and 3 note(s)" in result.output
+    assert "removed 4 tag(s), 3 note(s) and 0 field(s)" in result.output
     assert snapshot(catalogued) == before
     replaced = run_json("--root", str(catalogued), "catalog", "import", str(out), "--replace")
     assert replaced["tags_removed"] == 3 and replaced["notes_removed"] == 2
@@ -379,9 +382,9 @@ def test_import_unreadable_file_exits_4(desk: Path, tmp_path: Path):
 
 def test_status_reports_changed_and_missing(catalogued: Path):
     clean = run_json("--root", str(catalogued), "catalog", "status")
-    assert clean["schema_version"] == 1
+    assert clean["schema_version"] == SCHEMA_VERSION
     assert clean["db_path"] == str(catalogued / ".carrel" / "carrel.db")
-    assert clean["counts"] == {"files": 2, "docs": 2, "tags": 3, "notes": 2}
+    assert clean["counts"] == {"files": 2, "docs": 2, "tags": 3, "notes": 2, "meta": 0}
     assert clean["stale"] == {"changed": 0, "missing": 0, "unindexed": 0}
     human = run("--root", str(catalogued), "catalog", "status")
     assert "hint" not in human.output

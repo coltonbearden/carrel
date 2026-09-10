@@ -99,7 +99,7 @@ so loops can run unconditionally; `carrel dedupe` cannot delete anything without
 `--delete <policy>` and `--apply`, so keep automation on the report side; bound every
 unattended loop with `--timeout`.
 
-### The MCP server: ten tools, two resources
+### The MCP server: tools and resources
 
 With the carrel-agent plugin enabled (`.mcp.json` → `carrel mcp`), the whole desk is
 available as structured tools, so Claude does not need Bash for any of it. The list
@@ -108,7 +108,7 @@ stdio; `initialize` advertises `capabilities: {"tools": {}, "resources": {}}`):
 
 | Tool | Purpose | Arguments (required in bold) |
 |---|---|---|
-| `carrel_search` | Full-text search of the desk index under a root; needs a prior `carrel index` | **`query`**, `root`, `limit`, `types`, `tags` |
+| `carrel_search` | Full-text search of the desk index under a root; needs a prior `carrel index` | **`query`**, `root`, `limit`, `types`, `tags`, `meta` |
 | `carrel_pack` | Pack a file or directory into LLM-ready context (tree + extracted text of text, pdf, office and ebook files); `query` ranks through the index | **`path`**, `max_bytes`, `tree_only`, `format`, `include`, `exclude`, `root`, `query`, `top` |
 | `carrel_inspect` | Metadata for one file: type, size, mtime, sha256, mime, per-type detail | **`path`**, `deep`, `root` |
 | `carrel_tag` | Add/remove/list tags on a file, or find files by tags | **`action`** (`add`/`rm`/`ls`/`find`), `path`, `tags`, `root` |
@@ -118,6 +118,8 @@ stdio; `initialize` advertises `capabilities: {"tools": {}, "resources": {}}`):
 | `carrel_diff` | Compare two files (text / struct / pdf / image); `differ` is data, never an error | **`a`**, **`b`**, `mode`, `root` |
 | `carrel_redact` | Redact patterns from a text file's contents and return the result; never writes; PDFs must go through the CLI | **`path`**, `builtin`, `pattern`, `replacement`, `root` |
 | `carrel_doctor` | Environment report: tools found, per-command status, capability table | — |
+| `carrel_meta` | Typed fields on desk files: set/get/ls/rm on a file, or find files by conditions (`total>1000`, `due<2026-11-01`, `paid?`) | **`action`** (`set`/`get`/`ls`/`rm`/`find`), `path`, `fields`, `key`, `keys`, `conditions`, `source`, `root` |
+| `carrel_refs` | Find reference numbers (invoice, PO, order, check, account, tracking, ticket, IBAN, routing, EIN, VAT, ISBN, GTIN, DOI, UPS, USPS) in a file or directory; `tag` writes `ref:<kind>:<value>` tags, `link` groups files by shared value | **`path`**, `kinds`, `patterns`, `tag`, `link`, `all`, `ocr`, `root` |
 
 Relative paths resolve against the server's root (its cwd unless `carrel --root … mcp`);
 every tool accepts `root` per call. Failures arrive as `isError: true` carrying the same

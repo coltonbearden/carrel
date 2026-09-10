@@ -264,18 +264,21 @@ class DeskApp(App[None]):
         return text
 
     def _annotations_text(self, path: Path) -> Text:
-        header = Text(f"── tags & notes {'─' * 25}\n", style=MUTED)
+        header = Text(f"── tags, fields & notes {'─' * 17}\n", style=MUTED)
         if not DeskDB.exists(self.root_path):
             return header + Text("no desk index yet — run the 'Index root' action", style=MUTED)
         try:
             with DeskDB(self.root_path) as db:
                 tags = db.tags_of(path)
                 notes = db.notes_of(path)
+                meta = db.meta_of(path)
         except Exception as e:  # noqa: BLE001
             return header + Text(f"(db error: {e})", style=MUTED)
         text = header
         text.append("tags   ", style="bold")
         text.append(", ".join(tags) if tags else "(none)")
+        text.append("\nfields ", style="bold")
+        text.append(", ".join(f"{m['key']}={m['value']}" for m in meta) if meta else "(none)")
         text.append("\nnotes  ", style="bold")
         if not notes:
             text.append("(none)")
