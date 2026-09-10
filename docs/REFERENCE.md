@@ -732,7 +732,8 @@ Usage: carrel intake [OPTIONS] INBOX
 Options:
   --to DIRECTORY          Where filed documents land (created if missing).  [required]
   --apply / --dry-run     Perform the intake. Default is a dry-run that only prints the plan.
-  --watch                 Keep watching INBOX and file what arrives (implies --apply).
+  --watch                 Keep watching INBOX and file what arrives (implies --apply; refuses --dry-
+                          run).
   --once                  With --watch: stop after the first batch.
   --timeout SECS          With --watch: stop after SECS.  [x>0]
   --glob PATTERN          Only take files whose name matches (e.g. '*.pdf').
@@ -753,7 +754,7 @@ Options:
   --tag TAG               Extra tag for every filed file (repeatable).
   --fallback TEXT         Use TEXT for a name placeholder that has no value instead of skipping the
                           file.
-  --fail-empty            Exit 5 when there was nothing to file.
+  --fail-empty            Exit 5 when no file was filed (or planned).
   --json                  Machine-readable JSON output.
   --help                  Show this message and exit.
 ```

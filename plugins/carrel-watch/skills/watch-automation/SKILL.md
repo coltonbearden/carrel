@@ -46,11 +46,11 @@ When the actions would be "read the document, name it, move it, index it", use `
 
 ```bash
 carrel intake ~/inbox --to ~/archive                       # dry-run: the plan
-carrel intake ~/inbox --to ~/archive --apply --stable 5    # file what is there
+carrel intake ~/inbox --to ~/archive --apply               # file what is there
 carrel intake ~/inbox --to ~/archive --watch --stable 5    # keep filing arrivals
 ```
 
-`--stable SECS` waits for scanners and cloud sync to finish writing; `--by period --fiscal-start 7` files into `FY2027/Q1`; scans are OCRed into a searchable copy with the original kept under `_originals/`.
+`--stable SECS` (watch mode only) waits for scanners and cloud sync to finish writing; `--by period --fiscal-start 7` files into `FY2027/Q1`; scans are OCRed into a searchable copy with the original kept under `_originals/`.
 
 ## Recipe: survive reboots and network shares
 

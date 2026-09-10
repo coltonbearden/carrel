@@ -6,6 +6,7 @@ Every invocation targets tmp_path directories, so no .carrel is created in the r
 from __future__ import annotations
 
 import json
+import os
 from datetime import date
 from pathlib import Path
 
@@ -38,6 +39,13 @@ def run(*args: str, expect: int = 0):
 
 def run_json(*args: str, expect: int = 0):
     return json.loads(run("--json", *args, expect=expect).output)
+
+
+def run_json_head(*args: str, expect: int = 0):
+    """The JSON document a run emits, ignoring any failure line printed after it."""
+    result = run("--json", *args, expect=expect)
+    payload, _ = json.JSONDecoder().raw_decode(result.output.lstrip())
+    return payload
 
 
 @pytest.fixture
@@ -202,7 +210,9 @@ def test_no_index_no_refs_and_no_tags(inbox: Path, dest: Path):
 
 
 def test_usage_and_input_errors(inbox: Path, dest: Path, tmp_path: Path):
-    assert "must be different" in run("intake", str(inbox), "--to", str(inbox), expect=2).stderr
+    assert (
+        "neither inside the other" in run("intake", str(inbox), "--to", str(inbox), expect=2).stderr
+    )
     run("intake", str(tmp_path / "ghost"), "--to", str(dest), expect=4)
     empty = tmp_path / "empty"
     empty.mkdir()
@@ -373,3 +383,116 @@ def test_process_file_library_seam(tmp_path: Path, fixtures: Path):
     assert record["action"] == "filed" and Path(record["dest"]).is_file()
     with DeskDB(dest_root) as db:
         assert db.get_meta(Path(record["dest"]), "total")["value"] == "1234.56"
+
+
+# ------------------------------------------- regressions from the PR D review
+
+
+def test_a_scan_keeps_its_own_date_and_the_plan_matches_apply(
+    inbox: Path, dest: Path, fixtures: Path
+):
+    """OCR must not date every scan by the temp copy's mtime, and dry-run must be truthful."""
+    from carrel.core import adapters
+
+    scan = inbox / "scan.pdf"
+    scan.write_bytes((fixtures / "scanned.pdf").read_bytes())
+    os.utime(scan, (1_600_000_000, 1_600_000_000))  # 2020-09-13
+    for f in inbox.iterdir():
+        if f != scan:
+            f.unlink()
+    planned = run_json("intake", str(inbox), "--to", str(dest), "--fallback", "misc")
+    filed = run_json("intake", str(inbox), "--to", str(dest), "--apply", "--fallback", "misc")
+    assert len(planned) == len(filed) == 1
+    assert Path(planned[0]["dest"]).name == Path(filed[0]["dest"]).name
+    assert Path(planned[0]["dest"]).parent.name == Path(filed[0]["dest"]).parent.name
+    if adapters.have("ocrmypdf") and adapters.have("pdftotext"):
+        assert filed[0]["ocr"] == "ocred" and planned[0]["ocr"] == "would ocr"
+    assert Path(filed[0]["dest"]).parts[-3:-1] == ("2020", "09")  # the document's own mtime
+
+
+def test_a_failing_file_does_not_abandon_the_batch(inbox: Path, dest: Path, monkeypatch):
+    """Everything filed before a failure is still reported."""
+    bad = inbox / "unwritable.txt"
+    bad.write_bytes((inbox / "whatever.txt").read_bytes())
+    real_move = None
+
+    from carrel.commands import intake as intake_mod
+
+    def explode(src: Path, dst: Path, **kwargs: object) -> Path:
+        if Path(src).name == "unwritable.txt":
+            raise OSError(13, "Permission denied")
+        assert real_move is not None
+        return real_move(src, dst, **kwargs)
+
+    real_move = intake_mod.move_file
+    monkeypatch.setattr(intake_mod, "move_file", explode)
+    records = run_json_head("intake", str(inbox), "--to", str(dest), "--apply", expect=1)
+    by_name = {Path(r["src"]).name: r["action"] for r in records}
+    assert by_name["unwritable.txt"] == "error"
+    assert by_name["whatever.txt"] == "filed"  # the good files are still reported and moved
+    assert "PermissionError" in next(r["reason"] for r in records if r["action"] == "error")
+
+
+def test_destination_inside_the_inbox_is_refused(inbox: Path):
+    result = run("intake", str(inbox), "--to", str(inbox / "filed"), expect=2)
+    assert "neither inside the other" in result.stderr
+    (inbox / "sub").mkdir()
+    result = run("intake", str(inbox / "sub"), "--to", str(inbox), expect=2)
+    assert "neither inside the other" in result.stderr
+
+
+def test_hidden_directories_are_never_taken(inbox: Path, dest: Path):
+    (inbox / ".git").mkdir()
+    (inbox / ".git" / "config").write_text("[core]\n", encoding="utf-8")
+    assert [p.name for p in inbox_files(inbox, None, True)] == [
+        "mail.eml",
+        "note.md",
+        "whatever.txt",
+    ]
+    records = run_json("intake", str(inbox), "--to", str(dest), "--recursive")
+    assert all(".git" not in r["src"] for r in records)
+
+
+def test_watch_refuses_an_explicit_dry_run(inbox: Path, dest: Path):
+    result = run("intake", str(inbox), "--to", str(dest), "--dry-run", "--watch", expect=2)
+    assert "cannot be combined with --dry-run" in result.stderr
+
+
+def test_fail_empty_fires_when_every_file_is_skipped(tmp_path: Path):
+    box = tmp_path / "in"
+    box.mkdir()
+    (box / "note.md").write_text("# nothing to reference\n", encoding="utf-8")
+    records = run_json("intake", str(box), "--to", str(tmp_path / "filed"))
+    assert [r["action"] for r in records] == ["skip"]
+    run("intake", str(box), "--to", str(tmp_path / "filed"), "--fail-empty", expect=5)
+
+
+def test_the_desk_row_follows_the_filed_copy(inbox: Path, dest: Path):
+    inv = inbox / "whatever.txt"
+    dest.mkdir(parents=True, exist_ok=True)
+    run("--root", str(dest), "tag", "add", str(inv), "from-inbox")
+    run("--root", str(dest), "note", "add", str(inv), "seen in the inbox")
+    (rec,) = [
+        r
+        for r in run_json("intake", str(inbox), "--to", str(dest), "--apply")
+        if r["src"].endswith("whatever.txt")
+    ]
+    rel = Path(rec["dest"]).relative_to(dest).as_posix()
+    assert run_json("--root", str(dest), "tag", "find", "from-inbox") == [rel]
+    notes = run_json("--root", str(dest), "note", "ls", rec["dest"])
+    assert [n["body"] for n in notes] == ["seen in the inbox"]
+
+
+def test_index_errors_are_reported_on_the_record(
+    inbox: Path, dest: Path, fixtures: Path, monkeypatch
+):
+    """A filed document that could not be indexed is not silently called searchable."""
+    for f in inbox.iterdir():
+        if f.name != "whatever.txt":
+            f.unlink()
+    pdf = inbox / "scan.pdf"
+    pdf.write_bytes((fixtures / "invoice.pdf").read_bytes())
+    monkeypatch.setenv("CARREL_BIN_PDFTOTEXT", str(dest / "nowhere"))
+    records = run_json_head("intake", str(inbox), "--to", str(dest), "--apply", expect=1)
+    pdf_record = next(r for r in records if r["src"].endswith("scan.pdf"))
+    assert pdf_record["action"] == "error" and pdf_record["kind"] == "missing_dependency"

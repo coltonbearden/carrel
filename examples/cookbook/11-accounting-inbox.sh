@@ -9,20 +9,23 @@
 # answers "which invoices over 1000 are due before November", and `tag find`
 # answers "which documents mention this invoice number".
 #
-# Runs offline in a temp dir against the committed fixtures. Requires: nothing
-# beyond carrel (fields, refs, intake, meta and search are pure python; only the
-# optional OCR of a scanned PDF would need ocrmypdf, and this recipe uses none).
+# Runs offline in a temp dir against the committed fixtures. Requires: carrel plus
+# poppler-utils (`sudo apt install poppler-utils`) — step 2 files a born-digital
+# PDF, and reading its text needs pdftotext. Everything else here (fields, refs,
+# intake, meta, search) is pure python; no scan is OCRed, so ocrmypdf is not needed.
 #
 # Expected: a dry-run plan naming each destination, an --apply that files three
 # documents, a meta table, two queries that find the invoice by amount and by
 # reference number, a CSV export, then RECIPE OK.
 set -euo pipefail
 
-CARREL="${CARREL:-carrel}"
-command -v carrel >/dev/null 2>&1 || CARREL="uv run carrel"
-
 here="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-fixtures="$here/../../tests/fixtures"
+REPO="$here/../.."
+fixtures="$REPO/tests/fixtures"
+if [ -z "${CARREL:-}" ]; then
+    if command -v carrel >/dev/null 2>&1; then CARREL="carrel"; else CARREL="uv --project $REPO run carrel"; fi
+fi
+# intentionally unquoted below: CARREL may hold "uv --project ... run carrel"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 inbox="$work/inbox"

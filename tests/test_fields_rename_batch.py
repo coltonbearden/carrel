@@ -674,3 +674,157 @@ def test_watcher_settle_waits_for_a_growing_file(tmp_path: Path):
     w2.drain()
     time.sleep(0.15)
     assert w2.drain() == [("created", f)]  # --stable-timeout gives up waiting
+
+
+# ------------------------------------------- regressions from the PR C review
+
+
+def test_negative_amounts_keep_their_sign(tmp_path: Path):
+    """A credit note is not a charge: the label separator must not eat the minus."""
+    credit = tmp_path / "credit.txt"
+    credit.write_text(
+        "Globex GmbH\nSubtotal  -$1,150.00\nTax  -$84.56\nTotal Due  -$1,234.56\n", encoding="utf-8"
+    )
+    f = extract_fields(credit)["fields"]
+    assert (f["subtotal"]["value"], f["tax"]["value"], f["total"]["value"]) == (
+        "-1150.00",
+        "-84.56",
+        "-1234.56",
+    )
+    assert money.parse_amount("-$1,234.56").value == Decimal("-1234.56")
+    assert money.parse_amount("-€500,00").value == Decimal("-500.00")
+    assert money.parse_amount("EUR -5").value == Decimal("-5")
+    refund = money.find_amounts("Refund for order 5512:   -$1,234.56\nRestocking fee: $25.00")
+    assert [str(a.value) for a in refund] == ["-1234.56", "25.00"]
+    # a dash that really is a separator still works
+    spaced = tmp_path / "spaced.txt"
+    spaced.write_text("Total - $12.00\n", encoding="utf-8")
+    assert extract_fields(spaced)["fields"]["total"]["value"] == "12.00"
+
+
+def test_a_decoy_label_line_does_not_win(tmp_path: Path):
+    src = tmp_path / "decoy.txt"
+    src.write_text(
+        "Acme\nTax ID: 12-3456789\nTotal units          3.00\n"
+        "Tax  $84.56\nTotal          $1,234.56\n",
+        encoding="utf-8",
+    )
+    f = extract_fields(src)["fields"]
+    assert f["total"]["value"] == "1234.56" and "$1,234.56" in f["total"]["evidence"]
+    assert f["tax"]["value"] == "84.56"  # the `Tax ID:` line yields no amount, so it is passed over
+
+
+def test_net_terms_are_not_read_off_an_amount(tmp_path: Path):
+    src = tmp_path / "net.txt"
+    src.write_text(
+        "Invoice Date: 2026-03-04\nNet  500.00\nVAT 19%  95.00\nTotal Due  595.00\n",
+        encoding="utf-8",
+    )
+    f = extract_fields(src)["fields"]
+    assert f["subtotal"]["value"] == "500.00"
+    assert "due" not in f  # `Net  500.00` is a subtotal line, not Net-500 terms
+    terms = tmp_path / "terms.txt"
+    terms.write_text(
+        "Invoice Date: 2026-03-04\nTerms: Net 30\nTotal Due  595.00\n", encoding="utf-8"
+    )
+    assert extract_fields(terms)["fields"]["due"]["value"] == "2026-04-03"
+
+
+def test_currency_is_deterministic_on_a_tie(tmp_path: Path):
+    src = tmp_path / "cur.txt"
+    src.write_text("Amount charged: EUR 100.00\nConverted at rate: USD 118.00\n", encoding="utf-8")
+    seen = {extract_fields(src)["fields"]["currency"]["value"] for _ in range(12)}
+    assert seen == {"EUR"}  # most frequent, then alphabetical — never hash order
+
+
+def test_a_dotted_date_is_not_an_amount(tmp_path: Path):
+    src = tmp_path / "ymd.txt"
+    src.write_text(
+        "Kaufbeleg\n2026.03.04  Filiale 12\nEspresso 3,50\nZu zahlen 5,70\n", encoding="utf-8"
+    )
+    f = extract_fields(src)["fields"]
+    assert f["total"]["value"] == "5.70" and f["date"]["value"] == "2026-03-04"
+    assert [a.raw for a in money.find_amounts("Ref 2026.09.10 total $99.00")] == ["$99.00"]
+    assert [a.raw for a in money.find_amounts("The total is 5.70.")] == [
+        "5.70"
+    ]  # sentence end is fine
+
+
+def test_render_substitutes_in_one_pass(tmp_path: Path):
+    """A file named `{name}.txt` must not have its own substituted path rewritten."""
+    tricky = tmp_path / "{name}.txt"
+    tricky.write_text("contents\n", encoding="utf-8")
+    rendered = actions.render("cat {path}", tricky)
+    assert rendered == f"cat {actions.quote(str(tricky))}"
+    payload = run_json("batch", str(tricky), "--run", "cat {path}")
+    assert payload["summary"]["ok"] == 1 and payload["results"][0]["stdout"].strip() == "contents"
+    assert actions.render("{name} {stem} {ext}", tricky) == " ".join(
+        actions.quote(x) for x in ("{name}.txt", "{name}", ".txt")
+    )
+
+
+def test_manifest_and_log_directories_are_created(tmp_path: Path):
+    (tmp_path / "a.txt").write_text("x", encoding="utf-8")
+    manifest = tmp_path / "logs" / "run.jsonl"
+    payload = run_json("batch", str(tmp_path), "--run", "echo {name}", "--manifest", str(manifest))
+    assert payload["summary"]["ok"] == 1
+    assert json.loads(manifest.read_text(encoding="utf-8").splitlines()[0])["ok"] is True
+    log = tmp_path / "wlogs" / "watch.jsonl"
+    run(
+        "watch",
+        str(tmp_path),
+        "--existing",
+        "--on",
+        "created",
+        "--once",
+        "--timeout",
+        "5",
+        "--run",
+        "echo {name}",
+        "--log",
+        str(log),
+    )
+    assert json.loads(log.read_text(encoding="utf-8").splitlines()[0])["rc"] == 0
+
+
+def test_watch_output_heuristic_only_suppresses_added_segments(tmp_path: Path):
+    from carrel.commands.watch import _Watcher
+
+    w = _Watcher(on={"created"}, glob=None, debounce_ms=0, runs=("echo",), json_lines=False)
+    source = tmp_path / "report.pdf"
+    w.inflight.add(source)
+    w.seed("created", tmp_path / "report.txt")  # an output of the action
+    w.seed("created", tmp_path / "report.thumb.png")  # also an output
+    w.seed("created", tmp_path / "report-2026.pdf")  # a NEW INPUT that merely shares a prefix
+    assert set(w.pending) == {tmp_path / "report-2026.pdf"}
+
+
+def test_watch_existing_skips_the_done_and_error_dirs(tmp_path: Path):
+    from carrel.commands.watch import _existing_files
+
+    (tmp_path / "done").mkdir()
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "a.txt").write_text("a", encoding="utf-8")
+    (tmp_path / "done" / "old.txt").write_text("o", encoding="utf-8")
+    (tmp_path / "sub" / "deep.txt").write_text("d", encoding="utf-8")
+    (tmp_path / ".hidden").mkdir()
+    (tmp_path / ".hidden" / "h.txt").write_text("h", encoding="utf-8")
+    found = _existing_files(tmp_path, True, [tmp_path / "done"])
+    assert [p.name for p in found] == ["a.txt", "deep.txt"]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX permission bits")
+def test_rename_records_a_failed_move_and_keeps_going(tmp_path: Path, fixtures: Path):
+    ro = tmp_path / "ro"
+    ro.mkdir()
+    (ro / "invoice.txt").write_bytes((fixtures / "invoice.txt").read_bytes())
+    ro.chmod(0o555)
+    try:
+        result = run("--json", "rename", str(ro / "invoice.txt"), "--apply", expect=1)
+    finally:
+        ro.chmod(0o755)
+    # the JSON plan is still emitted; the failure line follows it on stderr
+    plan, _ = json.JSONDecoder().raw_decode(result.output.lstrip())
+    assert [e["action"] for e in plan] == ["error"]
+    assert "Permission" in plan[0]["reason"]  # the record names the file that did not move
+    assert "could not be renamed" in result.output

@@ -19,7 +19,10 @@ its record says `ocr: "unavailable"`.
 
 from __future__ import annotations
 
+import contextlib
+import fnmatch
 import functools
+import shutil
 import tempfile
 import time
 from collections.abc import Callable, Sequence
@@ -29,9 +32,14 @@ from typing import Any
 
 import click
 
-from carrel.commands.fields import KINDS, extract_fields, save_fields
+from carrel.commands.fields import extract_fields, save_fields
 from carrel.commands.refs import tag_for
-from carrel.commands.rename import DEFAULT_TEMPLATE, UnresolvedPlaceholderError, build_name
+from carrel.commands.rename import (
+    DEFAULT_TEMPLATE,
+    UnresolvedPlaceholderError,
+    _doc_date,
+    build_name,
+)
 from carrel.core import adapters
 from carrel.core import patterns as pat
 from carrel.core.db import DeskDB
@@ -71,6 +79,12 @@ def _handled(fn: Callable) -> Callable:
 
 def _root_of(ctx: click.Context) -> Path:
     return Path((ctx.obj or {}).get("root", ".")).resolve()
+
+
+def _flag_given(ctx: click.Context) -> bool:
+    """True when the user typed --apply or --dry-run rather than taking the default."""
+    source = ctx.get_parameter_source("apply_")
+    return source is not None and source.name != "DEFAULT"
 
 
 def _root_is_default(ctx: click.Context) -> bool:
@@ -114,18 +128,6 @@ def destination_dir(dest_root: Path, when: date, layout: str, fiscal_start: int)
     return dest_root / f"FY{year:04d}" / f"Q{quarter}"
 
 
-def _document_date(fields: dict[str, Any], path: Path) -> date:
-    value = fields.get("date", {}).get("value")
-    if value:
-        try:
-            return date.fromisoformat(str(value))
-        except ValueError:
-            pass
-    from datetime import datetime
-
-    return datetime.fromtimestamp(path.stat().st_mtime).date()
-
-
 # --------------------------------------------------------------------- ocr
 
 
@@ -140,12 +142,20 @@ def looks_scanned(path: Path, ftype: FileType) -> bool:
 
 
 def _ocr_copy(src: Path, workdir: Path) -> tuple[Path, str]:
-    """(searchable copy, status) for a scanned PDF; the source is never modified."""
+    """(searchable copy, status) for a scanned PDF; the source is never modified.
+
+    The copy inherits the source's timestamps: an undated scan is dated by its
+    mtime, and a fresh temp file's mtime would file every such document under
+    the current month.
+    """
     from carrel.commands.ocr import ocr_file
 
     dest = workdir / src.name
     record = ocr_file(src, dest, to="pdf")
-    return Path(record["dest"]), "ocred"
+    out = Path(record["dest"])
+    with contextlib.suppress(OSError):
+        shutil.copystat(src, out)
+    return out, "ocred"
 
 
 # ------------------------------------------------------------------ record
@@ -174,12 +184,62 @@ def process_file(
 ) -> dict[str, Any]:
     """Plan (or perform) the intake of one file; returns its record.
 
-    `ocr` None means "OCR a scan when ocrmypdf is available"; True demands it
-    (MissingDependencyError propagates, so the caller can exit 3 before moving
-    anything); False never OCRs. `taken` collects planned destinations so a
-    dry-run over several files does not plan the same name twice.
+    Never raises for this file's own trouble: an unreadable document, a failed
+    OCR, a destination that cannot be written — each comes back as an
+    `action: "error"` record so the rest of the inbox still gets processed and
+    the caller keeps a record of everything that did move.
+
+    `ocr` None means "OCR a scan when ocrmypdf is available", True demands it
+    (the caller pre-flights the binary), False never OCRs. A dry-run OCRs a
+    scan too — into a temp file it throws away — because the plan has to be
+    what `--apply` would actually do. `taken` collects planned destinations so
+    one run never plans the same name twice.
     """
     taken = taken if taken is not None else set()
+    try:
+        return _process_one(
+            src,
+            dest_root,
+            apply=apply,
+            template=template,
+            layout=layout,
+            fiscal_start=fiscal_start,
+            date_order=date_order,
+            ocr=ocr,
+            want_refs=want_refs,
+            index=index,
+            tags=tags,
+            fallback=fallback,
+            desk_root=desk_root,
+            taken=taken,
+        )
+    except adapters.MissingDependencyError as e:
+        # the shape `index` and `refs` use: a per-file record, and exit 3 only
+        # when a missing tool is why nothing at all could be read
+        return _record(src, "error", reason=str(e), kind="missing_dependency")
+    except CarrelError as e:
+        return _record(src, "error", reason=str(e))
+    except Exception as e:  # noqa: BLE001 — one bad file must not abandon the batch
+        return _record(src, "error", reason=f"{e.__class__.__name__}: {e}")
+
+
+def _process_one(
+    src: Path,
+    dest_root: Path,
+    *,
+    apply: bool,
+    template: str,
+    layout: str,
+    fiscal_start: int,
+    date_order: str,
+    ocr: bool | None,
+    want_refs: bool,
+    index: bool,
+    tags: Sequence[str],
+    fallback: str | None,
+    desk_root: Path | None,
+    taken: set[Path],
+) -> dict[str, Any]:
     ftype = detect(src)
     if ftype is FileType.UNKNOWN:
         return _record(src, "skip", reason="unsupported file type")
@@ -190,34 +250,20 @@ def process_file(
     tmpdir: tempfile.TemporaryDirectory[str] | None = None
     try:
         if ocr is not False and looks_scanned(src, ftype):
-            if ocr is True:
-                adapters.require("ocrmypdf")  # explicit request, missing binary → exit 3
             if adapters.have("ocrmypdf"):
-                if apply:
-                    tmpdir = tempfile.TemporaryDirectory(prefix="carrel-intake-")
-                    filed_source, ocr_status = _ocr_copy(src, Path(tmpdir.name))
-                    original = src
-                else:
+                # a dry-run OCRs as well, so the planned name and folder are the
+                # ones --apply would produce; the copy is discarded either way
+                tmpdir = tempfile.TemporaryDirectory(prefix="carrel-intake-")
+                filed_source, ocr_status = _ocr_copy(src, Path(tmpdir.name))
+                original = src
+                if not apply:
                     ocr_status = "would ocr"
-                    original = src
             else:
                 ocr_status = "unavailable"
 
-        try:
-            fields = extract_fields(filed_source, date_order=date_order, ocr=False)["fields"]
-        except adapters.MissingDependencyError as e:
-            # the same shape `index` and `refs` use: a per-file record, and exit 3
-            # only when a missing tool is the reason nothing at all could be read
-            return _record(src, "error", reason=str(e), kind="missing_dependency", ocr=ocr_status)
-        except CarrelError as e:
-            return _record(src, "error", reason=str(e), ocr=ocr_status)
-
-        refs: list[dict[str, Any]] = []
-        if want_refs:
-            try:
-                refs = pat.find_refs(extract_text(filed_source), None)
-            except CarrelError:
-                refs = []
+        body = extract_text(filed_source)
+        fields = extract_fields(filed_source, date_order=date_order, ocr=False, text=body)["fields"]
+        refs = pat.find_refs(body, None) if want_refs else []
 
         meta_now: dict[str, str] = {}
         if desk_root is not None and DeskDB.exists(desk_root):
@@ -229,10 +275,8 @@ def process_file(
             )
         except UnresolvedPlaceholderError as e:
             return _record(src, "skip", reason=str(e), ocr=ocr_status)
-        except CarrelError as e:
-            return _record(src, "error", reason=str(e), ocr=ocr_status)
 
-        when = _document_date(fields, filed_source)
+        when = _doc_date(fields, meta_now, filed_source)[0]
         target_dir = destination_dir(dest_root, when, layout, fiscal_start)
         dest = uncollide(target_dir / name, taken)
         taken.add(dest)
@@ -252,14 +296,14 @@ def process_file(
         if not apply:
             return record
 
-        move_file(filed_source, dest, desk_root=desk_root if original is None else None)
+        move_file(filed_source, dest)
         if original is not None:
-            move_file(original, Path(record["original"]), desk_root=desk_root)
+            move_file(original, Path(record["original"]))
     finally:
         if tmpdir is not None:
             tmpdir.cleanup()
 
-    _register(dest, record, fields, refs, tags, index=index, desk_root=desk_root)
+    _register(dest, record, fields, refs, tags, index=index, desk_root=desk_root, source=src)
     return record
 
 
@@ -272,6 +316,7 @@ def _register(
     *,
     index: bool,
     desk_root: Path | None,
+    source: Path | None = None,
 ) -> None:
     """Index the filed file, save its fields and tag its references.
 
@@ -288,17 +333,22 @@ def _register(
 
         summary = index_paths(desk_root, [dest], update=True)
         record["indexed"] = summary["indexed"]
+        if summary["errors"]:  # a file that could not be indexed is not silently "filed"
+            record["index_errors"] = summary["errors"]
     keep = {k: v for k, v in fields.items() if v["confidence"] in SAVE_CONFIDENCE}
     wanted_tags = sorted(
         {*(tag_for(r) for r in refs), *(t.strip().lower() for t in tags if t.strip())}
     )
     with DeskDB(desk_root) as db:
+        if source is not None:
+            # the tags, notes and fields the inbox file already had belong to the
+            # document the user now works with, not to the archived original
+            db.rename_path(source, dest)
         if keep:
             record["saved"] = save_fields(db, dest, {"fields": keep}, source="intake")
         if wanted_tags:
             db.add_tags(dest, list(wanted_tags))
             record["tags"] = wanted_tags
-    _ = KINDS  # save_fields owns the kind mapping
 
 
 # -------------------------------------------------------------------- walk
@@ -309,20 +359,17 @@ def inbox_files(inbox: Path, glob: str | None, recursive: bool) -> list[Path]:
     entries = inbox.rglob("*") if recursive else inbox.iterdir()
     out: list[Path] = []
     for p in sorted(entries):
-        if not p.is_file() or p.name.startswith("."):
+        if not p.is_file():
             continue
-        if ORIGINALS_DIR in p.parts:
+        relative = p.relative_to(inbox).parts
+        if any(part.startswith(".") for part in relative):  # .git, .carrel, dotfiles
             continue
-        if glob and not _fnmatch(p.name, glob):
+        if ORIGINALS_DIR in relative:
+            continue
+        if glob and not fnmatch.fnmatch(p.name, glob):
             continue
         out.append(p)
     return out
-
-
-def _fnmatch(name: str, pattern: str) -> bool:
-    import fnmatch
-
-    return fnmatch.fnmatch(name, pattern)
 
 
 def run_intake(
@@ -332,6 +379,7 @@ def run_intake(
     apply: bool = False,
     glob: str | None = None,
     recursive: bool = False,
+    taken: set[Path] | None = None,
     **kwargs: Any,
 ) -> list[dict[str, Any]]:
     """Process every file waiting in `inbox`; see `process_file` for the options."""
@@ -340,7 +388,7 @@ def run_intake(
     if not inbox.is_dir():
         raise CarrelInputError(f"no such directory: {inbox}")
     ctx = click.get_current_context(silent=True)
-    taken: set[Path] = set()
+    taken = taken if taken is not None else set()
     records: list[dict[str, Any]] = []
     for f in inbox_files(inbox, glob, recursive):
         progress(f"intake: {f}", ctx)
@@ -398,7 +446,7 @@ def _human(applied: bool) -> Callable[[list[dict[str, Any]]], None]:
     "--watch",
     "watch_",
     is_flag=True,
-    help="Keep watching INBOX and file what arrives (implies --apply).",
+    help="Keep watching INBOX and file what arrives (implies --apply; refuses --dry-run).",
 )
 @click.option("--once", is_flag=True, help="With --watch: stop after the first batch.")
 @click.option(
@@ -487,7 +535,7 @@ def _human(applied: bool) -> Callable[[list[dict[str, Any]]], None]:
     metavar="TEXT",
     help="Use TEXT for a name placeholder that has no value instead of skipping the file.",
 )
-@click.option("--fail-empty", is_flag=True, help="Exit 5 when there was nothing to file.")
+@click.option("--fail-empty", is_flag=True, help="Exit 5 when no file was filed (or planned).")
 @click.pass_context
 @_handled
 def cmd(
@@ -532,13 +580,23 @@ def cmd(
     if not inbox.is_dir():
         raise CarrelInputError(f"no such directory: {inbox}")
     if watch_:
+        if _flag_given(ctx) and not apply_:
+            raise click.UsageError(
+                "--watch files what arrives; it cannot be combined with --dry-run"
+            )
         apply_ = True
     dest_root = dest_root.resolve()
     if apply_:
         dest_root.mkdir(parents=True, exist_ok=True)
     desk_root = dest_root if _root_is_default(ctx) else _root_of(ctx)
-    if inbox == dest_root:
-        raise click.UsageError("INBOX and --to must be different directories")
+    if inbox == dest_root or dest_root.is_relative_to(inbox) or inbox.is_relative_to(dest_root):
+        # a --to inside INBOX would re-file its own archive on the next pass,
+        # and churn for as long as --watch runs
+        raise click.UsageError(
+            "INBOX and --to must be separate directories, neither inside the other"
+        )
+    if ocr_ is True:
+        adapters.require("ocrmypdf")  # exit 3 before a single file is touched
 
     options: dict[str, Any] = {
         "template": template,
@@ -552,9 +610,10 @@ def cmd(
         "fallback": fallback,
         "desk_root": desk_root,
     }
-    records = run_intake(inbox, dest_root, apply=apply_, glob=glob_, recursive=recursive, **options)
     if watch_:
-        records += _watch_loop(
+        # the observer starts before the first pass, so nothing that lands while
+        # that pass is running (OCR of a few scans is minutes) is missed
+        records = _watch_loop(
             ctx,
             inbox,
             dest_root,
@@ -565,8 +624,12 @@ def cmd(
             once=once,
             timeout=timeout_,
         )
+    else:
+        records = run_intake(
+            inbox, dest_root, apply=apply_, glob=glob_, recursive=recursive, **options
+        )
     emit(ctx, records, human=_human(applied=apply_))
-    if fail_empty and not records:
+    if fail_empty and not any(r["action"] in ("plan", "filed") for r in records):
         fail("nothing to file (--fail-empty)", ExitCode.EMPTY)
     missing = [r for r in records if r.get("kind") == "missing_dependency"]
     if missing and len(missing) == len(records):
@@ -611,12 +674,23 @@ def _watch_loop(
     taken: set[Path] = set()
     observer.start()
     try:
+        # the observer is already running, so a file that arrives during this
+        # first pass raises an event the loop below will still see
+        records.extend(
+            run_intake(
+                inbox, dest_root, apply=True, glob=glob, recursive=recursive, taken=taken, **options
+            )
+        )
+        done = {Path(r["src"]) for r in records}
         while not watcher.stop.is_set():
             if deadline is not None and time.monotonic() >= deadline:
                 break
             for _event, path in watcher.drain():
                 if not path.is_file() or ORIGINALS_DIR in path.parts:
                     continue
+                if path in done:  # already handled by the first pass
+                    continue
+                done.add(path)
                 progress(f"intake: {path}", ctx)
                 record = process_file(path, dest_root, apply=True, taken=taken, **options)
                 records.append(record)

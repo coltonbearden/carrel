@@ -57,6 +57,18 @@ and email is a first-class file type throughout.
   now applies only to files without a real extension (D-012), so `.patch`, `.diff` and log files
   are no longer reclassified as mail, while Maildir names still are; a mailbox saved as `.eml` is
   detected by its bytes instead of swallowing every message after the first.
+- **Fixed (extraction and automation, found by review before release):** a negative amount on a
+  labelled line kept its sign (`Total Due  -$1,234.56` was booked as a charge), a decoy label line
+  no longer wins over the real one (`Total units 3.00` above `Total $1,234.56`, `Tax ID:` above
+  `Tax`), `Net  500.00` is read as a subtotal rather than 500-day payment terms, a dotted date
+  (`2026.03.04`) is no longer harvested as the amount 2026.03, and a currency tie resolves the same
+  way on every run. `watch`/`batch` action templates are substituted in one pass, so a file named
+  `{name}.txt` can no longer produce a command that acts on a different path; `--manifest` and
+  `--log` create their directories instead of crashing on the first record; `watch`'s output-name
+  guard only suppresses added segments (`report.pdf` → `report.txt`), so a new input that merely
+  shares a prefix (`report-2026.pdf`) is no longer lost; `--existing` skips `--done-dir`/`--error-dir`,
+  so a restart does not re-run every action over the archive; and `rename --apply` records a failed
+  move instead of discarding the whole plan.
 - **Added (MCP):** `carrel_meta`, `carrel_refs`, `carrel_fields` and `carrel_mail` tools (14 tools); `carrel_search` takes `meta`.
 - **Added (marketplace):** `carrel-finance` plugin (`/refs`, `/fields`), `carrel-mail` plugin (`/mail` + a
   `mail-archive` skill); `/meta`, `/rename`, `/batch` in `carrel-organize`.

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import re
 import shlex
 import signal
 import subprocess
@@ -27,15 +28,24 @@ def quote(value: str) -> str:
     return shlex.quote(value)
 
 
+_PLACEHOLDER = re.compile("|".join(re.escape(p) for p in PLACEHOLDERS))
+
+
 def render(template: str, path: Path) -> str:
-    """Substitute {path}/{name}/{stem}/{ext}/{dir} into an action template, shell-quoted."""
-    return (
-        template.replace("{path}", quote(str(path)))
-        .replace("{name}", quote(path.name))
-        .replace("{stem}", quote(path.stem))
-        .replace("{ext}", quote(path.suffix))
-        .replace("{dir}", quote(str(path.parent)))
-    )
+    """Substitute {path}/{name}/{stem}/{ext}/{dir} into an action template, shell-quoted.
+
+    One pass, not a chain of `str.replace`: a file literally named `{name}.txt`
+    would otherwise have its own substituted path rewritten by the next
+    replacement, silently producing a command that acts on a different file.
+    """
+    values = {
+        "{path}": str(path),
+        "{name}": path.name,
+        "{stem}": path.stem,
+        "{ext}": path.suffix,
+        "{dir}": str(path.parent),
+    }
+    return _PLACEHOLDER.sub(lambda m: quote(values[m.group(0)]), template)
 
 
 def run_action(rendered: str, timeout: float | None) -> subprocess.CompletedProcess[str]:

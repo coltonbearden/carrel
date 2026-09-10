@@ -16,11 +16,13 @@
 # sha256, references linking the email to the invoice, then RECIPE OK.
 set -euo pipefail
 
-CARREL="${CARREL:-carrel}"
-command -v carrel >/dev/null 2>&1 || CARREL="uv run carrel"
-
 here="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-fixtures="$here/../../tests/fixtures"
+REPO="$here/../.."
+fixtures="$REPO/tests/fixtures"
+if [ -z "${CARREL:-}" ]; then
+    if command -v carrel >/dev/null 2>&1; then CARREL="carrel"; else CARREL="uv --project $REPO run carrel"; fi
+fi
+# intentionally unquoted below: CARREL may hold "uv --project ... run carrel"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 archive="$work/mail"

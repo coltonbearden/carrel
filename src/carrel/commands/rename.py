@@ -261,10 +261,17 @@ def _text_of(path: Path, ocr: bool) -> str:
 
 
 def apply_plan(plan: list[dict[str, Any]], *, desk_root: Path | None) -> None:
+    """Perform the planned renames; a failure marks that entry and the rest still run."""
     for entry in plan:
         if entry["action"] != "rename":
             continue
-        move_file(Path(entry["src"]), Path(entry["dest"]), desk_root=desk_root)
+        try:
+            move_file(Path(entry["src"]), Path(entry["dest"]), desk_root=desk_root)
+        except (OSError, CarrelError) as e:
+            # one unwritable destination must not discard the record of every
+            # file already renamed
+            entry.update({"action": "error", "reason": f"{e.__class__.__name__}: {e}"})
+            continue
         entry["action"] = "renamed"
 
 
@@ -272,8 +279,8 @@ def _human_plan(applied: bool) -> Callable[[list[dict[str, Any]]], None]:
     def _print(plan: list[dict[str, Any]]) -> None:
         n = 0
         for entry in plan:
-            if entry["action"] == "skip":
-                click.echo(f"skip    {entry['src']}  ({entry['reason']})")
+            if entry["action"] in ("skip", "error"):
+                click.echo(f"{entry['action']:<7} {entry['src']}  ({entry['reason']})")
             else:
                 n += 1
                 verb = "renamed" if applied else "rename "
@@ -370,6 +377,8 @@ def cmd(
     if apply_:
         apply_plan(plan, desk_root=root)
     emit(ctx, plan, human=_human_plan(applied=apply_))
+    if apply_ and any(e["action"] == "error" for e in plan):
+        fail("some files could not be renamed (see the records)", ExitCode.ERROR)
     if (
         not any(e["action"] in ("rename", "renamed") for e in plan)
         and plan
