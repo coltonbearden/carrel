@@ -66,6 +66,12 @@
 
 ## Open issues
 
+- Every command module carries its own copy of `_handled` (25 copies) and `_root_of` (12).
+  They are byte-identical; a change to how `CarrelError` maps to an exit code has to be made
+  in 25 places or it silently diverges. They belong next to `emit`/`fail` in
+  `core/output.py`. Deliberately not done during the v0.4.0 release (it touches every
+  command module); do it first in the next session.
+
 - Windows, latent (not covered by the suite): ~30 text-IO sites read or write without
   `encoding="utf-8"` (`commands/pack.py`, `core/textextract.py`, `desk/app.py`). CI sets
   `PYTHONUTF8=1`, so they pass there; a user on a cp1252 console would see mojibake on

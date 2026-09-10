@@ -388,6 +388,7 @@ def test_process_file_library_seam(tmp_path: Path, fixtures: Path):
 # ------------------------------------------- regressions from the PR D review
 
 
+@needs("pdftotext")
 def test_a_scan_keeps_its_own_date_and_the_plan_matches_apply(
     inbox: Path, dest: Path, fixtures: Path
 ):
