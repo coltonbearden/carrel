@@ -16,8 +16,18 @@
   formats. The kinds live in the new `core/patterns.py`.
 - **Changed:** `redact --builtin` accepts every kind of the shared registry (`iban`, `routing`,
   `invoice`, …); label-driven kinds replace only the value, so `Invoice # ████` keeps its label.
-- **Added (MCP):** `carrel_meta` and `carrel_refs` tools (12 tools); `carrel_search` takes `meta`.
-- **Added (marketplace):** `carrel-finance` plugin (`/refs`); `/meta` in `carrel-organize`.
+- **Added:** email as first-class files — `.eml` and `.mbox` (`.mbx`) are `FileType`s read by
+  the standard library (`core/mail.py`), so `inspect`, `convert` (eml → md/txt/html/pdf,
+  mbox → md/txt), `index`/`search --type eml`, `pack`, `diff`, `organize` (→ `mail/`), `refs`
+  and the `carrel-guard` Read hook all handle them. Shape sniffing applies only to unmapped
+  extensions (D-012). Outlook `.msg` is cut (D-011); `.pst` comes in through readpst.
+- **Added:** `carrel mail` — `attachments` (saved with sha256, names sanitised, never
+  overwritten without `--force`), `split` (mbox → dated `.eml` files), `threads`
+  (Message-ID / In-Reply-To / References), `pst` (Outlook exports via the new `readpst`
+  adapter, `sudo apt install pst-utils`).
+- **Added (MCP):** `carrel_meta`, `carrel_refs` and `carrel_mail` tools (13 tools); `carrel_search` takes `meta`.
+- **Added (marketplace):** `carrel-finance` plugin (`/refs`), `carrel-mail` plugin (`/mail` + a
+  `mail-archive` skill); `/meta` in `carrel-organize`.
 
 ## v0.3.2 — 2026-09-10
 

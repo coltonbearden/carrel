@@ -21,8 +21,9 @@ Usage: carrel inspect [OPTIONS] PATH
   xml (root tag, element count, depth), html (title, headings outline, link/img counts), md
   (headings outline, word count), txt (lines/words/chars), docx (paragraphs, words,
   title/author/created), epub (title, creator, language, spine items, words), odt/rtf (words), xlsx
-  (sheets with row/column counts; needs the `office` extra). Word counts for office/ebook files use
-  pandoc and are null without it.
+  (sheets with row/column counts; needs the `office` extra), eml (from/to/cc, date, subject, message
+  id, in-reply-to, parts, attachments), mbox (message count, first/last date, top senders). Word
+  counts for office/ebook files use pandoc and are null without it.
 
 Options:
   --json  Machine-readable JSON output.

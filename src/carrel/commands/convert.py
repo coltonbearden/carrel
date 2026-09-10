@@ -27,6 +27,10 @@ Documented conversion shapes (deliberately minimal, honest formats):
                flattener (true/false, ISO dates, "" for empty).
 - xlsx → json  {sheet: [row objects keyed by the header row]}; native
                numbers/bools kept, dates as ISO strings. Never the reverse.
+- eml → md     header table, body text, attachment list; → txt is the
+               same text `index` sees; → html is the message's own HTML
+               part (else the text in <pre>); → pdf renders that HTML
+               with weasyprint. mbox → md/txt concatenates every message.
 """
 
 from __future__ import annotations
@@ -572,6 +576,82 @@ def _xlsx_to_json(src: Path, dest: Path, opts: dict) -> dict:
 # routing table
 
 _F = FileType
+
+
+def _eml_md_document(path: Path) -> str:
+    from carrel.core import mail
+
+    msg = mail.parse_eml(path)
+    info = mail.summary(msg)
+    rows = [
+        ("From", ", ".join(info["from"])),
+        ("To", ", ".join(info["to"])),
+        ("Cc", ", ".join(info["cc"])),
+        ("Date", info["date"] or ""),
+        ("Message-ID", info["message_id"] or ""),
+    ]
+    out = [f"# {info['subject'] or '(no subject)'}", "", "| header | value |", "|---|---|"]
+    out += [f"| {k} | {v.replace('|', '\\|')} |" for k, v in rows if v]
+    out += ["", mail.body_text(msg).rstrip("\n"), ""]
+    if info["attachments"]:
+        out += ["", "## Attachments", ""]
+        out += [
+            f"- `{a['filename']}` ({a['content_type']}, {a['size']} bytes)"
+            for a in info["attachments"]
+        ]
+    return "\n".join(out).rstrip("\n") + "\n"
+
+
+def _eml_to_md(src: Path, dest: Path, opts: dict) -> dict:
+    dest.write_text(_eml_md_document(src), encoding="utf-8")
+    return {"via": "email (stdlib)"}
+
+
+def _mail_to_txt(src: Path, dest: Path, opts: dict) -> dict:
+    dest.write_text(textextract.extract_text(src), encoding="utf-8")
+    return {"via": "email (stdlib)"}
+
+
+def _mbox_to_md(src: Path, dest: Path, opts: dict) -> dict:
+    from carrel.core import mail
+
+    blocks = []
+    for msg in mail.iter_mbox(src):
+        info = mail.summary(msg)
+        head = " · ".join(x for x in (", ".join(info["from"]), info["date"] or "") if x)
+        blocks.append(
+            f"## {info['subject'] or '(no subject)'}\n\n{head}\n\n"
+            f"{mail.body_text(msg).rstrip(chr(10))}\n"
+        )
+    dest.write_text(f"# {src.name}\n\n" + "\n".join(blocks), encoding="utf-8")
+    return {"via": "email (stdlib)"}
+
+
+def _eml_html_document(path: Path) -> str:
+    from carrel.core import mail
+
+    msg = mail.parse_eml(path)
+    html = mail.body_html(msg)
+    title = htmllib.escape(str(msg.get("Subject") or path.name))
+    if html is not None:
+        return html if "<html" in html.lower() else _html_doc(title, html)
+    return _html_doc(title, f"<pre>{htmllib.escape(mail.message_text(msg))}</pre>")
+
+
+def _eml_to_html(src: Path, dest: Path, opts: dict) -> dict:
+    dest.write_text(_eml_html_document(src), encoding="utf-8")
+    return {"via": "email (stdlib)"}
+
+
+def _eml_to_pdf(src: Path, dest: Path, opts: dict) -> dict:
+    adapters.require("weasyprint")
+    with tempfile.TemporaryDirectory() as td:
+        html_path = Path(td) / "message.html"
+        html_path.write_text(_eml_html_document(src), encoding="utf-8")
+        _weasyprint(html_path, dest)
+    return {"via": "email (stdlib) → weasyprint"}
+
+
 CONVERTERS: dict[tuple[FileType, FileType], Callable[[Path, Path, dict], dict]] = {
     (_F.MD, _F.HTML): _md_to_html,
     (_F.MD, _F.TXT): _md_to_txt,
@@ -615,6 +695,13 @@ CONVERTERS: dict[tuple[FileType, FileType], Callable[[Path, Path, dict], dict]] 
     # spreadsheets (openpyxl; read-only in this release)
     (_F.XLSX, _F.CSV): _xlsx_to_csv,
     (_F.XLSX, _F.JSON): _xlsx_to_json,
+    # email (stdlib email / mailbox)
+    (_F.EML, _F.MD): _eml_to_md,
+    (_F.EML, _F.TXT): _mail_to_txt,
+    (_F.EML, _F.HTML): _eml_to_html,
+    (_F.EML, _F.PDF): _eml_to_pdf,
+    (_F.MBOX, _F.MD): _mbox_to_md,
+    (_F.MBOX, _F.TXT): _mail_to_txt,
 }
 
 
@@ -740,7 +827,9 @@ def cmd(
     Office and ebook sources (docx, odt, epub, rtf) are read by pandoc and
     can go to md/html/txt/pdf (pdf also needs weasyprint); md/html/txt can
     be written as docx or odt, and docx <-> epub round-trips. xlsx reads
-    need the `office` extra (openpyxl) and go to csv or json only.
+    need the `office` extra (openpyxl) and go to csv or json only. Email
+    (eml) goes to md/txt/html/pdf and a mailbox (mbox) to md/txt, with no
+    external binary (pdf needs weasyprint).
     """
     dest_type = normalize_target(to)
     if dest_type is None:

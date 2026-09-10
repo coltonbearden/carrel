@@ -565,6 +565,110 @@ def gen_xlsx() -> None:
 
 
 # --------------------------------------------------------------------------
+# email fixtures (stdlib email; fixed dates, ids and MIME boundaries)
+# --------------------------------------------------------------------------
+
+MAIL_DATE = "Tue, 15 Jun 2021 12:00:00 +0000"
+
+
+def _message(
+    *,
+    subject: str,
+    sender: str,
+    to: str,
+    message_id: str,
+    body: str,
+    html: str | None = None,
+    in_reply_to: str | None = None,
+    references: str | None = None,
+    date: str = MAIL_DATE,
+    attachment: tuple[str, bytes] | None = None,
+    boundary: str = "carrel-fixture-boundary",
+) -> bytes:
+    from email import policy
+    from email.message import EmailMessage
+
+    msg = EmailMessage(policy=policy.default)
+    msg["From"] = sender
+    msg["To"] = to
+    msg["Date"] = date
+    msg["Subject"] = subject
+    msg["Message-ID"] = message_id
+    if in_reply_to:
+        msg["In-Reply-To"] = in_reply_to
+    if references:
+        msg["References"] = references
+    msg.set_content(body)
+    if html is not None:
+        msg.add_alternative(html, subtype="html")
+        msg.set_boundary(boundary)
+    if attachment is not None:
+        name, data = attachment
+        msg.add_attachment(data, maintype="text", subtype="csv", filename=name)
+        msg.set_boundary(boundary + "-mixed")
+        for part in msg.iter_parts():
+            if part.get_content_type() == "multipart/alternative":
+                part.set_boundary(boundary)
+    return msg.as_bytes()
+
+
+def gen_mail() -> None:
+    """sample.eml: multipart/alternative + one CSV attachment; thread.mbox: 3 messages, 2 threaded."""
+    eml = _message(
+        subject="Invoice INV-2026-0042 from Acme",
+        sender="Acme Billing <billing@acme.example>",
+        to="Accounts Payable <ap@example.org>",
+        message_id="<inv-0042@acme.example>",
+        body=(
+            "Hello,\n\nPlease find attached invoice INV-2026-0042 for $1,234.56, "
+            "due 2026-10-01.\nRemit to IBAN GB82 WEST 1234 5698 7654 32.\n\n"
+            "Sentinel: melodious ledger.\n"
+        ),
+        html=(
+            "<html><body><p>Hello,</p><p>Please find attached invoice "
+            "<b>INV-2026-0042</b> for $1,234.56, due 2026-10-01.</p>"
+            "<p>Remit to IBAN GB82 WEST 1234 5698 7654 32.</p>"
+            "<p>Sentinel: melodious ledger.</p></body></html>"
+        ),
+        attachment=("remittance.csv", b"invoice,amount\nINV-2026-0042,1234.56\n"),
+    )
+    write("sample.eml", eml)
+
+    first = _message(
+        subject="Quarterly close",
+        sender="Ada <ada@example.org>",
+        to="team@example.org",
+        message_id="<close-1@example.org>",
+        body="Sentinel: quixotic ledger. Can we close Q2 by Friday?\n",
+        date="Mon, 14 Jun 2021 09:00:00 +0000",
+    )
+    reply = _message(
+        subject="Re: Quarterly close",
+        sender="Grace <grace@example.org>",
+        to="team@example.org",
+        message_id="<close-2@example.org>",
+        in_reply_to="<close-1@example.org>",
+        references="<close-1@example.org>",
+        body="Yes - invoice INV-2026-0042 is the last open item.\n",
+        date="Mon, 14 Jun 2021 10:30:00 +0000",
+    )
+    other = _message(
+        subject="Lunch",
+        sender="Linus <linus@example.org>",
+        to="team@example.org",
+        message_id="<lunch-1@example.org>",
+        body="Sandwiches at noon.\n",
+        date="Tue, 15 Jun 2021 08:00:00 +0000",
+    )
+    envelope = (
+        (b"From ada@example.org Mon Jun 14 09:00:00 2021\n", first),
+        (b"From grace@example.org Mon Jun 14 10:30:00 2021\n", reply),
+        (b"From linus@example.org Tue Jun 15 08:00:00 2021\n", other),
+    )
+    write("thread.mbox", b"".join(sep + msg + b"\n" for sep, msg in envelope))
+
+
+# --------------------------------------------------------------------------
 
 
 def main() -> None:
@@ -584,6 +688,7 @@ def main() -> None:
     gen_b_pdf()
     gen_office_docs()
     gen_xlsx()
+    gen_mail()
     print("done.")
 
 

@@ -1,0 +1,42 @@
+From: Acme Billing <billing@acme.example>
+To: Accounts Payable <ap@example.org>
+Date: Tue, 15 Jun 2021 12:00:00 +0000
+Subject: Invoice INV-2026-0042 from Acme
+Message-ID: <inv-0042@acme.example>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="carrel-fixture-boundary-mixed"
+
+--carrel-fixture-boundary-mixed
+Content-Type: multipart/alternative; boundary="carrel-fixture-boundary"
+
+--carrel-fixture-boundary
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+
+Hello,
+
+Please find attached invoice INV-2026-0042 for $1,234.56, due 2026-10-01.
+Remit to IBAN GB82 WEST 1234 5698 7654 32.
+
+Sentinel: melodious ledger.
+
+--carrel-fixture-boundary
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<html><body><p>Hello,</p><p>Please find attached invoice <b>INV-2026-0042</b>=
+ for $1,234.56, due 2026-10-01.</p><p>Remit to IBAN GB82 WEST 1234 5698 7654 =
+32.</p><p>Sentinel: melodious ledger.</p></body></html>
+
+--carrel-fixture-boundary--
+
+--carrel-fixture-boundary-mixed
+Content-Type: text/csv
+Content-Transfer-Encoding: base64
+Content-Disposition: attachment; filename="remittance.csv"
+MIME-Version: 1.0
+
+aW52b2ljZSxhbW91bnQKSU5WLTIwMjYtMDA0MiwxMjM0LjU2Cg==
+
+--carrel-fixture-boundary-mixed--

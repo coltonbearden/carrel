@@ -9,6 +9,11 @@ Source files (`.py`, `.rs`, `.toml`, ...) are typed `CODE` from their extension
 alone -- they carry no signature. `SOURCE_EXTENSIONS` maps each to a language
 label for syntax fences; the label is presentation only and is never stored in
 the desk database, which holds the `FileType` value (D-010).
+
+Email (`.eml`, `.mbox`) is text with a recognisable shape rather than a magic
+number, so its sniff applies only to files whose extension is not mapped
+(D-012): a `.txt` that starts with `From:` stays TXT, while an extension-less
+export that carries an RFC 5322 header block is EML.
 """
 
 from __future__ import annotations
@@ -37,6 +42,8 @@ class FileType(StrEnum):
     RTF = "rtf"
     XLSX = "xlsx"
     CODE = "code"
+    EML = "eml"
+    MBOX = "mbox"
     UNKNOWN = "unknown"
 
     @property
@@ -64,6 +71,11 @@ class FileType(StrEnum):
         """Plain-text source files, read verbatim (no extractor, no binary)."""
         return self is FileType.CODE
 
+    @property
+    def is_mail(self) -> bool:
+        """Email: one RFC 5322 message (eml) or a mailbox of them (mbox)."""
+        return self in (FileType.EML, FileType.MBOX)
+
 
 _EXT_MAP = {
     ".pdf": FileType.PDF,
@@ -86,6 +98,9 @@ _EXT_MAP = {
     ".rtf": FileType.RTF,
     ".xlsx": FileType.XLSX,
     ".xlsm": FileType.XLSX,
+    ".eml": FileType.EML,
+    ".mbox": FileType.MBOX,
+    ".mbx": FileType.MBOX,
 }
 
 _MAGIC = [
@@ -238,6 +253,21 @@ def sniff(path: Path) -> FileType | None:
     return None
 
 
+def _sniff_mail(path: Path) -> FileType | None:
+    """eml / mbox by shape — only consulted for unmapped extensions (D-012)."""
+    from carrel.core.mail import looks_like_eml, looks_like_mbox
+
+    try:
+        head = path.open("rb").read(2048)
+    except OSError:
+        return None
+    if looks_like_mbox(head):
+        return FileType.MBOX
+    if looks_like_eml(head):
+        return FileType.EML
+    return None
+
+
 def detect(path: Path | str) -> FileType:
     path = Path(path)
     by_magic = sniff(path)
@@ -246,7 +276,9 @@ def detect(path: Path | str) -> FileType:
         return by_magic  # trust bytes over names
     if by_ext is not None:
         return by_ext
-    return FileType.CODE if source_language(path) else FileType.UNKNOWN
+    if source_language(path):
+        return FileType.CODE
+    return _sniff_mail(path) or FileType.UNKNOWN
 
 
 def detect_or_die(path: Path | str) -> FileType:

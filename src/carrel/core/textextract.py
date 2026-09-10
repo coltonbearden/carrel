@@ -223,6 +223,10 @@ def extract_text(path: Path | str, ocr: bool = False) -> str:
         return path.read_text(encoding="utf-8", errors="replace")
     if ftype.is_document:
         return document_text(path, ftype)
+    if ftype.is_mail:
+        from carrel.core.mail import eml_text, mbox_text
+
+        return eml_text(path) if ftype is FileType.EML else mbox_text(path)
     if ftype is FileType.XLSX:
         return xlsx_text(path)
     if ftype is FileType.HTML:

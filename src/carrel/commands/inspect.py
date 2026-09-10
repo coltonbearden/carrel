@@ -350,9 +350,50 @@ def _xlsx_detail(path: Path) -> dict[str, Any]:
     }
 
 
+def _eml_detail(path: Path) -> dict[str, Any]:
+    from carrel.core import mail
+
+    try:
+        return mail.summary(mail.parse_eml(path))
+    except Exception as e:  # noqa: BLE001 — inspection degrades, never crashes
+        return {"error": f"unreadable message: {e}"}
+
+
+def _mbox_detail(path: Path) -> dict[str, Any]:
+    from collections import Counter
+
+    from carrel.core import mail
+
+    count = 0
+    dates: list[str] = []
+    senders: Counter[str] = Counter()
+    try:
+        for msg in mail.iter_mbox(path):
+            count += 1
+            when = mail.header_date(msg)
+            if when:
+                dates.append(when)
+            for sender in mail.addresses(msg, "From"):
+                senders[sender] += 1
+    except CarrelError as e:
+        return {"error": str(e)}
+    except Exception as e:  # noqa: BLE001
+        return {"error": f"unreadable mailbox: {e}"}
+    return {
+        "messages": count,
+        "first_date": min(dates) if dates else None,
+        "last_date": max(dates) if dates else None,
+        "senders": [{"from": who, "messages": n} for who, n in senders.most_common(5)],
+    }
+
+
 def _type_detail(path: Path, ftype: FileType) -> dict[str, Any]:
     if ftype is FileType.PDF:
         return _pdf_detail(path)
+    if ftype is FileType.EML:
+        return _eml_detail(path)
+    if ftype is FileType.MBOX:
+        return _mbox_detail(path)
     if ftype.is_image:
         return _image_detail(path)
     if ftype is FileType.DOCX:
@@ -477,7 +518,9 @@ def cmd(ctx: click.Context, path: Path, as_json: bool, deep: bool) -> None:
     link/img counts), md (headings outline, word count), txt
     (lines/words/chars), docx (paragraphs, words, title/author/created),
     epub (title, creator, language, spine items, words), odt/rtf (words),
-    xlsx (sheets with row/column counts; needs the `office` extra).
+    xlsx (sheets with row/column counts; needs the `office` extra), eml
+    (from/to/cc, date, subject, message id, in-reply-to, parts, attachments),
+    mbox (message count, first/last date, top senders).
     Word counts for office/ebook files use pandoc and are null without it.
     """
     ctx.ensure_object(dict)

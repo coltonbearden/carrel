@@ -43,6 +43,8 @@ ALL_FIXTURES = [
     "form.pdf",
     "scanned.pdf",
     "b.pdf",
+    "sample.eml",
+    "thread.mbox",
 ]
 
 COMMON_KEYS = {"path", "name", "size", "mtime", "type", "mime", "sha256", "detail"}

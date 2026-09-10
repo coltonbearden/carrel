@@ -157,6 +157,7 @@ EXPECTED_TOOLS = [
     "carrel_redact",
     "carrel_doctor",
     "carrel_meta",
+    "carrel_mail",
     "carrel_refs",
 ]
 
@@ -200,7 +201,7 @@ class TestMcpProtocol:
         (resp,) = rpc([{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}])
         tools = resp["result"]["tools"]
         assert [t["name"] for t in tools] == EXPECTED_TOOLS
-        assert len(tools) == len(EXPECTED_TOOLS) == 12
+        assert len(tools) == len(EXPECTED_TOOLS) == 13
         assert tools == TOOLS
 
     @pytest.mark.parametrize("tool", TOOLS, ids=[t["name"] for t in TOOLS])

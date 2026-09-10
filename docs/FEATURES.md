@@ -2,7 +2,7 @@
 
 Strategies: `wrap:<tool>` (external binary via adapter) · `lib:<pypi>` · `custom` (pure Python) · `degrade-if-missing` · `stretch`.
 Tiers: **MVP** (must ship before flagship), **v1** (shipped in v0.1.0 after MVP), **v0.2.0** (shipped on `feat/v0.2.0`, specs 15–21), **stretch** (attempted last / cut candidates).
-File types: pdf md jpg jpeg png ico txt html json xml csv docx odt epub rtf xlsx (xlsm).
+File types: pdf md jpg jpeg png ico txt html json xml csv docx odt epub rtf xlsx (xlsm) eml mbox (mbx).
 
 | Capability | Command | Strategy | Types | Tier |
 |---|---|---|---|---|
@@ -18,7 +18,7 @@ File types: pdf md jpg jpeg png ico txt html json xml csv docx odt epub rtf xlsx
 | Thumbnails | `carrel thumb` | wrap:pdftoppm (pdf), lib:Pillow (images), wrap:imagemagick fallback; html thumb = render pdf→ppm | pdf + images (+html via pdf) | MVP |
 | Folder watch | `carrel watch` | lib:watchdog (inotify under the hood), custom rule→action mapping (run any carrel command on event) | all | MVP |
 | Doctor / env probe | `carrel doctor` | custom (re-probes adapters, prints capability table + apt hints; shows `via CARREL_BIN_*` for pinned binaries and the extra to install for gated commands) | — | MVP |
-| Whole desk over MCP | `carrel mcp` | custom stdlib JSON-RPC 2.0 on stdio: 12 tools (search, pack, inspect, tag, note, index, convert, diff, redact, doctor, meta, refs) delegating to the command impl functions + resource templates `carrel://file/{path}`, `carrel://search/{query}` | all | v1 (3 tools) → v0.2.0 (10 tools + resources) → v0.4.0 (12) |
+| Whole desk over MCP | `carrel mcp` | custom stdlib JSON-RPC 2.0 on stdio: 13 tools (search, pack, inspect, tag, note, index, convert, diff, redact, doctor, meta, mail, refs) delegating to the command impl functions + resource templates `carrel://file/{path}`, `carrel://search/{query}` | all | v1 (3 tools) → v0.2.0 (10 tools + resources) → v0.4.0 (13) |
 | Install ergonomics | `carrel completion bash/zsh/fish`; extras `tui/office/tokens/all`; `CARREL_BIN_<NAME>` override; `git` adapter | lib:click completions (in-process); pyproject extras (D-007); env-var override (D-008) | — | v0.2.0 |
 | Dedupe | `carrel dedupe` | custom (BLAKE2 content hash groups; `--near` perceptual dHash for images, custom impl, no numpy) | all | v1 |
 | File/folder organization | `carrel organize` | custom (rules: by type/date/exif-date; dry-run default) | all | v1 |
@@ -28,6 +28,8 @@ File types: pdf md jpg jpeg png ico txt html json xml csv docx odt epub rtf xlsx
 | Notes/comments (annotations) | `carrel note` | lib:pypdf (PDF text annotations, list/add), custom (sidecar notes in index DB for any file) | pdf + all (sidecar) | v1 |
 | Tagging | `carrel tag` | custom (tags in index DB; add/rm/ls/find) | all | v1 |
 | Typed metadata fields | `carrel meta set/get/ls/rm/find/export`, `search --meta` | custom (schema v2 `meta` table; kinds str/num/date/bool inferred, canonical storage; typed `find` conditions `= != > >= < <= ~ ?`; CSV/JSON export; travels with `catalog`) | all | v0.4.0 |
+| Email files | `.eml`/`.mbox` everywhere: `inspect`, `convert` (eml → md/txt/html/pdf, mbox → md/txt), `index`/`search --type eml`, `pack`, `diff`, `organize` → `mail/`, `refs`, the Read guard | custom (stdlib `email` + `mailbox` via `core/mail.py`; shape sniff only for unmapped extensions, D-012) | eml mbox | v0.4.0 |
+| Mail tools | `carrel mail attachments/split/threads/pst` | custom (attachments with sha256, mbox → dated `.eml` files, Message-ID/In-Reply-To/References threads); wrap:readpst (`pst-utils`) for Outlook `.pst`/`.ost` | eml mbox pst | v0.4.0 |
 | Reference numbers | `carrel refs` (`--tag`, `--link`, `--pattern NAME=REGEX`) | custom (`core/patterns.py`: label-driven invoice/po/order/check/account/tracking/ticket + iban/routing/ein/vat/isbn/gtin/doi/ups/usps with check-digit validators; text via textextract; `ref:<kind>:<value>` tags cross-link files) | all | v0.4.0 |
 | Form building | `carrel form` | custom (JSON spec → HTML form; → PDF form via weasyprint for print-fill), lib:pypdf (fill existing AcroForm PDF, list fields) | html pdf json | v1 |
 | Image extraction | `carrel extract-images` | wrap:pdfimages (pdf), wrap:icotool (ico frames), custom (html `<img>` local refs) | pdf ico html | v1 |
@@ -55,6 +57,18 @@ Detection is by bytes (`{\rtf` prefix; zip containers probed for `mimetype` / `[
 
 Proof (executed 2026-09-04, [TEST_REPORT.md](TEST_REPORT.md#v020-2026-09-04)): `sample.md → docx → md` keeps the fixture sentinel *melodious cartography*; `sample.xlsx --to csv --sheet 2` yields the `Loans` sheet; `inspect sample.xlsx` lists both sheets with `rows: 4, cols: 3`.
 
+## Email (spec 28, shipped)
+
+One `core.textextract` branch (`core/mail.py`, stdlib only) feeds every command. Detection is by extension (`.eml`, `.mbox`, `.mbx`) or, for files without a mapped extension, by shape — an RFC 5322 header block or an mbox `From ` separator — so a `.txt` that happens to start with `From:` stays text (D-012).
+
+| Format | Detect | Text (`extract_text`) | `convert` to | `inspect` detail | `mail` |
+|---|---|---|---|---|---|
+| eml | `.eml`; header block (unmapped ext) | key headers, blank line, plain body (html flattened when no plain part), `attachment:` lines | md html txt pdf (weasyprint) | from/to/cc, date (ISO), subject, message id, in-reply-to, references, parts, has_html, attachments | `attachments`, `threads` |
+| mbox | `.mbox` `.mbx`; `From ` line + header block (unmapped ext) | `# <subject>` block per message | md txt | messages, first/last date, top senders | `attachments`, `split`, `threads` |
+| pst/ost | — (input to `mail pst` only) | — | eml or mbox per folder via `readpst` | — | `pst` |
+
+Outlook `.msg` item files are **cut** (D-011): no pure-Python writer exists, so the support-matrix test could not hold a generated fixture; export to `.pst` or save as `.eml` instead.
+
 ## Explicit scope notes
 
 - **PDF redaction** is true redaction (rasterization destroys the text layer) — documented tradeoff; searchability restorable via `carrel ocr` afterwards.
@@ -73,4 +87,5 @@ Proof (executed 2026-09-04, [TEST_REPORT.md](TEST_REPORT.md#v020-2026-09-04)): `
 
 - `recipes` runner: stretch, cut if time is short (cookbook shell scripts cover the use cases).
 - PAdES cryptographic PDF signing: cut to stretch; visible stamp + gpg manifest signing ship instead (rationale: key management UX exceeds session scope).
+- v0.4.0: Outlook `.msg` (would need the `extract-msg` package and a hand-made OLE fixture) — cut; `mail pst` via readpst covers Outlook exports. Also deferred from the v0.4.0 brainstorm: ledger reconciliation (`recon`), folder roll-ups (`ledger`), embedded metadata write-back (`meta embed`), watch rules files, snapshot diffs (`changes`), mail drafting and sending.
 - v0.2.0: unwired adapter entries removed (`gs`, `pngquant`, `jq`, `mlr`, `rg`, `fd`, `sqlite3`, `inotifywait`, `claude`) — none was referenced by any command, yet `doctor` advertised them. Re-add each together with the command that uses it (spec 19).

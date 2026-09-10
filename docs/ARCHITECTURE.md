@@ -25,6 +25,8 @@ src/carrel/
 │   ├── output.py          # emit()/fail(); ExitCode enum; human tables via rich
 │   ├── filetypes.py       # detect(path) -> FileType (ext + magic bytes + zip-container probe)
 │   ├── textextract.py     # extract_text(path) for any supported type (uses adapters; openpyxl for xlsx)
+│   ├── patterns.py        # PII + reference-number kinds with check-digit validators (redact, refs)
+│   ├── mail.py            # eml/mbox parsing (stdlib email + mailbox): text, summaries, attachments, threads
 │   └── db.py              # DeskDB: .carrel/carrel.db (files, FTS5, tags, notes) + MIGRATIONS
 ├── commands/<name>.py     # one module per subcommand; exports `cmd` (click.Command)
 │                          #   incl. catalog.py (export/import/status), completion.py, mcp.py
@@ -36,7 +38,7 @@ src/carrel/
 ### CLI shape
 
 - Root: `carrel <command> [args]`. Every command: `--help` works, `--json` (where output is data) prints ONE JSON object/array to stdout and nothing else, human mode may use rich.
-- Commands are registered in `cli.py` via a `COMMANDS: dict[str, str]` name→module map with lazy import (startup stays fast; a broken optional import breaks only its command). 28 commands as of v0.4.0.
+- Commands are registered in `cli.py` via a `COMMANDS: dict[str, str]` name→module map with lazy import (startup stays fast; a broken optional import breaks only its command). 29 commands as of v0.4.0.
 - Global `--debug` (tracebacks), `--root PATH` (desk root for db-backed commands; default: cwd).
 - `carrel completion bash|zsh|fish` prints click's completion script in-process (no subprocess); `--install-hint` appends the per-shell enable lines as a comment block; an unknown shell exits 2.
 
@@ -73,7 +75,7 @@ error: 'pandoc' is required for this operation but was not found (override CARRE
 
 `doctor` shows `found via CARREL_BIN_PANDOC` / `MISSING via CARREL_BIN_PANDOC`, and its `--json` adapter rows carry `"override": {"var", "path"}` or `null`. This is the single exception to config-free; details in [CONFIGURATION.md](CONFIGURATION.md#pinning-a-binary-carrel_bin_name).
 
-**Registry hygiene.** Every entry is wired to at least one command. v0.2.0 added `git` (for `pack --since`/`--changed`) and removed nine entries no command referenced (`gs`, `pngquant`, `jq`, `mlr`, `rg`, `fd`, `sqlite3`, `inotifywait`, `claude`) — see the Cuts log in [FEATURES.md](FEATURES.md#cuts-running-log-updated-through-the-build). `carrel doctor --json` lists 18 adapters.
+**Registry hygiene.** Every entry is wired to at least one command. v0.2.0 added `git` (for `pack --since`/`--changed`) and removed nine entries no command referenced (`gs`, `pngquant`, `jq`, `mlr`, `rg`, `fd`, `sqlite3`, `inotifywait`, `claude`) — see the Cuts log in [FEATURES.md](FEATURES.md#cuts-running-log-updated-through-the-build). `carrel doctor --json` lists 19 adapters (v0.4.0 added `readpst` for `mail pst`).
 
 ### Output (`core.output`)
 
@@ -115,9 +117,9 @@ meta  (file_id INT, key TEXT, value TEXT, kind TEXT, source TEXT, updated REAL, 
 
 ### Type detection
 
-`filetypes.detect(path)` → `FileType` enum over 15 supported types (`pdf md jpg png ico txt html json xml csv docx odt epub rtf xlsx`) + `UNKNOWN`; `.jpeg` maps to `jpg`, `.xlsm` to `xlsx`. Bytes beat names: extension first, then a magic-byte sniff (`%PDF`, PNG/JPEG/ICO signatures, `{\rtf`) confirms or overrides. A `PK\x03\x04` zip container is probed read-only (first 64 entries): a `mimetype` entry of `application/epub+zip` → epub, `application/vnd.oasis.opendocument.text` → odt; otherwise `[Content_Types].xml` plus a `word/` entry → docx, `xl/` → xlsx. The probe never raises (a broken zip falls back to the extension; a plain zip of text files stays `UNKNOWN`). Unsupported input → exit 4.
+`filetypes.detect(path)` → `FileType` enum over 17 supported types (`pdf md jpg png ico txt html json xml csv docx odt epub rtf xlsx eml mbox`, plus `code` for source files) + `UNKNOWN`; `.jpeg` maps to `jpg`, `.xlsm` to `xlsx`. Bytes beat names: extension first, then a magic-byte sniff (`%PDF`, PNG/JPEG/ICO signatures, `{\rtf`) confirms or overrides. A `PK\x03\x04` zip container is probed read-only (first 64 entries): a `mimetype` entry of `application/epub+zip` → epub, `application/vnd.oasis.opendocument.text` → odt; otherwise `[Content_Types].xml` plus a `word/` entry → docx, `xl/` → xlsx. The probe never raises (a broken zip falls back to the extension; a plain zip of text files stays `UNKNOWN`). Email is text with a shape rather than a signature, so its sniff (`core.mail.looks_like_eml` / `looks_like_mbox`) runs only for files whose extension is not mapped (D-012): `.eml`/`.mbox`/`.mbx` by name, an extension-less export by its header block, and a `.txt` that starts with `From:` stays TXT. Unsupported input → exit 4.
 
-`FileType.is_document` is true for docx/odt/epub/rtf (pandoc reads them; PDF keeps its own paths); `textextract.extract_text` dispatches on the new types, so `index`, `search`, `pack`, `diff` and `audiobook` light up for all of them from one branch. xlsx text is `# <sheet>` headings followed by CSV-flattened rows, via openpyxl (`office` extra).
+`FileType.is_document` is true for docx/odt/epub/rtf (pandoc reads them; PDF keeps its own paths); `is_mail` for eml/mbox (stdlib `email`/`mailbox` through `core/mail.py`); `textextract.extract_text` dispatches on all of them, so `index`, `search`, `pack`, `diff`, `refs` and `audiobook` light up from one branch. xlsx text is `# <sheet>` headings followed by CSV-flattened rows, via openpyxl (`office` extra); eml text is the key headers, the plain body (html flattened when there is no plain part) and `attachment:` lines; mbox text is one `# <subject>` block per message.
 
 ## Marketplace layout (schema per D-001, verified against live docs)
 
@@ -130,14 +132,14 @@ plugins/
 ├── carrel-watch/     # /watch-folder + watch-loop skill
 └── carrel-agent/     # file-librarian agent, agent-workflows skill,
                       # PostToolUse hook: re-index files Claude writes (if .carrel exists),
-                      # .mcp.json: the carrel MCP server (12 tools + resources, below)
+                      # .mcp.json: the carrel MCP server (13 tools + resources, below)
 ```
 
 The plugin set is growing in v0.2.0 (spec 20 adds `carrel-documents` and `carrel-guard` and generates every usage block from `--help`); [MARKETPLACE.md](MARKETPLACE.md) is authoritative for the current list. Slash commands are thin: they document flags and run `carrel …` via Bash, never duplicate logic. Plugins require carrel on PATH; each command's markdown says so and points to INSTALL.
 
 ### MCP server
 
-`carrel mcp` = newline-delimited JSON-RPC 2.0 over stdio, pure stdlib, no SDK. `initialize` returns `capabilities: {"tools": {}, "resources": {}}` and `serverInfo: {"name": "carrel", "version": …}`. `tools/list` returns exactly twelve tools whose bodies delegate to the same implementation functions the CLI uses (`search.search_index`, `pack.pack_paths`, `inspect.inspect_path`, `refs.scan_refs`, the `DeskDB` tag/note/meta methods, …) — `mcp.py` owns no walk or token-estimate of its own.
+`carrel mcp` = newline-delimited JSON-RPC 2.0 over stdio, pure stdlib, no SDK. `initialize` returns `capabilities: {"tools": {}, "resources": {}}` and `serverInfo: {"name": "carrel", "version": …}`. `tools/list` returns exactly thirteen tools whose bodies delegate to the same implementation functions the CLI uses (`search.search_index`, `pack.pack_paths`, `inspect.inspect_path`, `refs.scan_refs`, the `DeskDB` tag/note/meta methods, …) — `mcp.py` owns no walk or token-estimate of its own.
 
 | Tool | Required | Optional |
 |---|---|---|
@@ -152,6 +154,7 @@ The plugin set is growing in v0.2.0 (spec 20 adds `carrel-documents` and `carrel
 | `carrel_redact` | `path` | `builtin`, `pattern`, `replacement`, `root` |
 | `carrel_doctor` | — | — |
 | `carrel_meta` | `action` (`set`/`get`/`ls`/`rm`/`find`) | `path`, `fields`, `key`, `keys`, `conditions`, `source`, `root` |
+| `carrel_mail` | `action` (`attachments`/`threads`), `path` | `out_dir`, `force`, `root` |
 | `carrel_refs` | `path` | `kinds`, `patterns`, `tag`, `link`, `all`, `ocr`, `root` |
 
 Relative paths resolve against the server's `--root` (cwd by default); `root` overrides per call. Failures come back as `isError: true` with the CLI's message (install hint included for missing binaries), never a crash. `carrel_redact` never writes and rejects PDFs (the CLI's raster redaction is the path for those); `carrel_diff` reports `differ` as data, never as an error; `carrel_meta` get/ls/rm/find and `carrel_refs` without `tag` never create a desk db.

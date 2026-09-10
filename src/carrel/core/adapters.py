@@ -168,6 +168,12 @@ ADAPTERS: dict[str, Adapter] = {
         _a("edge-tts", "text-to-speech (cloud, preferred if present)", "pipx install edge-tts"),
         _a("gpg", "detached signatures for manifests", "sudo apt install gnupg"),
         _a("git", "changed-file lists for pack --since/--changed", "sudo apt install git"),
+        _a(
+            "readpst",
+            "Outlook .pst/.ost export → eml or mbox (mail pst)",
+            "sudo apt install pst-utils",
+            version_args=("-V",),
+        ),
     ]
 }
 

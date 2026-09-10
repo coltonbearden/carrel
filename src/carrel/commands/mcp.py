@@ -6,7 +6,8 @@ message per line on stdin/stdout, no Content-Length framing, no SDK.
 Every tool (see TOOLS) is a thin shim over a command module's library entry
 point (pack.pack_paths, search.search_index, inspect.inspect_path,
 convert.convert_file, diff.diff_files, redact's text engine, doctor.build_report,
-refs.scan_refs, DeskDB for tags, notes and meta fields, index.index_paths).
+refs.scan_refs, mail.attachments_of/threads_of, DeskDB for tags, notes and meta
+fields, index.index_paths).
 Nothing here walks a tree or estimates tokens on its own. Two resource
 templates expose file text and desk search as `carrel://` URIs.
 
@@ -293,6 +294,32 @@ TOOLS: list[dict[str, Any]] = [
                 "root": _ROOT_PROP,
             },
             "required": ["action"],
+        },
+    },
+    {
+        "name": "carrel_mail",
+        "description": "Email files (eml/mbox): save a message's attachments into a directory, "
+        "or group the messages of files/directories into threads.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "enum": ["attachments", "threads"]},
+                "path": {
+                    "type": "string",
+                    "description": "eml/mbox file (attachments) or file/directory (threads).",
+                },
+                "out_dir": {
+                    "type": "string",
+                    "description": "Where attachments are written (attachments).",
+                },
+                "force": {
+                    "type": "boolean",
+                    "description": "Overwrite same-named attachments instead of suffixing.",
+                    "default": False,
+                },
+                "root": _ROOT_PROP,
+            },
+            "required": ["action", "path"],
         },
     },
     {
@@ -741,6 +768,21 @@ def _tool_refs(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
     return {"root": str(root), "path": str(path), "files": records}
 
 
+def _tool_mail(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
+    from carrel.commands.mail import attachments_of, threads_of
+
+    action = _choice(args, "action", ("attachments", "threads"), "")
+    root = _root(args, default_root)
+    path = _resolve(args["path"], root)
+    if action == "threads":
+        return {"root": str(root), "path": str(path), "threads": threads_of([path])}
+    if not args.get("out_dir"):
+        raise CarrelInputError("carrel_mail attachments requires `out_dir`")
+    out_dir = _resolve(args["out_dir"], root)
+    records = attachments_of([path], out_dir, force=bool(args.get("force") or False))
+    return {"root": str(root), "path": str(path), "out_dir": str(out_dir), "messages": records}
+
+
 _TOOL_IMPLS: dict[str, Callable[[dict[str, Any], Path], dict[str, Any]]] = {
     "carrel_search": _tool_search,
     "carrel_pack": _tool_pack,
@@ -753,6 +795,7 @@ _TOOL_IMPLS: dict[str, Callable[[dict[str, Any], Path], dict[str, Any]]] = {
     "carrel_redact": _tool_redact,
     "carrel_doctor": _tool_doctor,
     "carrel_meta": _tool_meta,
+    "carrel_mail": _tool_mail,
     "carrel_refs": _tool_refs,
 }
 

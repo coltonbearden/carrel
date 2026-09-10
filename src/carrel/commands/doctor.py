@@ -52,6 +52,11 @@ CAPABILITIES: dict[str, dict[str, Any]] = {
     "tag": {"required": (), "optional": (), "note": "desk db (stdlib sqlite)"},
     "note": {"required": (), "optional": (), "note": "desk db + pypdf annotations"},
     "meta": {"required": (), "optional": (), "note": "desk db (stdlib sqlite)"},
+    "mail": {
+        "required": (),
+        "optional": ("readpst",),
+        "note": "stdlib email/mailbox; readpst (pst-utils) enables `mail pst`",
+    },
     "refs": {
         "required": (),
         "optional": ("pdftotext", "pandoc", "tesseract"),

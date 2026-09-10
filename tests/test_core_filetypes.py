@@ -38,6 +38,8 @@ FIXTURE_TYPES = [
     ("sample.rtf", FileType.RTF),
     ("sample.xlsx", FileType.XLSX),
     ("sample.py", FileType.CODE),
+    ("sample.eml", FileType.EML),
+    ("thread.mbox", FileType.MBOX),
 ]
 
 

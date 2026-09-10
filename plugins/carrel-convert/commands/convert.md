@@ -21,7 +21,8 @@ Usage: carrel convert [OPTIONS] SRC...
 
   Office and ebook sources (docx, odt, epub, rtf) are read by pandoc and can go to md/html/txt/pdf
   (pdf also needs weasyprint); md/html/txt can be written as docx or odt, and docx <-> epub round-
-  trips. xlsx reads need the `office` extra (openpyxl) and go to csv or json only.
+  trips. xlsx reads need the `office` extra (openpyxl) and go to csv or json only. Email (eml) goes
+  to md/txt/html/pdf and a mailbox (mbox) to md/txt, with no external binary (pdf needs weasyprint).
 
 Options:
   --to EXT             Target type: pdf, md, txt, html, json, xml, csv, png, jpg, ico, docx, odt,
@@ -40,11 +41,13 @@ Options:
   Supported conversions (SRC type → --to targets):
     csv   → html, json, md
     docx  → epub, html, md, pdf, txt
+    eml   → html, md, pdf, txt
     epub  → docx, html, md, pdf, txt
     html  → docx, md, odt, pdf, txt
     ico   → jpg, pdf, png
     jpg   → ico, pdf, png
     json  → csv, html, xml
+    mbox  → md, txt
     md    → docx, html, odt, pdf, txt
     odt   → html, md, pdf, txt
     pdf   → html, jpg, md, png, txt
