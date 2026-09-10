@@ -5,17 +5,19 @@
 
 ## Now
 
-- **Status:** v0.3.1 released 2026-09-09 (GitHub Release + PyPI via Trusted Publishing,
-  with PEP 740 attestations), the same day as v0.3.0. Verified from PyPI: `carrel 0.3.1`,
-  `doctor` 26/26 commands ok, and a desk under a stray `*` `.gitignore` indexes 2 files where
-  0.3.0 indexed 0. Repo `coltonbearden/carrel`, docs at https://coltonbearden.github.io/carrel/,
-  PyPI package `carrel`.
-- **In flight:** v0.3.2 release PR (Windows fixes, note order, `search` score format).
-- **Next:** publish v0.3.2 (`gh release create v0.3.2`), verify from PyPI, record it here. Promote `test-minimal (windows)` to required once it has
-  been green on `main` for two consecutive weeks (drop `continue-on-error`; the ruleset
-  entry is the owner's step). Plus two repo-settings steps only the owner can apply — add
-  `test-minimal (macos)` to the `main` ruleset's required checks and to `REQUIRED_CHECKS`
-  in `scripts/github-harden.sh` (see docs/REPO_SETTINGS.md).
+- **Status:** v0.3.2 released 2026-09-10 (GitHub Release + PyPI via Trusted Publishing,
+  with a PEP 740 attestation). Verified from PyPI in a clean venv: `carrel 0.3.2`, `doctor`
+  26 commands (25 ok, `desk` unavailable without the `tui` extra, as designed), `search`
+  prints `score -8.51e-07` (`.3g`). The full suite is green on `windows-latest`; the
+  advisory job has been green on `main` since 2026-09-10. Repo `coltonbearden/carrel`,
+  docs at https://coltonbearden.github.io/carrel/, PyPI package `carrel`.
+- **In flight:** nothing.
+- **Next:** promote `test-minimal (windows)` to required once it has been green on `main`
+  for two consecutive weeks (from 2026-09-10): drop `continue-on-error` in
+  `.github/workflows/test.yml`; the ruleset entry is the owner's step. Plus two
+  repo-settings steps only the owner can apply — add `test-minimal (macos)` to the `main`
+  ruleset's required checks and to `REQUIRED_CHECKS` in `scripts/github-harden.sh`
+  (see docs/REPO_SETTINGS.md). Backlog: the MCP exposure gap under Open issues.
 
 ## Done
 
@@ -40,6 +42,8 @@
   as executable (`os.access(X_OK)`), notes tied on a coarse clock, the read-guard hook treated
   `C:\…` paths as relative, and the sync scripts wrote CRLF. Tests run hook scripts through
   Git for Windows' bash (the `bash` on PATH there is the WSL stub) and write fixtures as LF.
+- 2026-09-10: v0.3.2 released (Windows fixes, note order, `search` score format) and
+  verified from PyPI; global install upgraded to `carrel[all]` 0.3.2.
 - 2026-09-09 doc-drift gate (D-g): `tests/test_docs_drift.py` fails when README or
   docs/MARKETPLACE.md lack a marketplace plugin, when docs/FEATURES.md grows an "In flight"
   section, or when any doc sample prints a version other than `product.json`'s; the `lint`
