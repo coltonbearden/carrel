@@ -82,7 +82,8 @@ META_OPS: tuple[str, ...] = ("!=", ">=", "<=", "=", ">", "<", "~", "?")
 _META_KEY_RE = re.compile(r"[a-z0-9][a-z0-9_.-]{0,63}\Z")
 _NUM_RE = re.compile(r"[-+]?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?\Z")
 _ISO_DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}\Z")
-_COND_RE = re.compile(r"([A-Za-z0-9_.\-]+)\s*(!=|>=|<=|=|>|<|~|\?)\s*(?![=<>!~?])(.*)\Z", re.DOTALL)
+_COND_KEY_RE = re.compile(r"[A-Za-z0-9_.\-]+")
+_COND_OPS = ("!=", ">=", "<=", "=", ">", "<", "~", "?")  # two-character operators first
 # Literal SQL fragments per operator: the user's operator string never reaches the
 # query text, only the fragment it selects does.
 _NUM_CMP: dict[str, str] = {
@@ -818,14 +819,27 @@ def _meta_comparison(op: str, value: str) -> tuple[str, list[Any]]:
 
 
 def parse_meta_condition(cond: str) -> tuple[str, str, str]:
-    """`key OP value` (or bare `key?`) → (key, op, value); raises CarrelInputError."""
-    m = _COND_RE.match(cond.strip())
+    """`key OP value` (or bare `key?`) → (key, op, value); raises CarrelInputError.
+
+    Parsed by hand rather than with one regex: the operator alternation would
+    read like an HTML-comment filter to static analysers, and a value may not
+    start with an operator character (`vendor>>x` is a typo, not a comparison).
+    """
+    text = cond.strip()
+    bad = CarrelInputError(
+        f"bad condition {cond!r}: expected KEY OP VALUE with OP one of "
+        f"{' '.join(META_OPS)} (or KEY? for 'has the field')"
+    )
+    m = _COND_KEY_RE.match(text)
     if not m:
-        raise CarrelInputError(
-            f"bad condition {cond!r}: expected KEY OP VALUE with OP one of "
-            f"{' '.join(META_OPS)} (or KEY? for 'has the field')"
-        )
-    key, op, value = m.group(1), m.group(2), m.group(3).strip()
+        raise bad
+    key, rest = m.group(0), text[m.end() :].lstrip()
+    op = next((o for o in _COND_OPS if rest.startswith(o)), None)
+    if op is None:
+        raise bad
+    value = rest[len(op) :].strip()
+    if value and value[0] in "=<>!~?":
+        raise bad
     if op == "?" and value:
         raise CarrelInputError(f"bad condition {cond!r}: 'KEY?' takes no value")
     if op != "?" and not value:
