@@ -205,6 +205,10 @@ def process_file(
 
         try:
             fields = extract_fields(filed_source, date_order=date_order, ocr=False)["fields"]
+        except adapters.MissingDependencyError as e:
+            # the same shape `index` and `refs` use: a per-file record, and exit 3
+            # only when a missing tool is the reason nothing at all could be read
+            return _record(src, "error", reason=str(e), kind="missing_dependency", ocr=ocr_status)
         except CarrelError as e:
             return _record(src, "error", reason=str(e), ocr=ocr_status)
 
@@ -520,7 +524,9 @@ def cmd(
     document; the untouched original moves to --to/_originals. Nothing is
     overwritten (colliding names get -1, -2, … suffixes) and nothing is
     deleted. JSON: [{src, dest, action: plan|filed|skip|error, fields, refs,
-    tags, ocr, reason}].
+    tags, ocr, reason}]. Exit 3 when a missing optional binary is the reason
+    nothing could be read at all, 1 when some files errored during --apply,
+    5 with --fail-empty when there was nothing to file.
     """
     inbox = inbox.resolve()
     if not inbox.is_dir():
@@ -562,6 +568,12 @@ def cmd(
     emit(ctx, records, human=_human(applied=apply_))
     if fail_empty and not records:
         fail("nothing to file (--fail-empty)", ExitCode.EMPTY)
+    missing = [r for r in records if r.get("kind") == "missing_dependency"]
+    if missing and len(missing) == len(records):
+        fail(
+            f"nothing filed — {len(missing)} file(s) need a missing tool:\n{missing[0]['reason']}",
+            ExitCode.MISSING_DEP,
+        )
     if apply_ and any(r["action"] == "error" for r in records):
         fail("some files could not be filed (see the records)", ExitCode.ERROR)
 

@@ -726,7 +726,8 @@ Usage: carrel intake [OPTIONS] INBOX
   Scanned PDFs are OCRed into a searchable copy which becomes the filed document; the untouched
   original moves to --to/_originals. Nothing is overwritten (colliding names get -1, -2, … suffixes)
   and nothing is deleted. JSON: [{src, dest, action: plan|filed|skip|error, fields, refs, tags, ocr,
-  reason}].
+  reason}]. Exit 3 when a missing optional binary is the reason nothing could be read at all, 1 when
+  some files errored during --apply, 5 with --fail-empty when there was nothing to file.
 
 Options:
   --to DIRECTORY          Where filed documents land (created if missing).  [required]

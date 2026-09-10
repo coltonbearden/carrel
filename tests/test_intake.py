@@ -231,6 +231,7 @@ def test_explicit_root_overrides_the_destination_desk(inbox: Path, dest: Path, t
 # ---------------------------------------------------------------------- ocr
 
 
+@needs("pdftotext")
 def test_looks_scanned(fixtures: Path, tmp_path: Path):
     assert looks_scanned(fixtures / "scanned.pdf", FileType.PDF) is True
     assert looks_scanned(fixtures / "invoice.txt", FileType.TXT) is False
@@ -241,6 +242,7 @@ def test_looks_scanned(fixtures: Path, tmp_path: Path):
             assert looks_scanned(fixtures / "text+image.pdf", FileType.PDF) is False
 
 
+@needs("pdftotext")
 def test_no_ocr_flag_files_the_scan_as_is(inbox: Path, dest: Path, fixtures: Path):
     (inbox / "scan.pdf").write_bytes((fixtures / "scanned.pdf").read_bytes())
     rec = next(
@@ -251,6 +253,7 @@ def test_no_ocr_flag_files_the_scan_as_is(inbox: Path, dest: Path, fixtures: Pat
     assert rec["ocr"] == "not needed" and rec["action"] == "plan"
 
 
+@needs("pdftotext")
 def test_ocr_requested_without_the_binary_exits_3(
     inbox: Path, dest: Path, fixtures: Path, monkeypatch
 ):
@@ -261,6 +264,7 @@ def test_ocr_requested_without_the_binary_exits_3(
     assert not (dest / "2026").exists()  # exits before anything moved
 
 
+@needs("pdftotext")
 def test_missing_ocrmypdf_files_the_scan_and_says_so(
     inbox: Path, dest: Path, fixtures: Path, monkeypatch
 ):
@@ -297,6 +301,24 @@ def test_ocr_files_the_searchable_copy_and_keeps_the_original(
     from carrel.core.textextract import extract_text
 
     assert len(extract_text(filed).strip()) > len(extract_text(kept).strip())
+
+
+def test_unreadable_files_exit_3_when_a_binary_is_the_only_reason(
+    tmp_path: Path, fixtures: Path, monkeypatch
+):
+    """A PDF-only inbox with no pdftotext: one clean exit 3, not a per-file mystery."""
+    box = tmp_path / "in"
+    box.mkdir()
+    (box / "a.pdf").write_bytes((fixtures / "invoice.pdf").read_bytes())
+    monkeypatch.setenv("CARREL_BIN_PDFTOTEXT", str(tmp_path / "nowhere"))
+    result = run("intake", str(box), "--to", str(tmp_path / "filed"), expect=3)
+    assert "pdftotext" in result.stderr and "install" in result.stderr
+    assert not (tmp_path / "filed").exists()
+    # one readable file alongside it: the run continues and reports per file
+    (box / "b.txt").write_bytes((fixtures / "invoice.txt").read_bytes())
+    records = run_json("intake", str(box), "--to", str(tmp_path / "filed"))
+    kinds = {Path(r["src"]).name: r.get("kind") or r["action"] for r in records}
+    assert kinds == {"a.pdf": "missing_dependency", "b.txt": "plan"}
 
 
 # ------------------------------------------------------------------- watch
