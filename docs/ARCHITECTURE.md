@@ -38,7 +38,7 @@ src/carrel/
 ### CLI shape
 
 - Root: `carrel <command> [args]`. Every command: `--help` works, `--json` (where output is data) prints ONE JSON object/array to stdout and nothing else, human mode may use rich.
-- Commands are registered in `cli.py` via a `COMMANDS: dict[str, str]` name→module map with lazy import (startup stays fast; a broken optional import breaks only its command). 29 commands as of v0.4.0.
+- Commands are registered in `cli.py` via a `COMMANDS: dict[str, str]` name→module map with lazy import (startup stays fast; a broken optional import breaks only its command). 32 commands as of v0.4.0.
 - Global `--debug` (tracebacks), `--root PATH` (desk root for db-backed commands; default: cwd).
 - `carrel completion bash|zsh|fish` prints click's completion script in-process (no subprocess); `--install-hint` appends the per-shell enable lines as a comment block; an unknown shell exits 2.
 
@@ -63,7 +63,7 @@ require(name) -> str                         # resolved path | raises MissingDep
 run(name, *args, input=None, timeout=120) -> CompletedProcess  # check=False; caller checks rc
 ```
 
-Command modules never call subprocess directly — with one documented exception: `commands/watch.py` runs user-authored `--run` shell actions itself (substitutions are shell-quoted, `--action-timeout` bounds each action). `MissingDependencyError` is caught centrally in `cli.py` → stderr message + hint, exit 3; a binary exceeding its timeout raises `ToolTimeoutError` → exit 1 with the binary named, never a traceback.
+Command modules never call subprocess directly — with one documented exception: `core/actions.py` runs the user-authored `--run` shell actions of `watch` and `batch` (substitutions are shell-quoted, `--action-timeout` bounds each action; D-013). `MissingDependencyError` is caught centrally in `cli.py` → stderr message + hint, exit 3; a binary exceeding its timeout raises `ToolTimeoutError` → exit 1 with the binary named, never a traceback.
 
 **Override (D-008).** `CARREL_BIN_<NAME>` (adapter name upper-cased, `-` → `_`, e.g. `CARREL_BIN_ESPEAK_NG`) pins the exact binary; when set, `PATH` is not searched for that adapter. A set-but-missing path counts as missing and the message names it:
 
@@ -132,14 +132,14 @@ plugins/
 ├── carrel-watch/     # /watch-folder + watch-loop skill
 └── carrel-agent/     # file-librarian agent, agent-workflows skill,
                       # PostToolUse hook: re-index files Claude writes (if .carrel exists),
-                      # .mcp.json: the carrel MCP server (13 tools + resources, below)
+                      # .mcp.json: the carrel MCP server (14 tools + resources, below)
 ```
 
 The plugin set is growing in v0.2.0 (spec 20 adds `carrel-documents` and `carrel-guard` and generates every usage block from `--help`); [MARKETPLACE.md](MARKETPLACE.md) is authoritative for the current list. Slash commands are thin: they document flags and run `carrel …` via Bash, never duplicate logic. Plugins require carrel on PATH; each command's markdown says so and points to INSTALL.
 
 ### MCP server
 
-`carrel mcp` = newline-delimited JSON-RPC 2.0 over stdio, pure stdlib, no SDK. `initialize` returns `capabilities: {"tools": {}, "resources": {}}` and `serverInfo: {"name": "carrel", "version": …}`. `tools/list` returns exactly thirteen tools whose bodies delegate to the same implementation functions the CLI uses (`search.search_index`, `pack.pack_paths`, `inspect.inspect_path`, `refs.scan_refs`, the `DeskDB` tag/note/meta methods, …) — `mcp.py` owns no walk or token-estimate of its own.
+`carrel mcp` = newline-delimited JSON-RPC 2.0 over stdio, pure stdlib, no SDK. `initialize` returns `capabilities: {"tools": {}, "resources": {}}` and `serverInfo: {"name": "carrel", "version": …}`. `tools/list` returns exactly fourteen tools whose bodies delegate to the same implementation functions the CLI uses (`search.search_index`, `pack.pack_paths`, `inspect.inspect_path`, `refs.scan_refs`, the `DeskDB` tag/note/meta methods, …) — `mcp.py` owns no walk or token-estimate of its own.
 
 | Tool | Required | Optional |
 |---|---|---|
@@ -154,6 +154,7 @@ The plugin set is growing in v0.2.0 (spec 20 adds `carrel-documents` and `carrel
 | `carrel_redact` | `path` | `builtin`, `pattern`, `replacement`, `root` |
 | `carrel_doctor` | — | — |
 | `carrel_meta` | `action` (`set`/`get`/`ls`/`rm`/`find`) | `path`, `fields`, `key`, `keys`, `conditions`, `source`, `root` |
+| `carrel_fields` | `path` | `profile`, `date_order`, `ocr`, `save`, `root` |
 | `carrel_mail` | `action` (`attachments`/`threads`), `path` | `out_dir`, `force`, `root` |
 | `carrel_refs` | `path` | `kinds`, `patterns`, `tag`, `link`, `all`, `ocr`, `root` |
 

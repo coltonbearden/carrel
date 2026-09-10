@@ -52,6 +52,17 @@ CAPABILITIES: dict[str, dict[str, Any]] = {
     "tag": {"required": (), "optional": (), "note": "desk db (stdlib sqlite)"},
     "note": {"required": (), "optional": (), "note": "desk db + pypdf annotations"},
     "meta": {"required": (), "optional": (), "note": "desk db (stdlib sqlite)"},
+    "fields": {
+        "required": (),
+        "optional": ("pdftotext", "pandoc", "tesseract"),
+        "note": "label heuristics over textextract; pdftotext/pandoc widen the types, tesseract enables --ocr",
+    },
+    "rename": {
+        "required": (),
+        "optional": ("pdftotext", "pandoc", "tesseract"),
+        "note": "names from fields/meta/refs; the text spine's binaries widen the types",
+    },
+    "batch": {"required": (), "optional": (), "note": "user shell actions per file (core.actions)"},
     "mail": {
         "required": (),
         "optional": ("readpst",),

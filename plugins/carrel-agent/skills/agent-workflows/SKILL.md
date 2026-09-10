@@ -1,6 +1,6 @@
 ---
 name: agent-workflows
-description: Looping and pipeline patterns that combine carrel with Claude Code — watch + claude -p pipelines, index-then-ask loops, MCP-backed desk queries (13 tools, carrel:// resources). Use when the user wants recurring or automated agentic processing of local files rather than a one-off command.
+description: Looping and pipeline patterns that combine carrel with Claude Code — watch + claude -p pipelines, index-then-ask loops, MCP-backed desk queries (14 tools, carrel:// resources). Use when the user wants recurring or automated agentic processing of local files rather than a one-off command.
 ---
 
 # Agent workflows with carrel
@@ -34,7 +34,7 @@ Feed the hit paths to Claude (or the `file-librarian` agent in this plugin) rath
 
 This plugin ships a `carrel` MCP server (`carrel mcp`, stdio, pure stdlib) via `.mcp.json`. When it is connected, prefer its structured tools over shelling out for the same operations. The server works on the desk under the session's working directory (the `root` argument overrides); run `carrel index` there first for search-backed tools.
 
-Tools (13):
+Tools (14):
 
 | Tool | Does |
 |---|---|
@@ -49,6 +49,7 @@ Tools (13):
 | `carrel_redact` | Redact builtin or custom patterns from a text file or PDF |
 | `carrel_doctor` | Environment capability report |
 | `carrel_meta` | Set / get / list / remove typed fields on a desk file, or find files by conditions (`total>1000`, `due<2026-11-01`, `paid?`) |
+| `carrel_fields` | Vendor, invoice number, dates, subtotal/tax/total, currency and IBAN from a document with a confidence per field; `save` writes them as desk fields |
 | `carrel_mail` | Save an email's attachments into a directory, or group eml/mbox messages into threads (Message-ID / In-Reply-To / References) |
 | `carrel_refs` | Find reference numbers (invoice, PO, IBAN, routing, tracking, …) in a file or directory; `tag` writes `ref:<kind>:<value>` tags, `link` groups files by shared value |
 

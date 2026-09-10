@@ -119,6 +119,7 @@ stdio; `initialize` advertises `capabilities: {"tools": {}, "resources": {}}`):
 | `carrel_redact` | Redact patterns from a text file's contents and return the result; never writes; PDFs must go through the CLI | **`path`**, `builtin`, `pattern`, `replacement`, `root` |
 | `carrel_doctor` | Environment report: tools found, per-command status, capability table | — |
 | `carrel_meta` | Typed fields on desk files: set/get/ls/rm on a file, or find files by conditions (`total>1000`, `due<2026-11-01`, `paid?`) | **`action`** (`set`/`get`/`ls`/`rm`/`find`), `path`, `fields`, `key`, `keys`, `conditions`, `source`, `root` |
+| `carrel_fields` | Vendor, invoice number, PO, dates, subtotal/tax/total, currency, IBAN, account last-4 from a document, each with a confidence; `save` writes desk fields | **`path`**, `profile`, `date_order`, `ocr`, `save`, `root` |
 | `carrel_mail` | Email files: save a message's attachments into a directory, or group the messages of files/directories into threads | **`action`** (`attachments`/`threads`), **`path`**, `out_dir`, `force`, `root` |
 | `carrel_refs` | Find reference numbers (invoice, PO, order, check, account, tracking, ticket, IBAN, routing, EIN, VAT, ISBN, GTIN, DOI, UPS, USPS) in a file or directory; `tag` writes `ref:<kind>:<value>` tags, `link` groups files by shared value | **`path`**, `kinds`, `patterns`, `tag`, `link`, `all`, `ocr`, `root` |
 

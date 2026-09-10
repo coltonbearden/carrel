@@ -86,6 +86,9 @@ def _candidates(paths: Sequence[Path], *, ocr: bool, root: Path | None) -> list[
     return out
 
 
+candidate_files = _candidates  # shared with `fields` and `rename`
+
+
 def refs_in_file(
     path: Path, chosen: Sequence[pat.Pattern], *, ocr: bool = False
 ) -> list[dict[str, Any]]:

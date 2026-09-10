@@ -13,28 +13,46 @@ Run the carrel CLI via Bash. Map the user's request onto the real flags in the `
 ```text
 Usage: carrel watch [OPTIONS] DIRECTORY
 
-  Watch DIRECTORY (non-recursive) and run shell actions on file events.
+  Watch DIRECTORY and run shell actions on file events.
 
   Events for files an action is currently producing are suppressed via an in-flight set plus an
   output-name heuristic (outputs whose name starts with the source file's stem); other action
   outputs written into the watched directory WILL re-trigger — write outputs elsewhere or use --glob
-  to narrow matches. Ctrl-C exits cleanly.
+  to narrow matches. --stable waits for a file to stop growing, --existing processes what is already
+  there, --poll works where inotify does not (/mnt/c, shares), --done-dir/--error-dir file sources
+  away after their actions, --log keeps a JSON trail. Ctrl-C exits cleanly.
 
 Options:
-  --on EVENTS            Comma-separated events to react to: created, modified, deleted, moved.
-                         [default: created,modified]
-  --glob PATTERN         Only react to file names matching this glob (e.g. '*.pdf').
-  --run CMD              Shell action to run per event; repeatable, runs in order. {path}, {name}
-                         and {dir} are substituted (shell-quoted).  [required]
-  --debounce MS          Coalesce events per path within this window.  [default: 500; x>=0]
-  --once                 Exit after the first triggered action batch.
-  --timeout SECS         Hard stop after SECS seconds.  [x>0]
-  --action-timeout SECS  Kill an action that runs longer than SECS (logged as rc=124).  [default:
-                         300.0; x>0]
-  --json-lines           Log one JSON object per action to stdout instead of human lines (--json
-                         implies this).
-  --json                 Machine-readable JSON output.
-  --help                 Show this message and exit.
+  --on EVENTS                     Comma-separated events to react to: created, modified, deleted,
+                                  moved, existing.  [default: created,modified]
+  --glob PATTERN                  Only react to file names matching this glob (e.g. '*.pdf').
+  --run CMD                       Shell action to run per event; repeatable, runs in order. {path},
+                                  {name}, {stem}, {ext}, {dir} are substituted (shell-quoted).
+                                  [required]
+  --recursive                     Watch subdirectories too.
+  --existing                      Queue the files already in DIRECTORY at start (event 'existing').
+  --stable SECS                   Act only once a file's size and mtime have not changed for SECS
+                                  (scanners, big copies).  [x>0]
+  --stable-timeout SECS           With --stable: give up waiting and act after SECS regardless.
+                                  [x>0]
+  --poll                          Poll instead of inotify (needed on /mnt/c, network shares, some
+                                  containers).
+  --poll-interval SECS            With --poll: how often to scan.  [default: 1.0; x>0]
+  --done-dir DIRECTORY            Move each source here after its actions all succeed.
+  --error-dir DIRECTORY           Move each source here after an action fails.
+  --log FILE                      Append one JSON record per action (and per move) to FILE.
+  --print-service [systemd|schtasks]
+                                  Print a service definition that runs this exact watch at login,
+                                  then exit.
+  --debounce MS                   Coalesce events per path within this window.  [default: 500; x>=0]
+  --once                          Exit after the first triggered action batch.
+  --timeout SECS                  Hard stop after SECS seconds.  [x>0]
+  --action-timeout SECS           Kill an action that runs longer than SECS (logged as rc=124).
+                                  [default: 300.0; x>0]
+  --json-lines                    Log one JSON object per action to stdout instead of human lines
+                                  (--json implies this).
+  --json                          Machine-readable JSON output.
+  --help                          Show this message and exit.
 ```
 <!-- usage:end -->
 
