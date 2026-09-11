@@ -23,8 +23,7 @@ from __future__ import annotations
 
 import fnmatch
 import json
-import shlex
-import shutil
+import os
 import subprocess
 import sys
 import threading
@@ -256,11 +255,47 @@ def _abs(value: Any) -> str:
     return str(Path(value).resolve()) if isinstance(value, Path) else str(value)
 
 
+def _launcher_path(argv0: str, *, windows: bool) -> Path | None:
+    """The carrel launcher that started this process, or None.
+
+    Absolute but *not* resolved. Homebrew's `/opt/homebrew/bin/carrel` resolves
+    into a version-specific Cellar directory that `brew cleanup` deletes, and a
+    Nix profile resolves into the store the same way, so a unit naming the
+    resolved path fails with 203/EXEC after the next upgrade. On Windows, uv and
+    pip console-script launchers strip `.exe` from `sys.argv[0]`, so the bare
+    path does not exist and the `.exe` beside it is the file to name.
+    """
+    if not argv0:
+        return None
+    me = Path(argv0)
+    candidates = [me]
+    if windows and me.suffix.lower() != ".exe":
+        candidates.append(me.with_name(me.name + ".exe"))
+    for candidate in candidates:
+        if candidate.stem.lower() == "carrel" and candidate.is_file():
+            return candidate.absolute()
+    return None
+
+
+def _self_command() -> list[str]:
+    """argv that re-runs *this* carrel — not whichever one is first on PATH.
+
+    `shutil.which("carrel")` resolved the generated unit against PATH, so a
+    0.4.1 venv could print a unit pinned to an older global install and the
+    service would then run that version forever, guard and all. `sys.argv[0]`
+    is the launcher of the process printing the unit; under a test runner it is
+    not a carrel launcher, and the module form is used instead.
+    """
+    launcher = _launcher_path(sys.argv[0] if sys.argv else "", windows=os.name == "nt")
+    if launcher is not None:
+        return [str(launcher)]
+    return [sys.executable, "-m", "carrel.cli"]
+
+
 def _watch_command_line(ctx: click.Context, directory: Path) -> list[str]:
     """This invocation as an argv list, rebuilt from click's parsed options (never sys.argv,
     which is the test runner's under CliRunner), without --print-service."""
-    exe = shutil.which("carrel")
-    argv: list[str] = [exe] if exe else [sys.executable, "-m", "carrel.cli"]
+    argv: list[str] = _self_command()
     parent = ctx.parent
     source = parent.get_parameter_source("root") if parent is not None else None
     if source is not None and source.name != "DEFAULT":
@@ -283,20 +318,53 @@ def _watch_command_line(ctx: click.Context, directory: Path) -> list[str]:
                 argv += [flag, _abs(item)]
             continue
         argv += [flag, _abs(value)]
+    if (ctx.obj or {}).get("json") and "--json-lines" not in argv:
+        # the global --json switches a watch's log to JSON lines; a service runs
+        # without that parent flag, so carry its effect onto the watch itself
+        argv.append("--json-lines")
     return argv
+
+
+def _systemd_word(word: str) -> str:
+    """One argv word as a systemd `ExecStart=` item.
+
+    Double-quoted, with C escapes for backslash, double quote, newline, tab and
+    carriage return, because systemd unescapes inside quotes and a lone
+    backslash in an action would be eaten. Then `%` is doubled, because
+    specifiers expand on the whole line (`date +%Y-%m` became the unit directory
+    and the machine ID), and `$` is doubled, because environment substitution
+    ignores quoting. A word that is exactly a semicolon must be backslash-escaped
+    (systemd.service(5)). `shlex.join` got every one of these wrong: it
+    single-quotes, leaves `%` and `$` alone, and splices `'"'"'` for an
+    apostrophe, which systemd rejects because a closing quote must be followed
+    by whitespace. Verified by round-tripping argv through a real systemd 259 unit.
+    """
+    if word == ";":
+        return r"\;"
+    escaped = (
+        word.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("\n", "\\n")
+        .replace("\t", "\\t")
+        .replace("\r", "\\r")
+        .replace("%", "%%")
+        .replace("$", "$$")
+    )
+    return f'"{escaped}"'
 
 
 def render_service(kind: str, directory: Path, ctx: click.Context) -> str:
     """A systemd user unit or a Windows `schtasks` line that runs this watch at login."""
     argv = _watch_command_line(ctx, directory)
     if kind == "systemd":
-        cmd = shlex.join(argv)
+        cmd = " ".join(_systemd_word(word) for word in argv)
+        description = str(directory).replace("%", "%%")  # specifiers expand here too
         return (
             "# Save as ~/.config/systemd/user/carrel-watch.service, then:\n"
             "#   systemctl --user daemon-reload && systemctl --user enable --now carrel-watch\n"
             "#   journalctl --user -u carrel-watch -f   # follow the log\n"
             "[Unit]\n"
-            f"Description=carrel watch {directory}\n"
+            f"Description=carrel watch {description}\n"
             "After=default.target\n\n"
             "[Service]\n"
             f"ExecStart={cmd}\n"
@@ -305,10 +373,19 @@ def render_service(kind: str, directory: Path, ctx: click.Context) -> str:
             "[Install]\n"
             "WantedBy=default.target\n"
         )
-    cmd = subprocess.list2cmdline(argv)
+    # Windows parses this line twice: schtasks splits its own command line to
+    # find the /TR value, then Task Scheduler hands that value to CreateProcess,
+    # which splits it again for carrel. Both follow MSVCRT rules, so the command
+    # is list2cmdline'd once for carrel and once more as schtasks' single /TR
+    # argument. That second pass doubles the backslashes in front of each quote,
+    # which a bare quote-to-backslash-quote replace did not, so an action with an
+    # embedded quote or a trailing backslash was still corrupted.
+    tr = subprocess.list2cmdline([subprocess.list2cmdline(argv)])
     return (
-        "REM Run once in an elevated or user PowerShell/cmd to start this watch at logon:\n"
-        f'schtasks /Create /SC ONLOGON /TN "carrel watch" /TR "{cmd}" /F\n'
+        "REM Paste into cmd.exe, not PowerShell, to start this watch at logon.\n"
+        "REM Not safe to paste when a --run action contains an ampersand, pipe,\n"
+        "REM angle bracket, caret or percent sign: cmd.exe acts on those first.\n"
+        f'schtasks /Create /SC ONLOGON /TN "carrel watch" /TR {tr} /F\n'
         'REM   schtasks /Run /TN "carrel watch"      (start now)\n'
         'REM   schtasks /Delete /TN "carrel watch" /F (remove)\n'
     )
@@ -498,14 +575,26 @@ def cmd(
         )
     if stable_timeout is not None and stable is None:
         raise click.UsageError("--stable-timeout needs --stable")
-    if done_dir is not None or error_dir is not None:
+    if not force and (done_dir is not None or error_dir is not None):
         # the fourth bulk mover (spec 29), and the only one with no dry-run to
         # fall back on: --done-dir empties the watched directory as it goes.
         # Checked before --print-service returns, so carrel never hands back a
         # systemd unit whose command would refuse with exit 2 at every start —
         # Restart=on-failure would then loop it until the start limit trips.
+        #
+        # Only what this watch could move: files at the level it watches (the
+        # whole tree with --recursive, the top level without) that its --glob
+        # can match, plus the destinations. Files rather than the directory,
+        # because `ls-files -- DIR` matches recursively (a tracked sub/ would
+        # refuse a watch that never descends into it) and because a recursive
+        # watch over a plain directory can still reach a nested repository.
+        # Skipped entirely under --force, which is what --force is for.
+        entries = directory.rglob("*") if recursive else directory.iterdir()
+        present = [
+            p for p in entries if p.is_file() and (not glob_ or fnmatch.fnmatch(p.name, glob_))
+        ]
         guard_worktree(
-            [directory, *(d for d in (done_dir, error_dir) if d is not None)],
+            [*present, *(d for d in (done_dir, error_dir) if d is not None)],
             force=force,
             what="watch --done-dir/--error-dir",
         )

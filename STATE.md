@@ -13,7 +13,7 @@
   upgraded. 33 commands, 14 MCP tools, 19 adapters, 9 marketplace plugins, desk schema v2.
   Repo `coltonbearden/carrel`, docs at https://coltonbearden.github.io/carrel/, PyPI
   package `carrel`.
-- **In flight:** nothing.
+- **In flight:** the v0.4.1 release PR (#36) — the four v0.4.1 PRs (#32–#35) are merged.
 - **Next:** MCP v3 (spec 30) — the 15 commands with no tool, `rename`/`batch`/`intake`
   first, so the accounting-inbox pipeline stops being CLI-only. See Open issues.
 - **Also pending:** promote `test-minimal (windows)` to required once it has been green on
@@ -160,6 +160,36 @@
   the tool layer can call, and six headline `pack` flags remain agent-invisible. Its own spec
   (30), scoped as MCP v3: 14 → 25 tools (`batch` is cut — it is the single `shell=True` site).
 
+
+- v0.4.1 ships a documented behaviour change (`--apply` refuses tracked files, exit 2) as a
+  **patch** bump. The release review argued for 0.5.0: a `carrel~=0.4.0` pin or a routine
+  `uv tool upgrade` pulls it in, and a cron `intake --apply` whose `--to` sits under a
+  dotfiles repo could start exiting 2. Kept at 0.4.1 because the session brief named that
+  version; the guard only bites on *tracked* files, and `--force` is the documented way
+  through. Owner call whether the next behaviour change bumps minor, and whether
+  `publish.yml` should refuse a patch tag when the CHANGELOG entry says "Changed (behaviour)".
+
+- `watch --print-service schtasks` prints a one-line `schtasks /Create … /TR …` for pasting.
+  The `/TR` value is now quoted correctly for both of Windows' own parsing passes (a parser
+  model on every run; the real `CreateProcess` in the `test-minimal (windows)` job), but a
+  paste goes through cmd.exe first, which toggles quoting at every `"` regardless of
+  backslashes. An action containing `&`, `|`, `<`, `>`, `^` or a `%VAR%` reference is
+  therefore split or expanded before schtasks sees it, and PowerShell does not treat `\"`
+  as an escape at all; the printed REM lines now say so. The real fix is Task Scheduler XML
+  (`schtasks /Create /XML FILE`), where the command and its arguments are separate elements
+  and no shell is involved. That changes what `--print-service schtasks` prints and needs
+  the accepted file encoding verified on Windows, so it is its own change, not a fourth
+  fix round inside the v0.4.1 release PR.
+
+- `watch` filters hidden paths only at start: `--existing` skips hidden entries and the
+  `--done-dir`/`--error-dir` subtrees (`_existing_files`), but live events go through
+  `_Watcher.seed`, which applies only `--glob`. So a `--recursive` watch with `--done-dir`
+  queues `.git/` internals (or any dotfile) the moment something writes them, and files them
+  away after the actions run. The spec-29 guard covers the usual case at start — a tree with
+  tracked files refuses unless `--force` — leaving a repository with nothing tracked yet, or
+  an explicit `--force`, as the exposure. Found probing the v0.4.1 guard; pre-existing since
+  watch v2 (v0.4.0). Fix: apply the same hidden-component and skip-subtree test in `seed`,
+  with a regression test that writes into `.git/` under a recursive watch.
 
 - `--force` now carries two unrelated meanings. On `mail`, `edit`, `sign`, `form`, `catalog`,
   `meta` and `audiobook` it means "overwrite existing output"; on `rename`, `organize`,

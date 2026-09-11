@@ -5,7 +5,7 @@ PRODUCT = {
     "displayName": "Carrel",
     "tagline": "A library desk for your files — and your agents.",
     "description": "Local file toolkit for pdf, docx/odt/epub/rtf, xlsx, md/html/txt, json/xml/csv and images: convert, OCR, inspect, index, search, pack for LLM context (by query or git history), catalog, watch, and more — with an MCP server and a built-in Claude Code plugin marketplace.",
-    "version": "0.4.0",
+    "version": "0.4.1",
     "cli": "carrel",
     "package": "carrel",
     "marketplace": "carrel",

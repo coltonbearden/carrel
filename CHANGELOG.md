@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.4.1 — 2026-09-11
 
 - **Changed (behaviour):** `rename --apply`, `organize --apply`, `intake --apply` and
   `watch --done-dir/--error-dir` now refuse to start when the move would touch a file **git is
@@ -13,7 +13,10 @@
   files after the "fields" it read out of their source; the command was correct and the outcome
   was still wrong, because a tracked file's name is content. Without the git binary carrel
   cannot tell what is tracked, so it exits 3 with git's install hint rather than guessing
-  (spec 29, D-017). If you script one of these against tracked files, add `--force`.
+  (spec 29, D-017). Only paths the command could really move count: `watch` skips files its
+  `--glob` can never match, a tracked symlink counts as the link rather than its target, and
+  file names containing `*`, `?` or `[` are matched literally. If you script one of these
+  against tracked files, add `--force`.
 - **Fixed (Windows):** every text read and write now names its encoding. `text=True` on
   `subprocess` and `Path.read_text()` both fall back to `locale.getencoding()`, which is
   cp1252 on a stock Windows box — so **every** external tool's output (`pdftotext`, `pandoc`,
@@ -46,6 +49,18 @@
   `--root` made the unit fail on every start (`--root` requires an existing directory), and a
   relative `--done-dir` would have filed documents into a directory under `$HOME`. Every path
   in a generated service is now absolute.
+- **Fixed:** `watch --print-service` output now survives real actions. The systemd unit's
+  `ExecStart` uses systemd's own quoting — backslashes and quotes C-escaped, `%` and `$`
+  doubled — so `--run 'mv {path} "archive/$(date +%Y-%m)"'` reaches the service intact
+  instead of `%Y` becoming the unit directory and `%m` the machine ID; verified by
+  round-tripping argv through a real systemd unit. The `schtasks` line quotes the command
+  once for carrel and again as the `/TR` argument, because Windows parses it twice, so
+  embedded quotes and trailing backslashes survive. Paste it into cmd.exe, not PowerShell,
+  and not when an action contains `&`, `|`, `<`, `>`, `^` or `%`. Both now name the carrel
+  launcher that printed them rather than the first `carrel` on PATH — kept as the PATH
+  symlink rather than resolved into a version directory an upgrade deletes, and found on
+  Windows although the launcher hides its `.exe` — and carry the global `--json` as
+  `--json-lines`.
 - **Fixed:** `docs/index.md` claimed `carrel mcp` serves "ten MCP tools" — it has served 14
   since v0.4.0. `tests/test_docs_drift.py` now scans every live doc, and the plugin skills
   whose frontmatter states it, for a tool count in any spelling (numeral, word, hyphenated,

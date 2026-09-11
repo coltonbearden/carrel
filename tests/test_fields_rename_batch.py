@@ -876,3 +876,256 @@ def test_rename_records_a_failed_move_and_keeps_going(tmp_path: Path, fixtures: 
     assert [e["action"] for e in plan] == ["error"]
     assert "Permission" in plan[0]["reason"]  # the record names the file that did not move
     assert "could not be renamed" in result.output
+
+
+def _systemd_split(line: str) -> list[str]:
+    """systemd's `ExecStart=` unquoting, as a model for tests.
+
+    Follows systemd.syntax(7) (quoted items, C escapes) and systemd.service(5)
+    (`%%` and `$$` for literal percent and dollar). The same inputs these tests
+    use were round-tripped once through a real systemd 259 unit on 2026-09-11.
+    """
+    escapes = {"\\": "\\", '"': '"', "'": "'", "n": "\n", "t": "\t", "r": "\r", "s": " ", ";": ";"}
+    words: list[str] = []
+    i, n = 0, len(line)
+    while i < n:
+        while i < n and line[i] in " \t":
+            i += 1
+        if i >= n:
+            break
+        quote = line[i] if line[i] in "\"'" else None
+        if quote:
+            i += 1
+        cur: list[str] = []
+        while i < n:
+            c = line[i]
+            if c == "\\" and i + 1 < n:
+                cur.append(escapes[line[i + 1]])
+                i += 2
+                continue
+            if quote and c == quote:
+                i += 1
+                break
+            if not quote and c in " \t":
+                break
+            cur.append(c)
+            i += 1
+        words.append("".join(cur))
+    return [w.replace("%%", "%").replace("$$", "$") for w in words]
+
+
+def _ms_split(line: str) -> list[str]:
+    """Windows command-line splitting (MSVCRT / CommandLineToArgvW rules), as a model."""
+    args: list[str] = []
+    cur: list[str] = []
+    in_quotes = have = False
+    i, n = 0, len(line)
+    while i < n:
+        c = line[i]
+        if c == "\\":
+            j = i
+            while j < n and line[j] == "\\":
+                j += 1
+            count = j - i
+            if j < n and line[j] == '"':
+                cur.append("\\" * (count // 2))
+                if count % 2:
+                    cur.append('"')
+                    j += 1
+                i, have = j, True
+                continue
+            cur.append("\\" * count)
+            i, have = j, True
+            continue
+        if c == '"':
+            if in_quotes and i + 1 < n and line[i + 1] == '"':
+                cur.append('"')
+                i += 2
+            else:
+                in_quotes = not in_quotes
+                i += 1
+            have = True
+            continue
+        if c in " \t" and not in_quotes:
+            if have:
+                args.append("".join(cur))
+                cur, have = [], False
+            i += 1
+            continue
+        cur.append(c)
+        i, have = i + 1, True
+    if have:
+        args.append("".join(cur))
+    return args
+
+
+def _runs(argv: list[str]) -> list[str]:
+    return [argv[i + 1] for i, word in enumerate(argv) if word == "--run"]
+
+
+#: actions that broke the unit shlex.join produced
+SYSTEMD_ACTIONS = [
+    'mv {path} "archive/$(date +%Y-%m)"',
+    "sed 's/\\t/,/' {path}",
+    "it's {name}",
+    'say "hi" > {dir}/log',
+    "copy {path} out\\",
+    "$HOME ${USER} %h %% $$",
+]
+
+#: actions that broke the one-line schtasks /TR value
+WINDOWS_ACTIONS = [
+    'magick {path} "{dir}\\thumb.png"',
+    'copy {path} "D:\\out dir\\\\"',
+    "echo {path} done",
+    'say "hi"',
+]
+
+
+def test_print_service_names_this_carrel_not_the_first_on_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """A 0.4.1 venv must not print a unit pinned to an older global install."""
+    import sys
+
+    watched = tmp_path / "inbox"
+    watched.mkdir()
+    fake = tmp_path / "venv" / "bin" / "carrel"
+    fake.parent.mkdir(parents=True)
+    fake.write_text("#!/bin/sh\n", encoding="utf-8")
+
+    monkeypatch.setattr(sys, "argv", [str(fake)])
+    unit = run("watch", str(watched), "--run", "true", "--print-service", "systemd").output
+    exec_start = next(ln for ln in unit.splitlines() if ln.startswith("ExecStart="))
+    assert _systemd_split(exec_start.removeprefix("ExecStart="))[0] == str(fake.absolute())
+
+    monkeypatch.setattr(sys, "argv", ["pytest"])  # not a carrel launcher
+    unit = run("watch", str(watched), "--run", "true", "--print-service", "systemd").output
+    exec_start = next(ln for ln in unit.splitlines() if ln.startswith("ExecStart="))
+    assert _systemd_split(exec_start.removeprefix("ExecStart="))[:3] == [
+        sys.executable,
+        "-m",
+        "carrel.cli",
+    ]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="symlink creation needs privileges on Windows")
+def test_print_service_keeps_the_launcher_symlink(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Homebrew's bin/carrel resolves into a Cellar directory that `brew cleanup` deletes."""
+    import sys
+
+    watched = tmp_path / "inbox"
+    watched.mkdir()
+    cellar = tmp_path / "Cellar" / "carrel" / "0.4.1" / "bin" / "carrel"
+    cellar.parent.mkdir(parents=True)
+    cellar.write_text("#!/bin/sh\n", encoding="utf-8")
+    link = tmp_path / "bin" / "carrel"
+    link.parent.mkdir()
+    link.symlink_to(cellar)
+
+    monkeypatch.setattr(sys, "argv", [str(link)])
+    unit = run("watch", str(watched), "--run", "true", "--print-service", "systemd").output
+    exec_start = next(ln for ln in unit.splitlines() if ln.startswith("ExecStart="))
+    first = _systemd_split(exec_start.removeprefix("ExecStart="))[0]
+
+    assert first == str(link.absolute())
+    assert "Cellar" not in first
+
+
+def test_launcher_path_finds_the_exe_a_windows_launcher_hides(tmp_path: Path):
+    """uv and pip launchers strip `.exe` from sys.argv[0] on Windows."""
+    from carrel.commands.watch import _launcher_path
+
+    scripts = tmp_path / "Scripts"
+    scripts.mkdir()
+    (scripts / "carrel.exe").write_bytes(b"MZ")
+    stripped = str(scripts / "carrel")
+
+    assert _launcher_path(stripped, windows=True) == (scripts / "carrel.exe").absolute()
+    assert _launcher_path(stripped, windows=False) is None
+    assert _launcher_path("", windows=True) is None
+    (scripts / "python.exe").write_bytes(b"MZ")
+    assert _launcher_path(str(scripts / "python"), windows=True) is None
+
+
+def test_print_service_systemd_round_trips_every_action(tmp_path: Path):
+    """systemd expands % and $ inside quotes and C-unescapes backslashes.
+
+    shlex.join single-quoted, left % and $ alone and spliced '"'"' for
+    apostrophes, so `date +%Y-%m` became the unit directory and machine ID.
+    """
+    watched = tmp_path / "in%box"
+    watched.mkdir()
+    args = ["watch", str(watched)]
+    for action in SYSTEMD_ACTIONS:
+        args += ["--run", action]
+    unit = run(*args, "--print-service", "systemd").output
+
+    exec_start = next(ln for ln in unit.splitlines() if ln.startswith("ExecStart="))
+    assert _runs(_systemd_split(exec_start.removeprefix("ExecStart="))) == SYSTEMD_ACTIONS
+    description = next(ln for ln in unit.splitlines() if ln.startswith("Description="))
+    assert description == f"Description=carrel watch {str(watched.resolve()).replace('%', '%%')}"
+
+
+def test_print_service_schtasks_round_trips_every_action(tmp_path: Path):
+    """Windows parses the pasted line twice, so the command is quoted twice.
+
+    A bare quote-to-backslash-quote replace missed the backslashes in front of
+    each quote, corrupting any action with an embedded quote or a trailing
+    backslash.
+    """
+    watched = tmp_path / "inbox"
+    watched.mkdir()
+    args = ["watch", str(watched)]
+    for action in WINDOWS_ACTIONS:
+        args += ["--run", action]
+    task = run(*args, "--print-service", "schtasks").output
+
+    line = next(ln for ln in task.splitlines() if ln.startswith("schtasks /Create"))
+    outer = _ms_split(line)
+    assert outer[-1] == "/F"
+    assert _runs(_ms_split(outer[outer.index("/TR") + 1])) == WINDOWS_ACTIONS
+
+
+@pytest.mark.skipif(os.name != "nt", reason="needs Windows' own command-line parser")
+def test_print_service_schtasks_survives_the_real_windows_parser(tmp_path: Path):
+    """The same round trip through CreateProcess itself, not a model of it."""
+    import subprocess
+    import sys
+
+    watched = tmp_path / "inbox"
+    watched.mkdir()
+    args = ["watch", str(watched)]
+    for action in WINDOWS_ACTIONS:
+        args += ["--run", action]
+    task = run(*args, "--print-service", "schtasks").output
+    line = next(ln for ln in task.splitlines() if ln.startswith("schtasks /Create"))
+
+    probe = subprocess.list2cmdline(
+        [sys.executable, "-c", "import json,sys;print(json.dumps(sys.argv[1:]))"]
+    )
+    outer = json.loads(
+        subprocess.run(
+            probe + line[len("schtasks") :], capture_output=True, text=True, check=True
+        ).stdout
+    )
+    tr = outer[outer.index("/TR") + 1]
+    inner = json.loads(
+        subprocess.run(probe + " " + tr, capture_output=True, text=True, check=True).stdout
+    )
+    assert _runs(inner) == WINDOWS_ACTIONS
+
+
+def test_print_service_carries_the_global_json_flag(tmp_path: Path):
+    """`carrel --json watch …` logs JSON lines; the service must too."""
+    watched = tmp_path / "inbox"
+    watched.mkdir()
+
+    unit = run(
+        "--json", "watch", str(watched), "--run", "true", "--print-service", "systemd"
+    ).output
+    exec_start = next(ln for ln in unit.splitlines() if ln.startswith("ExecStart="))
+    assert "--json-lines" in _systemd_split(exec_start.removeprefix("ExecStart="))
+
+    plain = run("watch", str(watched), "--run", "true", "--print-service", "systemd").output
+    assert "--json-lines" not in plain

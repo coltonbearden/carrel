@@ -166,7 +166,12 @@ def tracked_paths(root: Path, paths: Sequence[Path]) -> list[str]:
     """
     found: list[str] = []
     for chunk in _chunked(paths):
-        proc = _git(root, "ls-files", "-z", "--", *chunk)
+        # --literal-pathspecs: an inbox file named `sub*` or `Scan [1].pdf` is a
+        # name, not a pattern. As a glob, `sub*` matched a tracked `sub/keep.txt`
+        # and `Scan [1].pdf` matched `Scan 1.pdf`, refusing moves of files the
+        # command never touches. Directory arguments still match everything
+        # beneath them, so the recursive cases are unaffected.
+        proc = _git(root, "--literal-pathspecs", "ls-files", "-z", "--", *chunk)
         if proc is None or proc.returncode != 0:
             detail = (proc.stderr or "").strip().splitlines()[:1] if proc else []
             raise TrackedUnknownError(
@@ -176,29 +181,58 @@ def tracked_paths(root: Path, paths: Sequence[Path]) -> list[str]:
     return found
 
 
+def _asked_about(path: Path) -> Path:
+    """The absolute path to ask git about.
+
+    A symlink leaf is kept, not followed. A tracked `incoming/link.pdf` is
+    tracked *as the link*; resolving it asked git about the target, usually
+    outside the work tree, found nothing, and let the move through. Parent
+    directories are still resolved, so a symlinked route into a repository is
+    not an escape, and a symlink to a directory is resolved because what moves
+    is what is inside it.
+    """
+    p = path.expanduser()
+    if p.is_symlink() and not p.is_dir():
+        return p.parent.resolve() / p.name
+    return p.resolve()
+
+
 def would_move_tracked(paths: Iterable[Path]) -> dict[Path, list[str]]:
     """{repo root: tracked paths} for every work tree `paths` would disturb.
 
     Empty when nothing tracked is involved. Raises `TrackedUnknownError` when a
     repository is in play but git cannot say what it tracks — the caller turns
     that into an exit-3 "install git", never into permission to proceed.
+
+    Costs one `git rev-parse` per *repository*, not per directory: a recursive
+    `watch` over 1,500 directories spawned 1,500 of them (2.5 s measured). The
+    candidate root is found by walking up for a `.git` entry, which is stat
+    calls only, and git is asked about that candidate once. Where git would
+    answer differently for a deeper directory — a ceiling directory or a
+    filesystem boundary below the root — this guards anyway, the safe direction.
     """
     by_root: dict[Path, list[Path]] = {}
-    # one `git rev-parse` per *directory*, not per path: a glob arrives as
-    # hundreds of siblings and each spawn costs a process (300 files took 0.46s
-    # before this, and it scales linearly; Windows spawns are far dearer)
-    seen: dict[Path, Path | None] = {}
+    candidate_of: dict[Path, Path | None] = {}  # directory -> nearest .git ancestor
+    root_of_candidate: dict[Path, Path | None] = {}  # that ancestor -> git's answer
     for path in paths:
-        resolved = path.expanduser().resolve()
-        probe = _nearest_existing(resolved)
-        key = probe if probe.is_dir() else probe.parent
-        if key not in seen:
-            seen[key] = repo_root(key)
-        root = seen[key]
+        asked = _asked_about(path)
+        if asked.is_symlink():
+            key = asked.parent  # never follow the leaf, even to find the repository
+        else:
+            probe = _nearest_existing(asked)
+            key = probe if probe.is_dir() else probe.parent
+        if key not in candidate_of:
+            candidate_of[key] = dot_git_ancestor(key)
+        candidate = candidate_of[key]
+        if candidate is None:
+            continue  # no .git entry anywhere above, so git would find no repository either
+        if candidate not in root_of_candidate:
+            root_of_candidate[candidate] = repo_root(candidate)
+        root = root_of_candidate[candidate]
         if root is not None:
             # the *asked-about* path is the caller's, not its nearest existing
             # ancestor: a destination that does not exist yet tracks nothing
-            by_root.setdefault(root, []).append(resolved)
+            by_root.setdefault(root, []).append(asked)
     if not by_root:
         return {}
     if not adapters.have("git"):
