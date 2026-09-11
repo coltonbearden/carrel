@@ -46,3 +46,24 @@ Subagents: read your spec in `specs/`, respect your write boundary exactly, and 
 
 - Branch `main` is protected by a ruleset: changes land through a PR with green `lint`/`test`/`test-minimal` checks (admin bypass for emergencies only). Historical commits used `phase(N): ...` / `wave(N): ...`; use conventional prefixes (`fix:`, `feat:`, `docs:`, `ci:`) now.
 - Never commit generated junk (see .gitignore); fixtures ARE committed once generated.
+
+## Review gates the merge
+
+A PR merges only after `/code-review <pr> high` has **completed** and every
+confirmed finding is either fixed in that same PR or written into `STATE.md`
+Open issues with the reason it was deferred. A PR whose review has not finished
+is not merged, however green CI is — the reviews find things CI cannot. In the
+v0.4.0 session three of them found 42 verified defects across five PRs; in
+v0.4.1 one of them found that the new work-tree guard did not stop the incident
+it was written for. Launch the review right after opening the PR so it runs
+while CI does.
+
+## Mutating smoke tests run in /tmp, never in the checkout
+
+Any hand-run of `--apply`, `batch --run`, `intake` or `watch` happens in a
+scratch directory under `/tmp` (`mktemp -d`), never against this working tree or
+any path inside it. On 2026-09-10 a `carrel rename --apply` aimed at the
+checkout renamed 21 tracked files; recovery was possible only because the
+command prints its plan. `carrel` now refuses to move files git is tracking
+(spec 29), but that guard is the second line of defence, not a licence to test
+in place — and `--force` exists.

@@ -94,3 +94,79 @@ def test_history_exclusions_name_real_files():
     """A renamed history doc would otherwise silently fall back into the gate — or out of it."""
     for name in sorted(HISTORY):
         assert (DOCS / name).is_file(), f"docs/{name} is excluded but does not exist"
+
+
+# --------------------------------------------------------------- MCP surface
+
+#: docs that describe the *current* MCP surface and must track `mcp.TOOLS`.
+#: docs/TEST_REPORT.md and docs/BUILD_PLAN.md deliberately are not here: the
+#: first is the v0.1.0/v0.2.0 verification record ("exactly 10 tools") and the
+#: second the wave checklist that shipped them. Both are dated history; pinning
+#: them would force a rewrite of the past on every new tool.
+MCP_NUMERAL_DOCS = ("README.md", "docs/index.md", "docs/FEATURES.md")
+
+#: docs/AGENTS.md is written for agents and names each tool in full (`carrel_search`);
+#: README.md and docs/FEATURES.md list them by their bare command name in prose.
+MCP_FULL_NAME_DOCS = ("docs/AGENTS.md",)
+MCP_SHORT_NAME_DOCS = ("README.md", "docs/FEATURES.md")
+
+NUMBER_WORDS = {
+    3: "three",
+    10: "ten",
+    11: "eleven",
+    12: "twelve",
+    13: "thirteen",
+    14: "fourteen",
+    15: "fifteen",
+    16: "sixteen",
+    17: "seventeen",
+    18: "eighteen",
+    19: "nineteen",
+    20: "twenty",
+}
+
+
+def _tool_names() -> list[str]:
+    from carrel.commands.mcp import TOOLS
+
+    return [tool["name"] for tool in TOOLS]
+
+
+def test_docs_state_the_current_mcp_tool_count():
+    """`docs/index.md` said "ten MCP tools" for two releases after it became 14."""
+    count = len(_tool_names())
+    spellings = {str(count), NUMBER_WORDS.get(count, str(count))}
+    wrong: list[str] = []
+    for rel in MCP_NUMERAL_DOCS:
+        for lineno, line in enumerate(_read(REPO_ROOT / rel).splitlines(), 1):
+            wrong += [
+                f"{rel}:{lineno}: {m.group(0)}"
+                for m in re.finditer(r"\b([a-z]+|\d+) MCP tools\b", line)
+                if m.group(1) not in spellings
+            ]
+    assert not wrong, "\n".join(
+        [f"`carrel mcp` serves {count} tools — these say otherwise:", *wrong]
+    )
+
+
+def test_docs_list_every_mcp_tool_by_name():
+    """A tool added without a doc row is invisible to the agents these docs are for."""
+    names = _tool_names()
+    missing: list[str] = []
+    for rel in MCP_FULL_NAME_DOCS:
+        text = _read(REPO_ROOT / rel)
+        missing += [f"{rel}: {name}" for name in names if name not in text]
+    for rel in MCP_SHORT_NAME_DOCS:
+        text = _read(REPO_ROOT / rel)
+        missing += [
+            f"{rel}: {name}"
+            for name in names
+            if not re.search(rf"\b{re.escape(name.removeprefix('carrel_'))}\b", text)
+        ]
+    assert not missing, "\n".join(["docs do not mention every MCP tool:", *missing])
+
+
+def test_the_mcp_pin_targets_exist():
+    """A renamed doc would otherwise drop out of the gate silently."""
+    for rel in {*MCP_NUMERAL_DOCS, *MCP_FULL_NAME_DOCS, *MCP_SHORT_NAME_DOCS}:
+        assert (REPO_ROOT / rel).is_file(), f"{rel} is pinned but does not exist"

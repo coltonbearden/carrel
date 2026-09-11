@@ -94,3 +94,23 @@ generated fixtures **are** committed.
   drift is a review finding — it has happened).
 - Claims verified by execution: paste real command output in the PR description, the
   way the builder agents do in their reports.
+
+## Permissions for an unattended agent run
+
+`.claude/settings.json` is committed and grants Claude Code the commands this
+repository's release loop actually uses — `uv run`/`uv sync`, the git
+branch-and-worktree verbs, `gh pr`/`run`/`release`, `claude plugin`, `mkdocs`,
+and `gh api` as read-only GETs on this repo plus the two named write shapes
+(the `main` ruleset and release creation). Everything else still prompts.
+
+It exists so an unattended run never stalls waiting for a human to approve
+`gh api repos/…`, which is how the v0.4.1 session lost two tool calls.
+
+The deny list is the other half: `rm -rf` outside `/tmp`, `git push --force`,
+`git reset --hard`, `git clean`, `gh api --method DELETE`, `gh secret`, and
+`carrel rename/organize/intake --apply` (mutating smoke tests belong in a
+`/tmp` scratch directory — see CLAUDE.md).
+
+Your own `.claude/settings.local.json` is git-ignored and takes precedence, so
+a local `ask` entry still overrides an `allow` here; this file sets the floor
+for a fresh clone, not a ceiling on your own machine.

@@ -14,12 +14,14 @@
   Repo `coltonbearden/carrel`, docs at https://coltonbearden.github.io/carrel/, PyPI
   package `carrel`.
 - **In flight:** nothing.
-- **Next:** promote `test-minimal (windows)` to required once it has been green on `main`
-  for two consecutive weeks (from 2026-09-10): drop `continue-on-error` in
-  `.github/workflows/test.yml`; the ruleset entry is the owner's step. Plus two
-  repo-settings steps only the owner can apply — add `test-minimal (macos)` to the `main`
-  ruleset's required checks and to `REQUIRED_CHECKS` in `scripts/github-harden.sh`
-  (see docs/REPO_SETTINGS.md). Backlog: the MCP exposure gap.
+- **Next:** MCP v3 (spec 30) — the 15 commands with no tool, `rename`/`batch`/`intake`
+  first, so the accounting-inbox pipeline stops being CLI-only. See Open issues.
+- **Also pending:** promote `test-minimal (windows)` to required once it has been green on
+  `main` for two consecutive weeks (from 2026-09-10, so on or after **2026-09-24**): drop
+  `continue-on-error` in `.github/workflows/test.yml`, then re-run
+  `scripts/github-harden.sh` with the check added to `REQUIRED_CHECKS`.
+  `test-minimal (macos)` is **done** — added to `REQUIRED_CHECKS` and applied to the `main`
+  ruleset on 2026-09-11, verified by `scripts/github-harden.sh --verify-only`.
 
 ## Done
 
@@ -87,10 +89,6 @@
   in sequence, so a file named `{name}.txt` produced a shell command aimed at a different
   file; and `watch` silently dropped any new file whose name shared a prefix with one it was
   already processing.
-- 2026-09-10 adversarial review of the email work found 15 confirmed defects before the
-  release, including a real one: `convert msg.eml --to pdf` rendered the sender's HTML, so
-  a conversion fetched tracking pixels and could embed local files into the PDF. PDF now
-  renders the message text. Every finding has a regression test (#29).
 - Build phases 0–7 complete (2026-07-16); v0.1.0 tagged.
 - v0.1.1 on PyPI via Trusted Publishing (2026-08-12).
 - 2026-09-03 hardening: owner rename, version SoT fix, `--json` everywhere, timeouts,
@@ -122,11 +120,16 @@
 
 ## Open issues
 
-- 16 of 26 commands are not exposed over MCP; `ocr`, `edit`, `sign`, `catalog`, `thumb`,
-  `dedupe`, `organize`, `form`, `color` already have `_file()`/`_paths()` entry points, and
-  six headline `pack` flags are agent-invisible. Its own spec.
-- Owner-only: add `test-minimal (macos)` to the `main` ruleset and to `REQUIRED_CHECKS`
-  (docs/REPO_SETTINGS.md).
+- 19 of 33 commands have no MCP tool, so an agent can read a desk but not act on it. Four are
+  excluded by design (`watch` is a long-running loop, `desk` is a TUI, `completion` prints a
+  shell script, `mcp` is the server). The other 15 are the gap: `audiobook`, `batch`,
+  `catalog`, `color`, `dedupe`, `edit`, `extract-images`, `form`, `intake`, `ocr`, `organize`,
+  `proof`, `rename`, `sign`, `thumb`. The headline three are `rename`, `batch` and `intake` —
+  the whole v0.4.0 accounting-inbox pipeline is CLI-only, so the `bookkeeper` agent shells out
+  for exactly the steps that move files. Most already have `_file()`/`_paths()` entry points
+  the tool layer can call, and six headline `pack` flags remain agent-invisible. Its own spec
+  (30), scoped as MCP v3: 14 → 26 tools.
+
 
 - `--force` now carries two unrelated meanings. On `mail`, `edit`, `sign`, `form`, `catalog`,
   `meta` and `audiobook` it means "overwrite existing output"; on `rename`, `organize`,

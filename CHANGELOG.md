@@ -46,6 +46,10 @@
   `--root` made the unit fail on every start (`--root` requires an existing directory), and a
   relative `--done-dir` would have filed documents into a directory under `$HOME`. Every path
   in a generated service is now absolute.
+- **Fixed:** `docs/index.md` claimed `carrel mcp` serves "ten MCP tools" — it has served 14
+  since v0.4.0. `tests/test_docs_drift.py` now pins the count in README, `docs/index.md` and
+  `docs/FEATURES.md`, and every tool name in `docs/AGENTS.md`, against the `TOOLS` table in
+  `carrel.commands.mcp`, so the next tool cannot ship with the docs left behind.
 
 ## v0.4.0 — 2026-09-10
 
