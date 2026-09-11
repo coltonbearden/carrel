@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.4.1 — 2026-09-11
 
 - **Changed (behaviour):** `rename --apply`, `organize --apply`, `intake --apply` and
   `watch --done-dir/--error-dir` now refuse to start when the move would touch a file **git is
