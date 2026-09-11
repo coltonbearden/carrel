@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import re
 import shutil
-import sys
 import tempfile
 import wave
 from collections.abc import Callable
@@ -35,7 +34,7 @@ import click
 from carrel.core import adapters
 from carrel.core.adapters import MissingDependencyError
 from carrel.core.filetypes import FileType, detect_or_die
-from carrel.core.output import CarrelError, CarrelInputError, emit, progress
+from carrel.core.output import CarrelError, CarrelInputError, emit, handled, progress
 from carrel.core.textextract import extract_text
 
 FORMATS = ("mp3", "ogg", "wav")
@@ -525,6 +524,7 @@ def _human(result: dict[str, Any]) -> None:
     help="Audio format (default: from -o extension, else mp3).",
 )
 @click.pass_context
+@handled
 def cmd(
     ctx: click.Context,
     src: Path,
@@ -544,30 +544,22 @@ def cmd(
     Existing outputs are never overwritten without --force. With --json,
     prints {src, outputs, engine, duration_s, chars}.
     """
-    try:
-        if not force:
-            resolved_fmt = fmt or (out.suffix.lstrip(".").lower() if out else "mp3")
-            base = out or Path(src).with_suffix(f".{resolved_fmt}")
-            clashes = [base] if base.exists() else []
-            if split_chapters:
-                clashes += sorted(base.parent.glob(f"{base.stem}-[0-9][0-9]-*.{resolved_fmt}"))
-            if clashes:
-                raise CarrelError(
-                    f"refusing to overwrite existing output: {clashes[0]} (use --force)"
-                )
-        result = audiobook_file(
-            src,
-            out,
-            voice=voice,
-            rate=rate,
-            engine=engine,
-            split_chapters=split_chapters,
-            fmt=fmt,
-            on_progress=lambda msg: progress(msg, ctx),
-        )
-    except CarrelError as e:
-        if ctx.obj and ctx.obj.get("debug"):
-            raise
-        click.echo(f"error: {e}", err=True)
-        sys.exit(int(e.exit_code))
+    if not force:
+        resolved_fmt = fmt or (out.suffix.lstrip(".").lower() if out else "mp3")
+        base = out or Path(src).with_suffix(f".{resolved_fmt}")
+        clashes = [base] if base.exists() else []
+        if split_chapters:
+            clashes += sorted(base.parent.glob(f"{base.stem}-[0-9][0-9]-*.{resolved_fmt}"))
+        if clashes:
+            raise CarrelError(f"refusing to overwrite existing output: {clashes[0]} (use --force)")
+    result = audiobook_file(
+        src,
+        out,
+        voice=voice,
+        rate=rate,
+        engine=engine,
+        split_chapters=split_chapters,
+        fmt=fmt,
+        on_progress=lambda msg: progress(msg, ctx),
+    )
     emit(ctx, result, human=_human)

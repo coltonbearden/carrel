@@ -82,11 +82,12 @@ error: 'pandoc' is required for this operation but was not found (override CARRE
 ```python
 emit(ctx, data, human=None)   # --json → json.dumps(data); else human(data) or rich pretty-print
 fail(msg, code=ExitCode.ERROR)
+debugging(ctx)                # did the caller pass the global --debug?
 handled(fn)                   # decorator: CarrelError → fail(msg, e.exit_code), re-raised under --debug
 root_of(ctx)                  # the desk root for this invocation: --root if given, else the cwd
 ```
 
-Every command callback wears `@handled` and every desk-backed command resolves its root through `root_of`, both imported from here — the exit-code convention in CLAUDE.md holds only because that mapping exists once (D-016, guarded by `tests/test_command_conventions.py`).
+27 of the 33 command modules decorate their callback with `@handled`, and every command that reads `--root` goes through `root_of`; both are imported from here, never redefined (D-016). The exit-code convention in CLAUDE.md holds only because that mapping exists once. The six exceptions are named with their reasons in `tests/test_command_conventions.py`, which is the gate: `convert` and `thumb` run a per-file loop that records an error per source and keeps going (they share `debugging` but not the decorator), and `desk`, `doctor`, `completion` and `mcp` never let a `CarrelError` out of the callback.
 
 ### Desk DB (`core.db`) — `.carrel/carrel.db` under `--root`
 

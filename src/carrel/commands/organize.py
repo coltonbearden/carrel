@@ -26,7 +26,7 @@ import click
 
 from carrel.core.filetypes import FileType, detect
 from carrel.core.fsops import move_file, uncollide
-from carrel.core.output import CarrelInputError, emit, handled
+from carrel.core.output import CarrelInputError, emit, handled, root_of
 
 TYPE_DIRS: dict[FileType, str] = {
     FileType.PDF: "pdf",
@@ -177,7 +177,7 @@ def cmd(ctx: click.Context, directory: Path, by: str, into_: tuple[str, ...], ap
     plan = _build_plan(directory, by, into)
 
     if apply_:
-        desk_root = Path((ctx.obj or {}).get("root", ".")).resolve()
+        desk_root = root_of(ctx)
         for entry in plan:
             if entry["action"] != "move":
                 continue

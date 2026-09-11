@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- **Changed:** the `@handled` decorator (CarrelError → message + exit code) and the `root_of`
+  desk-root resolver live once, in `carrel.core.output` (D-016). They had 25 and 12
+  byte-identical copies across the command modules, four more root lookups open-coded, and
+  three modules carrying the decorator's body inline; `color` imported `proof._handled` across
+  modules. Behaviour is unchanged. `handled` is now generic in the wrapped signature, so mypy
+  checks calls through it, and `debugging(ctx)` is the one place the global `--debug` is read.
+- **Fixed:** `watch --print-service` wrote the *unresolved* `--root`, `--done-dir`,
+  `--error-dir` and `--log` into the generated systemd unit and `schtasks` line. A service
+  starts in the manager's working directory — `$HOME` for a systemd user unit — so a relative
+  `--root` made the unit fail on every start (`--root` requires an existing directory), and a
+  relative `--done-dir` would have filed documents into a directory under `$HOME`. Every path
+  in a generated service is now absolute.
+
 ## v0.4.0 — 2026-09-10
 
 The accounting inbox. carrel reads what a document says, links documents by the

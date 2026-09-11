@@ -19,11 +19,20 @@
   `.github/workflows/test.yml`; the ruleset entry is the owner's step. Plus two
   repo-settings steps only the owner can apply — add `test-minimal (macos)` to the `main`
   ruleset's required checks and to `REQUIRED_CHECKS` in `scripts/github-harden.sh`
-  (see docs/REPO_SETTINGS.md). First code task: the `_handled`/`_root_of` duplication under
-  Open issues. Backlog: the MCP exposure gap.
+  (see docs/REPO_SETTINGS.md). Backlog: the MCP exposure gap.
 
 ## Done
 
+- 2026-09-11 (D-016): `handled` and `root_of` live once, in `core/output.py`. The decorator
+  had 25 byte-identical copies and the desk-root resolver 12, plus four open-coded root
+  lookups and three inlined copies of the decorator's body; `color.py` was importing
+  `proof._handled` across modules. `audiobook` became a plain `@handled`; `convert` and
+  `thumb` keep their per-file loops and share only `debugging(ctx)`. `handled` is now generic
+  in the wrapped signature, so mypy checks calls through it. Found on the way: `watch
+  --print-service` baked the *unresolved* `--root` and `--done-dir`/`--error-dir`/`--log`
+  into the generated systemd unit, which runs from `$HOME` — a relative `--root` made the
+  unit die on every start. `tests/test_command_conventions.py` is the drift gate and the
+  first cover the `--debug` re-raise branch has ever had.
 - 2026-09-10 (v0.4.0, specs 23–28): the accounting-inbox release, in five PRs (#25, #26, #28, #29, #30).
   `meta` + `refs` (#25), email as a file type + `mail` (#26), `fields` + `rename` +
   `batch` + watch v2 (#28), the email review fixes (#29), and `intake`. Schema v2 adds
@@ -75,12 +84,6 @@
   still advisory (D-f).
 
 ## Open issues
-
-- Every command module carries its own copy of `_handled` (25 copies) and `_root_of` (12).
-  They are byte-identical; a change to how `CarrelError` maps to an exit code has to be made
-  in 25 places or it silently diverges. They belong next to `emit`/`fail` in
-  `core/output.py`. Deliberately not done during the v0.4.0 release (it touches every
-  command module); do it first in the next session.
 
 - Windows, latent (not covered by the suite): ~30 text-IO sites read or write without
   `encoding="utf-8"` (`commands/pack.py`, `core/textextract.py`, `desk/app.py`). CI sets

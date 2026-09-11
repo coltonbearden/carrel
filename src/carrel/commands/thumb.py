@@ -24,7 +24,7 @@ import click
 
 from carrel.core import adapters
 from carrel.core.filetypes import FileType, detect_or_die
-from carrel.core.output import CarrelError, CarrelInputError, emit
+from carrel.core.output import CarrelError, CarrelInputError, debugging, emit
 
 FORMATS = ("png", "jpg")
 DEFAULT_SIZE = 256
@@ -160,7 +160,7 @@ def cmd(ctx: click.Context, sources: tuple[Path, ...], size: int, out_dir: Path,
         try:
             results.append(thumb_file(src, out_dir, size=size, fmt=fmt))
         except CarrelError as e:
-            if ctx.obj and ctx.obj.get("debug"):
+            if debugging(ctx):
                 raise
             results.append({"src": str(src), "thumb": None, "error": str(e)})
             click.echo(f"error: {e}", err=True)

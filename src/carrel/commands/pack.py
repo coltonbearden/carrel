@@ -39,7 +39,7 @@ from carrel.core.ignore import IgnoreFile as _IgnoreFile
 from carrel.core.ignore import ancestor_ignores as _ancestor_ignores
 from carrel.core.ignore import ignored as _ignored
 from carrel.core.ignore import load_ignore as _load_ignore
-from carrel.core.output import CarrelError, CarrelInputError, ExitCode, emit, fail, handled
+from carrel.core.output import CarrelError, CarrelInputError, ExitCode, emit, fail, handled, root_of
 from carrel.core.textextract import extract_text
 
 CHARS_PER_TOKEN = 3.6
@@ -1126,7 +1126,7 @@ def cmd(
     as_json = bool(ctx.obj and ctx.obj.get("json"))
     if as_json and not output and not show_stats:
         fmt = "json"  # global --json: stdout must be one JSON document
-    desk_root = Path((ctx.obj or {}).get("root", ".")).resolve()
+    desk_root = root_of(ctx)
 
     try:
         result = pack_paths(

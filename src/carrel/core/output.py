@@ -58,20 +58,30 @@ def progress(msg: str, ctx: click.Context | None = None) -> None:
         click.echo(msg, err=True)
 
 
-def handled(fn: Callable) -> Callable:
+def debugging(ctx: click.Context | None) -> bool:
+    """True when the user asked for tracebacks with the global --debug."""
+    return bool(ctx is not None and ctx.obj and ctx.obj.get("debug"))
+
+
+def handled[**P, R](fn: Callable[P, R]) -> Callable[P, R | None]:
     """Convert CarrelError into a clean message + exit code (unless --debug).
 
-    Every command callback wears this (D-016); the exit-code convention in
-    CLAUDE.md is only honoured because the mapping lives here, once.
+    Most command callbacks wear this (D-016); the exit-code convention in
+    CLAUDE.md is only honoured because the mapping lives here, once. The
+    exceptions are the per-file loops in `convert` and `thumb`, which record an
+    error per source and keep going — they share `debugging` but not this.
+
+    Generic in the wrapped signature so mypy still checks calls through the
+    decorator; the `| None` return is the `fail()` path, which never returns.
     """
 
     @functools.wraps(fn)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R | None:
         ctx = click.get_current_context(silent=True)
         try:
             return fn(*args, **kwargs)
         except CarrelError as e:
-            if ctx is not None and ctx.obj and ctx.obj.get("debug"):
+            if debugging(ctx):
                 raise
             fail(str(e), e.exit_code)
 

@@ -37,7 +37,7 @@ import click
 
 from carrel.core.actions import PLACEHOLDERS, kill_tree, quote, render, run_action
 from carrel.core.fsops import move_file, uncollide
-from carrel.core.output import CarrelInputError, handled
+from carrel.core.output import CarrelInputError, handled, root_of
 
 # private aliases: tests and older callers reach the shared implementations by these names
 _quote, _render, _run_action, _kill_tree = quote, render, run_action, kill_tree
@@ -244,15 +244,28 @@ def _existing_files(directory: Path, recursive: bool, skip: Sequence[Path] = ())
     return out
 
 
+def _abs(value: Any) -> str:
+    """Absolute form of a path-valued option, for an argv that runs from elsewhere.
+
+    A generated service starts in the service manager's working directory — $HOME
+    for a systemd *user* unit — so every relative path in the unit resolves
+    against the wrong place. `--root` is `click.Path(exists=True)`, so a relative
+    one makes the unit die with exit 2 on every start; a `--done-dir` would
+    quietly fill a directory under $HOME instead.
+    """
+    return str(Path(value).resolve()) if isinstance(value, Path) else str(value)
+
+
 def _watch_command_line(ctx: click.Context, directory: Path) -> list[str]:
     """This invocation as an argv list, rebuilt from click's parsed options (never sys.argv,
     which is the test runner's under CliRunner), without --print-service."""
     exe = shutil.which("carrel")
     argv: list[str] = [exe] if exe else [sys.executable, "-m", "carrel.cli"]
-    root = (ctx.obj or {}).get("root", ".")
-    if root not in (".", ""):
-        argv += ["--root", str(root)]
-    argv += ["watch", str(directory)]
+    parent = ctx.parent
+    source = parent.get_parameter_source("root") if parent is not None else None
+    if source is not None and source.name != "DEFAULT":
+        argv += ["--root", str(root_of(ctx))]
+    argv += ["watch", str(directory.resolve())]
     params = ctx.params
     for param in ctx.command.params:
         if not isinstance(param, click.Option) or param.name in ("directory", "print_service"):
@@ -267,9 +280,9 @@ def _watch_command_line(ctx: click.Context, directory: Path) -> list[str]:
             continue
         if param.multiple:
             for item in value:
-                argv += [flag, str(item)]
+                argv += [flag, _abs(item)]
             continue
-        argv += [flag, str(value)]
+        argv += [flag, _abs(value)]
     return argv
 
 
@@ -491,7 +504,7 @@ def cmd(
 
         observer = Observer()
 
-    desk_root = Path((ctx.obj or {}).get("root", ".")).resolve()
+    desk_root = root_of(ctx)
     watcher = _Watcher(
         on=on,
         glob=glob_,

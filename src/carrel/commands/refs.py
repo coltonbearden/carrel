@@ -263,13 +263,14 @@ def cmd(
     if all_ and not link:
         raise click.UsageError("--all only applies with --link")
 
+    root = root_of(ctx)
     records = scan_refs(
         list(paths),
         kinds=kinds,
         extra=extra,
         ocr=ocr,
-        tag_root=root_of(ctx) if tag_ else None,
-        root=root_of(ctx),
+        tag_root=root if tag_ else None,
+        root=root,
     )
     if link:
         emit(ctx, link_refs(records, all_=all_), human=_human_links)
