@@ -5,25 +5,26 @@
 
 ## Now
 
-- **Status:** v0.4.0 "the accounting inbox" is ready to release (this branch). carrel now
-  reads what a document says (`fields`), links documents by the numbers they share
-  (`refs`), records typed facts about them (`meta`, schema v2), names and files them
-  (`rename`, `intake`), runs anything over many of them (`batch`), and treats email as a
-  first-class file type (`.eml`/`.mbox`, `mail`). 33 commands, 14 MCP tools, 9 marketplace
-  plugins. Repo `coltonbearden/carrel`, docs at https://coltonbearden.github.io/carrel/,
-  PyPI package `carrel`.
-- **In flight:** the v0.4.0 release itself — tag `v0.4.0`, watch `publish.yml`, verify from
-  PyPI in a clean venv, then record it here.
+- **Status:** v0.4.0 "the accounting inbox" released 2026-09-10 (GitHub Release + PyPI via
+  Trusted Publishing, with a PEP 740 attestation). Verified from PyPI in a clean venv:
+  `carrel 0.4.0`, `doctor` 33 commands (31 ok, `mail` degraded without readpst, `desk`
+  unavailable without the `tui` extra — both by design), and an end-to-end `intake` →
+  `meta find` → `mail threads` against a fresh desk. The global `carrel[all]` install is
+  upgraded. 33 commands, 14 MCP tools, 19 adapters, 9 marketplace plugins, desk schema v2.
+  Repo `coltonbearden/carrel`, docs at https://coltonbearden.github.io/carrel/, PyPI
+  package `carrel`.
+- **In flight:** nothing.
 - **Next:** promote `test-minimal (windows)` to required once it has been green on `main`
   for two consecutive weeks (from 2026-09-10): drop `continue-on-error` in
   `.github/workflows/test.yml`; the ruleset entry is the owner's step. Plus two
   repo-settings steps only the owner can apply — add `test-minimal (macos)` to the `main`
   ruleset's required checks and to `REQUIRED_CHECKS` in `scripts/github-harden.sh`
-  (see docs/REPO_SETTINGS.md). Backlog: the MCP exposure gap under Open issues.
+  (see docs/REPO_SETTINGS.md). First code task: the `_handled`/`_root_of` duplication under
+  Open issues. Backlog: the MCP exposure gap.
 
 ## Done
 
-- 2026-09-10 (v0.4.0, specs 23–28): the accounting-inbox release, in five PRs.
+- 2026-09-10 (v0.4.0, specs 23–28): the accounting-inbox release, in five PRs (#25, #26, #28, #29, #30).
   `meta` + `refs` (#25), email as a file type + `mail` (#26), `fields` + `rename` +
   `batch` + watch v2 (#28), the email review fixes (#29), and `intake`. Schema v2 adds
   the `meta` table (D-015); `core/patterns.py` is one registry for `redact --builtin` and
@@ -31,6 +32,15 @@
   (D-013); `core/fsops.py` makes every move carry the desk row, which also fixed
   `organize --apply` orphaning tags and notes. `.msg` is cut (D-011), mail shape-sniffing
   is gated to extension-less files (D-012), and `intake` never destroys its input (D-014).
+- 2026-09-10 three adversarial reviews ran before the release and found 42 verified defects
+  between them (email 15, fields/rename/batch/watch 12, intake 15). Every one was fixed with
+  a regression test. The ones worth remembering: `convert msg.eml --to pdf` rendered the
+  sender's HTML, so a conversion fetched tracking pixels and could embed local files into the
+  PDF (it renders the message text now); a negative amount on a labelled line was reported
+  positive, booking a credit note as a charge; `core/actions.render` substituted placeholders
+  in sequence, so a file named `{name}.txt` produced a shell command aimed at a different
+  file; and `watch` silently dropped any new file whose name shared a prefix with one it was
+  already processing.
 - 2026-09-10 adversarial review of the email work found 15 confirmed defects before the
   release, including a real one: `convert msg.eml --to pdf` rendered the sender's HTML, so
   a conversion fetched tracking pixels and could embed local files into the PDF. PDF now
