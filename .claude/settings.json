@@ -8,7 +8,6 @@
       "Bash(uv venv:*)",
       "Bash(uv pip install:*)",
       "Bash(uv tool upgrade carrel:*)",
-
       "Bash(git switch:*)",
       "Bash(git fetch:*)",
       "Bash(git rebase:*)",
@@ -20,13 +19,13 @@
       "Bash(git stash list:*)",
       "Bash(git branch --list:*)",
       "Bash(git branch --show-current:*)",
-
       "Bash(gh pr create:*)",
       "Bash(gh pr view:*)",
       "Bash(gh pr list:*)",
       "Bash(gh pr diff:*)",
       "Bash(gh pr checks:*)",
       "Bash(gh pr ready:*)",
+      "Bash(gh pr merge:*)",
       "Bash(gh run view:*)",
       "Bash(gh run list:*)",
       "Bash(gh run watch:*)",
@@ -38,15 +37,12 @@
       "Bash(gh repo view:*)",
       "Bash(gh workflow view:*)",
       "Bash(gh workflow list:*)",
-
       "Bash(scripts/github-harden.sh:*)",
-
       "Bash(claude plugin validate:*)",
       "Bash(claude plugin list:*)",
       "Bash(claude plugin marketplace add:*)",
       "Bash(claude plugin marketplace list:*)",
       "Bash(claude plugin install:*)",
-
       "Bash(mkdocs build:*)"
     ],
     "deny": [
@@ -66,7 +62,6 @@
       "Bash(rm -rf specs:*)",
       "Bash(rm -rf plugins:*)",
       "Bash(rm -rf .git:*)",
-
       "Bash(git push --force:*)",
       "Bash(git push -f:*)",
       "Bash(git reset --hard:*)",
@@ -79,8 +74,6 @@
       "Bash(git branch -D:*)",
       "Bash(git filter-branch:*)",
       "Bash(git update-ref -d:*)",
-
-      "Bash(gh pr merge:*)",
       "Bash(gh run delete:*)",
       "Bash(gh release delete:*)",
       "Bash(gh repo delete:*)",

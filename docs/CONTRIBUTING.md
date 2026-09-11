@@ -116,9 +116,14 @@ follow that are easy to get wrong:
   is allow-listed instead — it is the audited wrapper that performs the ruleset
   work, and it has a `--verify-only` mode. Ad-hoc `gh api` still prompts, which
   is correct.
-- **`gh pr merge` is denied**, not merely absent, because CLAUDE.md's merge gate
-  is the one policy this repository most wants enforced. Same for `gh run delete`
-  and `gh release delete`.
+- **`gh pr merge` is allowed, and the merge gate is not enforced here.** A
+  prefix matcher cannot tell "merged after the review completed and its findings
+  were fixed" from "merged the instant CI went green" — it only sees the command
+  string. Denying it outright makes the documented workflow impossible and a
+  `deny` cannot be overridden, so the gate lives in CLAUDE.md as a rule the
+  agent follows, and this file does not pretend otherwise. `gh run delete` and
+  `gh release delete` *are* denied: those destroy CI evidence and unpublish a
+  release, and nothing in this workflow needs them.
 - **The deny list cannot stop `carrel … --apply`.** The flag comes after the
   path (`carrel organize DIR --apply`), so no prefix rule reaches it, and
   `uv run` — this repo's canonical runner — would cover it anyway. What actually
