@@ -155,7 +155,9 @@ def test_plain_utf8_is_unchanged(tmp_path: Path):
 def test_open_text_file_defaults_to_the_csv_newline_contract(tmp_path: Path):
     """`csv` requires newline="" or it mangles quoted fields containing newlines."""
     path = tmp_path / "q.csv"
-    path.write_text('a,b\n"one\ntwo",3\n', encoding="utf-8")
+    # newline="\n": otherwise Windows writes CRLF and the \n inside the quoted
+    # field comes back as \r\n, which is the fixture's fault, not the reader's
+    path.write_text('a,b\n"one\ntwo",3\n', encoding="utf-8", newline="\n")
 
     import csv
 
