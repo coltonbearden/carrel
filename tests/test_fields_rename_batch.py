@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -665,12 +666,15 @@ def test_watch_print_service_writes_absolute_paths(tmp_path: Path, monkeypatch):
     ).output
 
     exec_start = next(ln for ln in unit.splitlines() if ln.startswith("ExecStart="))
-    assert f"--root {tmp_path.resolve()}" in exec_start, exec_start
-    assert str(watched.resolve()) in exec_start, exec_start
-    assert str(done.resolve()) in exec_start, exec_start
-    assert " done" not in exec_start and " inbox" not in exec_start, (
-        f"a relative path survived into the unit: {exec_start}"
-    )
+    # the line was built with shlex.join, so it round-trips through shlex.split;
+    # a bare `in` check would pass on Windows, where every path comes out quoted
+    argv = shlex.split(exec_start.removeprefix("ExecStart="))
+    after = {flag: argv[argv.index(flag) + 1] for flag in ("--root", "--done-dir", "watch")}
+
+    assert after["--root"] == str(tmp_path.resolve()), argv
+    assert after["watch"] == str(watched.resolve()), argv
+    assert after["--done-dir"] == str(done.resolve()), argv
+    assert all(Path(p).is_absolute() for p in after.values()), argv
 
     # without --root the unit should not name one at all
     plain = run("watch", "inbox", "--run", "echo {path}", "--print-service", "systemd").output
