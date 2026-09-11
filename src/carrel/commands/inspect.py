@@ -26,6 +26,7 @@ import click
 from carrel.core import adapters, textextract
 from carrel.core.filetypes import FileType, detect_or_die
 from carrel.core.output import CarrelError, CarrelInputError, emit, handled
+from carrel.core.textextract import read_text_file
 
 _SHA256_CAP = 512 * 1024 * 1024  # skip hashing files >= 512 MB
 
@@ -141,7 +142,7 @@ def _json_depth(value: Any) -> int:
 
 def _json_detail(path: Path) -> dict[str, Any]:
     try:
-        data = jsonlib.loads(path.read_text(encoding="utf-8", errors="replace"))
+        data = jsonlib.loads(read_text_file(path))
     except jsonlib.JSONDecodeError as e:
         return {"error": f"invalid JSON: {e}"}
     if isinstance(data, dict):
@@ -155,13 +156,13 @@ def _json_detail(path: Path) -> dict[str, Any]:
 
 def _csv_detail(path: Path) -> dict[str, Any]:
     try:
-        with path.open(encoding="utf-8", newline="", errors="replace") as fh:
+        with textextract.open_text_file(path) as fh:
             sample = fh.read(64 * 1024)
         try:
             delimiter = csv.Sniffer().sniff(sample).delimiter
         except csv.Error:
             delimiter = ","
-        with path.open(encoding="utf-8", newline="", errors="replace") as fh:
+        with textextract.open_text_file(path) as fh:
             reader = csv.reader(fh, delimiter=delimiter)
             header = next(reader, [])
             rows = sum(1 for _ in reader)
@@ -220,7 +221,7 @@ class _HTMLOutline(HTMLParser):
 
 def _html_detail(path: Path) -> dict[str, Any]:
     parser = _HTMLOutline()
-    parser.feed(path.read_text(encoding="utf-8", errors="replace"))
+    parser.feed(read_text_file(path))
     return {
         "title": parser.title,
         "headings": parser.headings,
@@ -230,7 +231,7 @@ def _html_detail(path: Path) -> dict[str, Any]:
 
 
 def _md_detail(path: Path) -> dict[str, Any]:
-    text = path.read_text(encoding="utf-8", errors="replace")
+    text = read_text_file(path)
     headings: list[dict[str, Any]] = []
     in_fence = False
     for line in text.splitlines():
@@ -248,7 +249,7 @@ def _md_detail(path: Path) -> dict[str, Any]:
 
 
 def _txt_detail(path: Path) -> dict[str, Any]:
-    text = path.read_text(encoding="utf-8", errors="replace")
+    text = read_text_file(path)
     return {"lines": len(text.splitlines()), "words": len(text.split()), "chars": len(text)}
 
 

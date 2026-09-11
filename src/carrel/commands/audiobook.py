@@ -35,7 +35,7 @@ from carrel.core import adapters
 from carrel.core.adapters import MissingDependencyError
 from carrel.core.filetypes import FileType, detect_or_die
 from carrel.core.output import CarrelError, CarrelInputError, emit, handled, progress
-from carrel.core.textextract import extract_text
+from carrel.core.textextract import extract_text, read_text_file
 
 FORMATS = ("mp3", "ogg", "wav")
 ENGINES = ("auto", "espeak", "piper", "edge-tts")
@@ -383,7 +383,7 @@ def _slug(title: str, max_len: int = 48) -> str:
 def _prepare_chapters(src: Path, ftype: FileType, split: bool) -> list[tuple[str, str]]:
     """[(title, narration text)] — one entry unless splitting finds chapters."""
     if ftype is FileType.MD:
-        raw = src.read_text(encoding="utf-8", errors="replace")
+        raw = read_text_file(src)
         if split:
             parts = md_chapters(raw, src.stem)
             if len(parts) > 1:

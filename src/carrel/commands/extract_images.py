@@ -25,6 +25,7 @@ import click
 from carrel.core import adapters
 from carrel.core.filetypes import FileType, detect_or_die
 from carrel.core.output import CarrelError, CarrelInputError, emit, handled
+from carrel.core.textextract import read_text_file
 
 DEFAULT_MIN_SIZE = 32
 
@@ -102,7 +103,7 @@ class _ImgCollector(HTMLParser):
 
 def _extract_html(src: Path, out_dir: Path) -> list[Path]:
     parser = _ImgCollector()
-    parser.feed(src.read_text(encoding="utf-8", errors="replace"))
+    parser.feed(read_text_file(src))
     extracted: list[Path] = []
     seen: set[Path] = set()
     for ref in parser.srcs:

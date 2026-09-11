@@ -48,6 +48,13 @@ def render(template: str, path: Path) -> str:
     return _PLACEHOLDER.sub(lambda m: quote(values[m.group(0)]), template)
 
 
+# Deliberately NOT encoding="utf-8", unlike `adapters.run`. An adapter is a
+# binary carrel chose, and every one of them speaks UTF-8. A --run action is an
+# arbitrary command line the user wrote (D-013): on Windows it goes through
+# cmd.exe, whose console programs emit the OEM code page (cp437/cp850), so
+# forcing UTF-8 would replace every non-ASCII byte with U+FFFD irrecoverably.
+# The locale default is right here; `errors="replace"` is what was actually
+# missing, since a stray byte used to raise instead of degrading.
 def run_action(rendered: str, timeout: float | None) -> subprocess.CompletedProcess[str]:
     """Run one shell action in its own process group; on timeout kill the whole group.
 
@@ -66,8 +73,7 @@ def run_action(rendered: str, timeout: float | None) -> subprocess.CompletedProc
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            encoding="utf-8",
-            errors="replace",
+            errors="replace",  # locale decoding, not utf-8 — see the note above
             creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
         )
     else:
@@ -77,8 +83,7 @@ def run_action(rendered: str, timeout: float | None) -> subprocess.CompletedProc
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            encoding="utf-8",
-            errors="replace",
+            errors="replace",  # locale decoding, not utf-8 — see the note above
             start_new_session=True,
         )
     with child:

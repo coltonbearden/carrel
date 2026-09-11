@@ -54,6 +54,7 @@ import click
 from carrel.core import adapters, textextract
 from carrel.core.filetypes import FileType, detect_or_die
 from carrel.core.output import CarrelError, CarrelInputError, debugging, emit
+from carrel.core.textextract import read_text_file
 
 ICO_SIZES = (16, 32, 48, 64, 128, 256)
 PDF_RASTER_DPI = "150"
@@ -136,7 +137,7 @@ def _md_to_html(src: Path, dest: Path, opts: dict) -> dict:
     if adapters.have("pandoc"):
         _run_pandoc(src, dest, "markdown", "html", "-s", "--metadata", f"title={src.stem}")
         return {"via": "pandoc"}
-    body = textextract.markdown_to_html(src.read_text(encoding="utf-8", errors="replace"))
+    body = textextract.markdown_to_html(read_text_file(src))
     dest.write_text(_html_doc(src.stem, body), encoding="utf-8")
     return {"via": "markdown-it"}
 
@@ -145,7 +146,7 @@ def _md_to_txt(src: Path, dest: Path, opts: dict) -> dict:
     if adapters.have("pandoc"):
         _run_pandoc(src, dest, "markdown", "plain")
         return {"via": "pandoc"}
-    html = textextract.markdown_to_html(src.read_text(encoding="utf-8", errors="replace"))
+    html = textextract.markdown_to_html(read_text_file(src))
     dest.write_text(textextract.html_to_text(html), encoding="utf-8")
     return {"via": "markdown-it"}
 
@@ -161,7 +162,7 @@ def _html_to_txt(src: Path, dest: Path, opts: dict) -> dict:
         _run_pandoc(src, dest, "html", "plain")
         return {"via": "pandoc"}
     dest.write_text(
-        textextract.html_to_text(src.read_text(encoding="utf-8", errors="replace")),
+        textextract.html_to_text(read_text_file(src)),
         encoding="utf-8",
     )
     return {"via": "textextract"}
@@ -288,7 +289,7 @@ def _image_convert(src: Path, dest: Path, opts: dict) -> dict:
 
 def _load_json(src: Path) -> Any:
     try:
-        return jsonlib.loads(src.read_text(encoding="utf-8", errors="replace"))
+        return jsonlib.loads(read_text_file(src))
     except jsonlib.JSONDecodeError as e:
         raise CarrelInputError(f"invalid JSON in {src}: {e}") from e
 
@@ -352,7 +353,7 @@ def _infer(s: str) -> Any:
 
 
 def _csv_to_json(src: Path, dest: Path, opts: dict) -> dict:
-    with src.open(encoding="utf-8", newline="") as fh:
+    with textextract.open_text_file(src) as fh:
         reader = csv.DictReader(fh)
         if not reader.fieldnames:
             raise CarrelInputError(f"empty CSV (no header row): {src}")
@@ -362,7 +363,7 @@ def _csv_to_json(src: Path, dest: Path, opts: dict) -> dict:
 
 
 def _read_csv(src: Path) -> tuple[list[str], list[list[str]]]:
-    with src.open(encoding="utf-8", newline="") as fh:
+    with textextract.open_text_file(src) as fh:
         raw = [row for row in csv.reader(fh) if row]
     if not raw:
         raise CarrelInputError(f"empty CSV: {src}")
@@ -492,8 +493,10 @@ def _pandoc_doc(to_fmt: str, *extra: str) -> Callable[[Path, Path, dict], dict]:
         if src_type is FileType.TXT:  # pandoc has no plain-text reader; wrap first
             with tempfile.TemporaryDirectory(prefix="carrel-convert-") as td:
                 page = Path(td) / f"{src.stem}.html"
-                body = _txt_paragraph_html(src.read_text(encoding="utf-8", errors="replace"))
-                page.write_text(_html_doc(src.stem, body))
+                body = _txt_paragraph_html(textextract.read_text_file(src))
+                # _html_doc declares <meta charset="utf-8">, so the file must be
+                # written as utf-8 — pandoc believes the declaration
+                page.write_text(_html_doc(src.stem, body), encoding="utf-8")
                 _run_pandoc(page, dest, "html", to_fmt, *extra)
             return {"via": "pandoc"}
         args = list(extra)

@@ -9,7 +9,7 @@ import tempfile
 from datetime import date, datetime
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, TextIO
 
 from carrel.core import adapters
 from carrel.core.filetypes import FileType, detect_or_die
@@ -74,6 +74,29 @@ class _HTMLTextParser(HTMLParser):
     def handle_data(self, data: str) -> None:
         if not self._skipping:
             self.parts.append(data)
+
+
+#: How carrel reads a text file the *user* supplied, everywhere.
+#:
+#: `utf-8-sig` strips a BOM when there is one and behaves exactly like `utf-8`
+#: when there is not. Excel's "CSV UTF-8" export always writes one, and without
+#: this every reader named the first column `\ufeffname`.
+#:
+#: `errors="replace"` because these are documents carrel was handed, not files
+#: it wrote: a legacy cp1252 CSV out of Excel must still convert, with the odd
+#: character replaced, rather than crash the command.
+TEXT_ENCODING = "utf-8-sig"
+
+
+def read_text_file(path: Path) -> str:
+    """A user-supplied text file, BOM-stripped, never raising on a stray byte."""
+    return path.read_text(encoding=TEXT_ENCODING, errors="replace")
+
+
+def open_text_file(path: Path, **kwargs: Any) -> TextIO:
+    """`read_text_file`'s streaming twin — for `csv`, which wants a handle."""
+    kwargs.setdefault("newline", "")
+    return path.open(encoding=TEXT_ENCODING, errors="replace", **kwargs)
 
 
 def html_to_text(html: str) -> str:
@@ -220,7 +243,7 @@ def extract_text(path: Path | str, ocr: bool = False) -> str:
 
     if ftype in (FileType.TXT, FileType.MD) or ftype.is_code:
         # Source files are read verbatim: no extractor, no external binary.
-        return path.read_text(encoding="utf-8", errors="replace")
+        return read_text_file(path)
     if ftype.is_document:
         return document_text(path, ftype)
     if ftype.is_mail:
@@ -230,21 +253,17 @@ def extract_text(path: Path | str, ocr: bool = False) -> str:
     if ftype is FileType.XLSX:
         return xlsx_text(path)
     if ftype is FileType.HTML:
-        return html_to_text(path.read_text(encoding="utf-8", errors="replace"))
+        return html_to_text(read_text_file(path))
     if ftype is FileType.JSON:
         try:
-            return (
-                "\n".join(
-                    _flatten_json(json.loads(path.read_text(encoding="utf-8", errors="replace")))
-                )
-                + "\n"
-            )
+            raw = read_text_file(path)
+            return "\n".join(_flatten_json(json.loads(raw))) + "\n"
         except json.JSONDecodeError as e:
             raise CarrelInputError(f"invalid JSON in {path}: {e}") from e
     if ftype is FileType.XML:
-        return html_to_text(path.read_text(encoding="utf-8", errors="replace"))
+        return html_to_text(read_text_file(path))
     if ftype is FileType.CSV:
-        with path.open(encoding="utf-8", errors="replace", newline="") as fh:
+        with open_text_file(path) as fh:
             return "\n".join(", ".join(row) for row in csv.reader(fh)) + "\n"
     if ftype is FileType.PDF:
         return pdf_text(path, ocr=ocr)

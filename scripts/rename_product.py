@@ -93,7 +93,11 @@ def main() -> int:
         return 0
 
     product.update(name=new, displayName=new.capitalize(), cli=new, marketplace=new)
-    product_path.write_text(json.dumps(product, indent=2, ensure_ascii=False) + "\n")
+    product_path.write_text(
+        json.dumps(product, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
 
     # text references (CLI invocations in docs, plugins, snippets, examples)
     n = patch_text_files(old, new)
