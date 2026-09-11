@@ -14,15 +14,36 @@
   Repo `coltonbearden/carrel`, docs at https://coltonbearden.github.io/carrel/, PyPI
   package `carrel`.
 - **In flight:** nothing.
-- **Next:** promote `test-minimal (windows)` to required once it has been green on `main`
-  for two consecutive weeks (from 2026-09-10): drop `continue-on-error` in
-  `.github/workflows/test.yml`; the ruleset entry is the owner's step. Plus two
-  repo-settings steps only the owner can apply — add `test-minimal (macos)` to the `main`
-  ruleset's required checks and to `REQUIRED_CHECKS` in `scripts/github-harden.sh`
-  (see docs/REPO_SETTINGS.md). Backlog: the MCP exposure gap.
+- **Next:** MCP v3 (spec 30) — the 15 commands with no tool, `rename`/`batch`/`intake`
+  first, so the accounting-inbox pipeline stops being CLI-only. See Open issues.
+- **Also pending:** promote `test-minimal (windows)` to required once it has been green on
+  `main` for two consecutive weeks (from 2026-09-10, so on or after **2026-09-24**): drop
+  `continue-on-error` in `.github/workflows/test.yml`, then re-run
+  `scripts/github-harden.sh` with the check added to `REQUIRED_CHECKS`.
+  `test-minimal (macos)` is **done** — added to `REQUIRED_CHECKS` and applied to the `main`
+  ruleset on 2026-09-11, verified by `scripts/github-harden.sh --verify-only`.
 
 ## Done
 
+- 2026-09-11 process + settings: `.claude/settings.json` is committed, so an unattended agent
+  run never stalls on a permission prompt for the release loop (`uv`, the git branch verbs,
+  `gh pr`/`run`/`release`, `claude plugin`, `mkdocs`, and `gh api` as read-only GETs plus the
+  two named write shapes); the deny list covers `rm -rf` outside `/tmp`, `git push --force`,
+  `git reset --hard`, `git clean`, `gh api --method DELETE` and `carrel *--apply`. The repo's
+  own `.gitignore` now excludes `.claude/settings.local.json` — it was only ever excluded by
+  this machine's *global* gitignore, so a fresh clone could have committed someone's local
+  permissions. CLAUDE.md gains two rules: a PR merges only after its review completes, and
+  mutating smoke tests run in `/tmp`. `docs/index.md` said "ten MCP tools" two releases after
+  it became 14; `tests/test_docs_drift.py` now scans **every live doc** (plus the plugin
+  skills, whose frontmatter states it) for a stated tool count and checks it against
+  `mcp.TOOLS`, and pins every tool name in `docs/AGENTS.md` plus the inline lists in README
+  and `docs/FEATURES.md`. The first attempt hand-listed three files and matched the literal
+  "MCP tools", which only ever existed in `docs/index.md` — six live statements of the count
+  sat outside it, including a shipped plugin skill. The name check scanned whole documents,
+  where `search`/`pack`/`diff` appear for unrelated reasons, so it could not fail; it reads
+  only the lines describing MCP now, and a meta-test strips the list out to prove it bites.
+  GitHub: `test-minimal (macos)` is a required check on the `main` ruleset, and
+  `docs/REPO_SETTINGS.md` is pinned against `REQUIRED_CHECKS` so that pair cannot drift.
 - 2026-09-11 (spec 29, D-017): `rename --apply`, `organize --apply`, `intake --apply` and
   `watch --done-dir/--error-dir` refuse (exit 2) when the move would touch a file **git is
   tracking**, naming the repository and the paths; each gains `--force`. Motivated by the
@@ -36,6 +57,17 @@
   wrote outside the guarded directory; the guard masked genuine argument errors by running
   before validation; and `click.UsageError` printed a `Usage:` banner implying the command
   line was malformed (now `CarrelUsageError`, which also keeps click out of `core/`).
+  A **second** review then found the guard failing open twice over: a glob too long for one
+  `git ls-files` command line raised, and "git could not be asked" was being read as "nothing
+  is tracked" (argv is chunked by character budget now — Windows caps a command line at
+  32,767 — and "could not ask" is its own answer); and a repository git refuses to read,
+  including `detected dubious ownership`, the default for a `/mnt/c` checkout under WSL, was
+  left unguarded, because "git ran and failed" was treated as "not a repository". Only git's
+  literal "not a git repository" is believed now. It also found the guard refusing what it
+  had promised to allow: a `--to` that does not exist yet was judged by its nearest existing
+  ancestor, so a first `intake ~/Downloads --to ~/filed` in a dotfiles repo refused and named
+  every tracked dotfile. With git absent the command exits **3** with the install hint rather
+  than guessing, and `--force` still skips the question.
 - 2026-09-11: the latent Windows text-IO gap is closed and gated. `ruff`'s `PLW1514` is on
   (via `lint.preview` + `lint.explicit-preview-rules`, so only that preview rule turns on —
   a blanket `preview = true` would surface 324 findings) and it found 43 sites across
@@ -87,10 +119,6 @@
   in sequence, so a file named `{name}.txt` produced a shell command aimed at a different
   file; and `watch` silently dropped any new file whose name shared a prefix with one it was
   already processing.
-- 2026-09-10 adversarial review of the email work found 15 confirmed defects before the
-  release, including a real one: `convert msg.eml --to pdf` rendered the sender's HTML, so
-  a conversion fetched tracking pixels and could embed local files into the PDF. PDF now
-  renders the message text. Every finding has a regression test (#29).
 - Build phases 0–7 complete (2026-07-16); v0.1.0 tagged.
 - v0.1.1 on PyPI via Trusted Publishing (2026-08-12).
 - 2026-09-03 hardening: owner rename, version SoT fix, `--json` everywhere, timeouts,
@@ -122,11 +150,16 @@
 
 ## Open issues
 
-- 16 of 26 commands are not exposed over MCP; `ocr`, `edit`, `sign`, `catalog`, `thumb`,
-  `dedupe`, `organize`, `form`, `color` already have `_file()`/`_paths()` entry points, and
-  six headline `pack` flags are agent-invisible. Its own spec.
-- Owner-only: add `test-minimal (macos)` to the `main` ruleset and to `REQUIRED_CHECKS`
-  (docs/REPO_SETTINGS.md).
+- 19 of 33 commands have no MCP tool, so an agent can read a desk but not act on it. Four are
+  excluded by design (`watch` is a long-running loop, `desk` is a TUI, `completion` prints a
+  shell script, `mcp` is the server). The other 15 are the gap: `audiobook`, `batch`,
+  `catalog`, `color`, `dedupe`, `edit`, `extract-images`, `form`, `intake`, `ocr`, `organize`,
+  `proof`, `rename`, `sign`, `thumb`. The headline three are `rename`, `batch` and `intake` —
+  the whole v0.4.0 accounting-inbox pipeline is CLI-only, so the `bookkeeper` agent shells out
+  for exactly the steps that move files. Most already have `_file()`/`_paths()` entry points
+  the tool layer can call, and six headline `pack` flags remain agent-invisible. Its own spec
+  (30), scoped as MCP v3: 14 → 25 tools (`batch` is cut — it is the single `shell=True` site).
+
 
 - `--force` now carries two unrelated meanings. On `mail`, `edit`, `sign`, `form`, `catalog`,
   `meta` and `audiobook` it means "overwrite existing output"; on `rename`, `organize`,

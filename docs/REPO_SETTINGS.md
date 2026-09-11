@@ -12,7 +12,7 @@ re-run it any time to re-assert this state).
 | Block force pushes | history on `main` is append-only |
 | Require linear history | squash or rebase merges only, no merge commits |
 | Require a pull request | direct pushes are rejected; 0 approvals required (solo maintainer), stale approvals dismissed, review threads must be resolved |
-| Require status checks | `lint`, `test (py3.12)`, `test (py3.13)`, `test (py3.14)`, `test-minimal` must pass on the PR head, and the branch must be up to date with `main`. **Pending (v0.2.0):** add `test-minimal (macos)` once the v0.2.0 release PR shows it green; `test-minimal (windows)` stays advisory (`continue-on-error`) per the BUILD_PLAN scope guard |
+| Require status checks | `lint`, `test (py3.12)`, `test (py3.13)`, `test (py3.14)`, `test-minimal`, `test-minimal (macos)` must pass on the PR head, and the branch must be up to date with `main`. **Pending:** promote `test-minimal (windows)` once it has been green on `main` for two consecutive weeks (from 2026-09-10, so on or after 2026-09-24) — drop `continue-on-error` in `.github/workflows/test.yml`, add the check to `REQUIRED_CHECKS`, re-run the script |
 | Bypass | repository **admin** role, always — for emergencies only; every other actor (bots, collaborators, tokens) is blocked |
 
 ## Tag ruleset `release tags` (active, `v*`)
@@ -48,7 +48,7 @@ merged: both rulesets active, secret scanning + push protection enabled, private
 vulnerability reporting on, CodeQL default setup configured (extended), Actions
 restricted to the allow-list with SHA pinning required, `pypi` environment
 limited to `v*` tags. PR #7 itself was the first change to land under the
-required checks (`lint`, `test (py3.12/3.13/3.14)`, `test-minimal`).
+required checks (`lint`, `test (py3.12/3.13/3.14)`, `test-minimal`, `test-minimal (macos)`).
 
 ## Not enforced (deliberately)
 

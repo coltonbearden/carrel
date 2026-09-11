@@ -46,6 +46,13 @@
   `--root` made the unit fail on every start (`--root` requires an existing directory), and a
   relative `--done-dir` would have filed documents into a directory under `$HOME`. Every path
   in a generated service is now absolute.
+- **Fixed:** `docs/index.md` claimed `carrel mcp` serves "ten MCP tools" — it has served 14
+  since v0.4.0. `tests/test_docs_drift.py` now scans every live doc, and the plugin skills
+  whose frontmatter states it, for a tool count in any spelling (numeral, word, hyphenated,
+  emphasised) and checks it against the `TOOLS` table in `carrel.commands.mcp`; it also pins
+  every tool name in `docs/AGENTS.md` and the inline lists in README and `docs/FEATURES.md`.
+  Historical counts in the FEATURES release trail are left alone. `docs/REPO_SETTINGS.md` is
+  pinned against `REQUIRED_CHECKS` in the hardening script the same way.
 
 ## v0.4.0 — 2026-09-10
 

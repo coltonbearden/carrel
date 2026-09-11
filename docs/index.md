@@ -4,7 +4,7 @@
 
 A **carrel** is a private study desk in a library: your materials close at hand, organized your way. carrel is that desk for your local files — pdf, docx, odt, epub, rtf, xlsx, md, html, txt, json, xml, csv, and png/jpg/ico images — with 33 commands to convert, OCR, inspect, diff, index, search, pack, watch, file an inbox, and more.
 
-It treats AI agents as first-class users of the desk: every data-producing command speaks `--json` on stable exit codes, `carrel pack` turns file trees into LLM-ready context, `carrel mcp` serves the whole desk as ten MCP tools, and the [repository doubles as a Claude Code plugin marketplace](MARKETPLACE.md) whose plugins drive the same CLI.
+It treats AI agents as first-class users of the desk: every data-producing command speaks `--json` on stable exit codes, `carrel pack` turns file trees into LLM-ready context, `carrel mcp` serves the whole desk as fourteen MCP tools, and the [repository doubles as a Claude Code plugin marketplace](MARKETPLACE.md) whose plugins drive the same CLI.
 
 ## Start here
 
@@ -58,7 +58,7 @@ eval "$(carrel completion bash)"       # ~/.bashrc; see INSTALL for zsh and fish
 ## For agents and their operators
 
 - **[The marketplace](MARKETPLACE.md)** — the Claude Code plugins: slash commands, agents, skills, hooks, and the MCP server.
-- **[Agents](AGENTS.md)** — the shipped agents, the ten MCP tools and two resource templates, and the watch + `claude -p` loop.
+- **[Agents](AGENTS.md)** — the shipped agents, the fourteen MCP tools and two resource templates, and the watch + `claude -p` loop.
 - **[Authoring a plugin](PLUGIN_AUTHORING.md)** — add your own to this marketplace.
 
 ## Inside the build
