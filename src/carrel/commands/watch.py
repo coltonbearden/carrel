@@ -22,7 +22,6 @@ re-trigger the watcher — point outputs at another directory or narrow --glob.
 from __future__ import annotations
 
 import fnmatch
-import functools
 import json
 import shlex
 import shutil
@@ -30,7 +29,7 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -38,7 +37,7 @@ import click
 
 from carrel.core.actions import PLACEHOLDERS, kill_tree, quote, render, run_action
 from carrel.core.fsops import move_file, uncollide
-from carrel.core.output import CarrelError, CarrelInputError, fail
+from carrel.core.output import CarrelInputError, handled
 
 # private aliases: tests and older callers reach the shared implementations by these names
 _quote, _render, _run_action, _kill_tree = quote, render, run_action, kill_tree
@@ -46,22 +45,6 @@ _quote, _render, _run_action, _kill_tree = quote, render, run_action, kill_tree
 EVENT_TYPES = ("created", "modified", "deleted", "moved", "existing")
 _SUPPRESS_SECONDS = 2.0  # ignore events for a path the watcher itself just moved
 _TICK_SECONDS = 0.05
-
-
-def _handled(fn: Callable) -> Callable:
-    """Convert CarrelError into a clean message + exit code (unless --debug)."""
-
-    @functools.wraps(fn)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        ctx = click.get_current_context(silent=True)
-        try:
-            return fn(*args, **kwargs)
-        except CarrelError as e:
-            if ctx is not None and ctx.obj and ctx.obj.get("debug"):
-                raise
-            fail(str(e), e.exit_code)
-
-    return wrapper
 
 
 def _due(
@@ -446,7 +429,7 @@ def _make_handler(watcher: _Watcher) -> Any:
     help="Log one JSON object per action to stdout instead of human lines (--json implies this).",
 )
 @click.pass_context
-@_handled
+@handled
 def cmd(
     ctx: click.Context,
     directory: Path,

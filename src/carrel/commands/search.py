@@ -9,9 +9,7 @@ so `--limit` still fills up.
 
 from __future__ import annotations
 
-import functools
 import sqlite3  # exception type only — all db access goes through DeskDB
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -20,29 +18,9 @@ import click
 from carrel._product import PRODUCT
 from carrel.core.db import DeskDB
 from carrel.core.filetypes import FileType
-from carrel.core.output import CarrelError, CarrelInputError, ExitCode, emit, fail
+from carrel.core.output import CarrelInputError, ExitCode, emit, fail, handled, root_of
 
 _FILTER_FETCH_MIN = 500  # over-fetch floor when post-filtering
-
-
-def _handled(fn: Callable) -> Callable:
-    """Convert CarrelError into a clean message + exit code (unless --debug)."""
-
-    @functools.wraps(fn)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        ctx = click.get_current_context(silent=True)
-        try:
-            return fn(*args, **kwargs)
-        except CarrelError as e:
-            if ctx is not None and ctx.obj and ctx.obj.get("debug"):
-                raise
-            fail(str(e), e.exit_code)
-
-    return wrapper
-
-
-def _root_of(ctx: click.Context) -> Path:
-    return Path((ctx.obj or {}).get("root", ".")).resolve()
 
 
 def _parse_types(csv: str | None) -> set[str] | None:
@@ -156,7 +134,7 @@ def _human_hits(hits: list[dict[str, Any]]) -> None:
 )
 @click.option("--fail-empty", is_flag=True, help="Exit 5 when there are no hits.")
 @click.pass_context
-@_handled
+@handled
 def cmd(
     ctx: click.Context,
     query: str,
@@ -174,7 +152,7 @@ def cmd(
     """
     if limit < 1:
         raise click.UsageError("--limit must be a positive integer")
-    root = _root_of(ctx)
+    root = root_of(ctx)
     wanted_types = _parse_types(types_csv)  # --type validation stays a usage error (exit 2)
     if not DeskDB.exists(root):  # missing input, not a usage error: exit 4 like pack --query
         raise CarrelInputError(f"no index under {root} — run `{PRODUCT['cli']} index` there first")

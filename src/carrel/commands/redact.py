@@ -13,12 +13,10 @@ layer survives. The result is verified with pdftotext when available.
 
 from __future__ import annotations
 
-import functools
 import json as jsonlib
 import re
 import tempfile
 import xml.etree.ElementTree as ET
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -27,7 +25,15 @@ import click
 
 from carrel.core import adapters
 from carrel.core.filetypes import FileType, detect_or_die
-from carrel.core.output import CarrelError, CarrelInputError, ExitCode, emit, fail, progress
+from carrel.core.output import (
+    CarrelError,
+    CarrelInputError,
+    ExitCode,
+    emit,
+    fail,
+    handled,
+    progress,
+)
 from carrel.core.patterns import PATTERNS, Pattern
 
 RASTER_DPI = 200
@@ -235,22 +241,6 @@ def _redact_pdf(
 # ----------------------------------------------------------------- CLI shell
 
 
-def _handled(fn: Callable) -> Callable:
-    """Convert CarrelError into a clean message + exit code (unless --debug)."""
-
-    @functools.wraps(fn)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        ctx = click.get_current_context(silent=True)
-        try:
-            return fn(*args, **kwargs)
-        except CarrelError as e:
-            if ctx is not None and ctx.obj and ctx.obj.get("debug"):
-                raise
-            fail(str(e), e.exit_code)
-
-    return wrapper
-
-
 def _human(record: dict[str, Any]) -> None:
     click.echo(f"redact: {record['src']}")
     for name, count in record["matches"].items():
@@ -293,7 +283,7 @@ def _human(record: dict[str, Any]) -> None:
 @click.option("--fail-empty", is_flag=True, help="Exit 5 when nothing matched.")
 @click.option("--force", is_flag=True, help="Allow overwriting an existing output file.")
 @click.pass_context
-@_handled
+@handled
 def cmd(
     ctx: click.Context,
     src: Path,

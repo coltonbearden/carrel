@@ -82,7 +82,11 @@ error: 'pandoc' is required for this operation but was not found (override CARRE
 ```python
 emit(ctx, data, human=None)   # --json → json.dumps(data); else human(data) or rich pretty-print
 fail(msg, code=ExitCode.ERROR)
+handled(fn)                   # decorator: CarrelError → fail(msg, e.exit_code), re-raised under --debug
+root_of(ctx)                  # the desk root for this invocation: --root if given, else the cwd
 ```
+
+Every command callback wears `@handled` and every desk-backed command resolves its root through `root_of`, both imported from here — the exit-code convention in CLAUDE.md holds only because that mapping exists once (D-016, guarded by `tests/test_command_conventions.py`).
 
 ### Desk DB (`core.db`) — `.carrel/carrel.db` under `--root`
 

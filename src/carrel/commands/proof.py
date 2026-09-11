@@ -16,32 +16,13 @@ list of profiles actually present.
 
 from __future__ import annotations
 
-import functools
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import click
 
 from carrel.core.filetypes import detect_or_die
-from carrel.core.output import CarrelError, CarrelInputError, ExitCode, emit, fail
-
-
-def _handled(fn: Callable) -> Callable:
-    """Convert CarrelError into a clean message + exit code (unless --debug)."""
-
-    @functools.wraps(fn)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        ctx = click.get_current_context(silent=True)
-        try:
-            return fn(*args, **kwargs)
-        except CarrelError as e:
-            if ctx is not None and ctx.obj and ctx.obj.get("debug"):
-                raise
-            fail(str(e), e.exit_code)
-
-    return wrapper
-
+from carrel.core.output import CarrelError, CarrelInputError, ExitCode, emit, handled
 
 #: per-channel delta (0-255) above which a pixel counts as "changed"
 CHANGE_THRESHOLD = 8
@@ -223,7 +204,7 @@ def _human(report: dict[str, Any]) -> None:
     help="Rendering intent.",
 )
 @click.pass_context
-@_handled
+@handled
 def cmd(ctx: click.Context, src: Path, profile: str, out: Path | None, intent: str) -> None:
     """Soft-proof SRC against an ICC PROFILE (simulate print/display output).
 

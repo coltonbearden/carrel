@@ -17,7 +17,6 @@ the file (core.fsops). `build_name()` is reused by `intake`.
 
 from __future__ import annotations
 
-import functools
 import hashlib
 import re
 from collections.abc import Callable, Sequence
@@ -31,31 +30,20 @@ from carrel.core import patterns as pat
 from carrel.core.db import DeskDB
 from carrel.core.filetypes import detect
 from carrel.core.fsops import move_file, uncollide
-from carrel.core.output import CarrelError, CarrelInputError, ExitCode, emit, fail, progress
+from carrel.core.output import (
+    CarrelError,
+    CarrelInputError,
+    ExitCode,
+    emit,
+    fail,
+    handled,
+    progress,
+    root_of,
+)
 
 DEFAULT_TEMPLATE = "{date}_{vendor}_{ref}{ext}"
 _PLACEHOLDER = re.compile(r"\{(?P<name>[a-z][a-z0-9_.]*)(?::(?P<fmt>[^}]+))?\}")
 _UNSAFE = re.compile(r"[^A-Za-z0-9._-]+")
-
-
-def _handled(fn: Callable) -> Callable:
-    """Convert CarrelError into a clean message + exit code (unless --debug)."""
-
-    @functools.wraps(fn)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        ctx = click.get_current_context(silent=True)
-        try:
-            return fn(*args, **kwargs)
-        except CarrelError as e:
-            if ctx is not None and ctx.obj and ctx.obj.get("debug"):
-                raise
-            fail(str(e), e.exit_code)
-
-    return wrapper
-
-
-def _root_of(ctx: click.Context) -> Path:
-    return Path((ctx.obj or {}).get("root", ".")).resolve()
 
 
 def slugify(value: str, *, lower: bool = False) -> str:
@@ -334,7 +322,7 @@ def _human_plan(applied: bool) -> Callable[[list[dict[str, Any]]], None]:
     help="OCR images and scanned PDFs to read their fields (needs tesseract / ocrmypdf).",
 )
 @click.pass_context
-@_handled
+@handled
 def cmd(
     ctx: click.Context,
     paths: tuple[Path, ...],
@@ -360,7 +348,7 @@ def cmd(
     """
     if not _PLACEHOLDER.search(template):
         raise click.UsageError(f"--template has no placeholders: {template!r}")
-    root = _root_of(ctx)
+    root = root_of(ctx)
     plan = plan_renames(
         list(paths),
         template,

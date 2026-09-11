@@ -7,35 +7,13 @@ side effect (they return empty results when no desk db exists yet).
 
 from __future__ import annotations
 
-import functools
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import click
 
 from carrel.core.db import DeskDB
-from carrel.core.output import CarrelError, CarrelInputError, emit, fail
-
-
-def _handled(fn: Callable) -> Callable:
-    """Convert CarrelError into a clean message + exit code (unless --debug)."""
-
-    @functools.wraps(fn)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        ctx = click.get_current_context(silent=True)
-        try:
-            return fn(*args, **kwargs)
-        except CarrelError as e:
-            if ctx is not None and ctx.obj and ctx.obj.get("debug"):
-                raise
-            fail(str(e), e.exit_code)
-
-    return wrapper
-
-
-def _root_of(ctx: click.Context) -> Path:
-    return Path((ctx.obj or {}).get("root", ".")).resolve()
+from carrel.core.output import CarrelInputError, emit, handled, root_of
 
 
 def _echo_file_tags(data: dict[str, Any]) -> None:
@@ -51,13 +29,13 @@ def cmd() -> None:
 @click.argument("path", type=click.Path(path_type=Path))
 @click.argument("tags", nargs=-1, required=True)
 @click.pass_context
-@_handled
+@handled
 def add(ctx: click.Context, path: Path, tags: tuple[str, ...]) -> None:
     """Add TAG... to PATH (registers the file in the desk db if needed)."""
     path = path.resolve()
     if not path.is_file():
         raise CarrelInputError(f"no such file: {path}")
-    with DeskDB(_root_of(ctx)) as db:
+    with DeskDB(root_of(ctx)) as db:
         db.add_tags(path, list(tags))
         data = {"path": db.rel(path), "tags": db.tags_of(path)}
     emit(ctx, data, human=_echo_file_tags)
@@ -67,10 +45,10 @@ def add(ctx: click.Context, path: Path, tags: tuple[str, ...]) -> None:
 @click.argument("path", type=click.Path(path_type=Path))
 @click.argument("tags", nargs=-1, required=True)
 @click.pass_context
-@_handled
+@handled
 def rm(ctx: click.Context, path: Path, tags: tuple[str, ...]) -> None:
     """Remove TAG... from PATH (unknown tags/files are a quiet no-op)."""
-    root = _root_of(ctx)
+    root = root_of(ctx)
     path = path.resolve()
     if not DeskDB.exists(root):
         emit(ctx, {"path": str(path), "tags": []}, human=_echo_file_tags)
@@ -93,10 +71,10 @@ def _echo_tag_counts(data: dict[str, Any]) -> None:
 @cmd.command("ls")
 @click.argument("path", required=False, type=click.Path(path_type=Path))
 @click.pass_context
-@_handled
+@handled
 def ls(ctx: click.Context, path: Path | None) -> None:
     """List tags of PATH, or (without PATH) every tag with its file count."""
-    root = _root_of(ctx)
+    root = root_of(ctx)
     if path is not None:
         path = path.resolve()
         if not DeskDB.exists(root):
@@ -119,10 +97,10 @@ def ls(ctx: click.Context, path: Path | None) -> None:
 @cmd.command("find")
 @click.argument("tags", nargs=-1, required=True)
 @click.pass_context
-@_handled
+@handled
 def find(ctx: click.Context, tags: tuple[str, ...]) -> None:
     """List files carrying ALL of TAG... (paths relative to the desk root)."""
-    root = _root_of(ctx)
+    root = root_of(ctx)
     paths: list[str] = []
     if DeskDB.exists(root):
         with DeskDB(root) as db:

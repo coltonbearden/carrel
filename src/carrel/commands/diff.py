@@ -11,39 +11,21 @@ from __future__ import annotations
 
 import csv
 import difflib
-import functools
 import json as jsonlib
 import sys
 import xml.etree.ElementTree as ET
 from collections import Counter
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import click
 
 from carrel.core.filetypes import FileType, detect_or_die
-from carrel.core.output import CarrelError, CarrelInputError, emit, fail
+from carrel.core.output import CarrelInputError, emit, handled
 from carrel.core.textextract import extract_text
 
 MODES = ("auto", "text", "struct", "image", "pdf")
 _STRUCT_TYPES = (FileType.JSON, FileType.CSV, FileType.XML)
-
-
-def _handled(fn: Callable) -> Callable:
-    """Convert CarrelError into a clean message + exit code (unless --debug)."""
-
-    @functools.wraps(fn)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        ctx = click.get_current_context(silent=True)
-        try:
-            return fn(*args, **kwargs)
-        except CarrelError as e:
-            if ctx is not None and ctx.obj and ctx.obj.get("debug"):
-                raise
-            fail(str(e), e.exit_code)
-
-    return wrapper
 
 
 # ---------------------------------------------------------------------------
@@ -406,7 +388,7 @@ def _render(data: dict[str, Any]) -> None:
     help="Image mode: write a per-pixel delta heatmap PNG here.",
 )
 @click.pass_context
-@_handled
+@handled
 def cmd(ctx: click.Context, a: Path, b: Path, as_json: bool, mode: str, out: Path | None) -> None:
     """Compare two files A and B.
 

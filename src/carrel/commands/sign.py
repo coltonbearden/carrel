@@ -9,12 +9,10 @@ when one sits next to the manifest — exiting 1 on any mismatch.
 
 from __future__ import annotations
 
-import functools
 import getpass
 import hashlib
 import io
 import re
-from collections.abc import Callable
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -23,7 +21,7 @@ import click
 
 from carrel.core import adapters
 from carrel.core.filetypes import FileType, detect_or_die
-from carrel.core.output import CarrelError, CarrelInputError, ExitCode, emit, fail, progress
+from carrel.core.output import CarrelError, CarrelInputError, ExitCode, emit, handled, progress
 
 MARGIN = 36.0  # pt
 FONT, FONT_SIZE = "Helvetica", 12.0
@@ -33,22 +31,6 @@ GAP = 6.0
 POSITIONS = ("top-left", "top-right", "bottom-left", "bottom-right")
 
 _MANIFEST_LINE = re.compile(r"^([0-9a-fA-F]{64}) [ *](.+)$")
-
-
-def _handled(fn: Callable) -> Callable:
-    """Convert CarrelError into a clean message + exit code (unless --debug)."""
-
-    @functools.wraps(fn)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        ctx = click.get_current_context(silent=True)
-        try:
-            return fn(*args, **kwargs)
-        except CarrelError as e:
-            if ctx is not None and ctx.obj and ctx.obj.get("debug"):
-                raise
-            fail(str(e), e.exit_code)
-
-    return wrapper
 
 
 @click.group(name="sign")
@@ -149,7 +131,7 @@ def _overlay_pdf(page_w: float, page_h: float, text: str, image: Path | None, po
 )
 @click.option("--force", is_flag=True, help="Allow overwriting an existing output file.")
 @click.pass_context
-@_handled
+@handled
 def stamp(
     ctx: click.Context,
     src: Path,
@@ -270,7 +252,7 @@ def _gpg_sign(manifest: Path, key: str | None) -> Path:
 @click.option("--key", metavar="ID", help="gpg key id/email to sign with (implies --gpg).")
 @click.option("--force", is_flag=True, help="Allow overwriting an existing manifest.")
 @click.pass_context
-@_handled
+@handled
 def manifest(
     ctx: click.Context,
     paths: tuple[Path, ...],
@@ -319,7 +301,7 @@ def manifest(
 @cmd.command("verify")
 @click.argument("manifest_path", metavar="MANIFEST", type=click.Path(path_type=Path))
 @click.pass_context
-@_handled
+@handled
 def verify(ctx: click.Context, manifest_path: Path) -> None:
     """Recompute a sha256 manifest (and its gpg signature, if present)."""
     if not manifest_path.is_file():

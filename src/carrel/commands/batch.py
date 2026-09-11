@@ -13,7 +13,6 @@ what already succeeded; `--dry-run` prints the rendered commands only.
 from __future__ import annotations
 
 import fnmatch
-import functools
 import json
 import time
 from collections.abc import Callable, Iterator, Sequence
@@ -25,29 +24,9 @@ import click
 
 from carrel.core.actions import PLACEHOLDERS, render, run_action
 from carrel.core.filetypes import FileType, detect
-from carrel.core.output import CarrelError, CarrelInputError, ExitCode, fail
+from carrel.core.output import CarrelInputError, ExitCode, fail, handled, root_of
 
 OUTPUT_CAP = 16 * 1024  # bytes of stdout/stderr kept per record
-
-
-def _handled(fn: Callable) -> Callable:
-    """Convert CarrelError into a clean message + exit code (unless --debug)."""
-
-    @functools.wraps(fn)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        ctx = click.get_current_context(silent=True)
-        try:
-            return fn(*args, **kwargs)
-        except CarrelError as e:
-            if ctx is not None and ctx.obj and ctx.obj.get("debug"):
-                raise
-            fail(str(e), e.exit_code)
-
-    return wrapper
-
-
-def _root_of(ctx: click.Context) -> Path:
-    return Path((ctx.obj or {}).get("root", ".")).resolve()
 
 
 def _walk_files(top: Path, recursive: bool, root: Path | None) -> Iterator[Path]:
@@ -276,7 +255,7 @@ def _human_record(rec: dict[str, Any]) -> None:
     help="Stream one JSON record per file as it completes, then a summary line.",
 )
 @click.pass_context
-@_handled
+@handled
 def cmd(
     ctx: click.Context,
     paths: tuple[Path, ...],
@@ -319,7 +298,7 @@ def cmd(
             raise click.UsageError(f"--run {template!r} uses none of {', '.join(PLACEHOLDERS)}")
 
     files = collect_files(
-        list(paths), glob=glob_, types=types, recursive=recursive, root=_root_of(ctx)
+        list(paths), glob=glob_, types=types, recursive=recursive, root=root_of(ctx)
     )
     done = load_manifest_done(manifest, runs) if (resume and manifest is not None) else set()
     todo = [f for f in files if str(f) not in done]

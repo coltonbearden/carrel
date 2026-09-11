@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import contextlib
 import fnmatch
-import functools
 import shutil
 import tempfile
 import time
@@ -51,7 +50,9 @@ from carrel.core.output import (
     ExitCode,
     emit,
     fail,
+    handled,
     progress,
+    root_of,
 )
 from carrel.core.textextract import extract_text
 
@@ -59,26 +60,6 @@ LAYOUTS: tuple[str, ...] = ("ym", "period", "flat")
 ORIGINALS_DIR = "_originals"
 _SCANNED_CHARS = 20  # a PDF with less extracted text than this is treated as a scan
 SAVE_CONFIDENCE = ("high", "medium", "user")  # low fallbacks (mtime, file name) are not facts
-
-
-def _handled(fn: Callable) -> Callable:
-    """Convert CarrelError into a clean message + exit code (unless --debug)."""
-
-    @functools.wraps(fn)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        ctx = click.get_current_context(silent=True)
-        try:
-            return fn(*args, **kwargs)
-        except CarrelError as e:
-            if ctx is not None and ctx.obj and ctx.obj.get("debug"):
-                raise
-            fail(str(e), e.exit_code)
-
-    return wrapper
-
-
-def _root_of(ctx: click.Context) -> Path:
-    return Path((ctx.obj or {}).get("root", ".")).resolve()
 
 
 def _flag_given(ctx: click.Context) -> bool:
@@ -537,7 +518,7 @@ def _human(applied: bool) -> Callable[[list[dict[str, Any]]], None]:
 )
 @click.option("--fail-empty", is_flag=True, help="Exit 5 when no file was filed (or planned).")
 @click.pass_context
-@_handled
+@handled
 def cmd(
     ctx: click.Context,
     inbox: Path,
@@ -588,7 +569,7 @@ def cmd(
     dest_root = dest_root.resolve()
     if apply_:
         dest_root.mkdir(parents=True, exist_ok=True)
-    desk_root = dest_root if _root_is_default(ctx) else _root_of(ctx)
+    desk_root = dest_root if _root_is_default(ctx) else root_of(ctx)
     if inbox == dest_root or dest_root.is_relative_to(inbox) or inbox.is_relative_to(dest_root):
         # a --to inside INBOX would re-file its own archive on the next pass,
         # and churn for as long as --watch runs

@@ -15,9 +15,9 @@ from typing import Any, cast
 
 import click
 
-from carrel.commands.proof import BUILTIN_PROFILES, _handled, load_image_cms, resolve_profile
+from carrel.commands.proof import BUILTIN_PROFILES, load_image_cms, resolve_profile
 from carrel.core.filetypes import detect_or_die
-from carrel.core.output import CarrelInputError, emit
+from carrel.core.output import CarrelInputError, emit, handled
 
 # WCAG 2.x minimum contrast ratios
 AA_NORMAL, AA_LARGE, AAA_NORMAL, AAA_LARGE = 4.5, 3.0, 7.0, 4.5
@@ -77,7 +77,7 @@ def _palette_human(entries: list[dict[str, Any]]) -> None:
     help="Number of colors to extract.",
 )
 @click.pass_context
-@_handled
+@handled
 def palette(ctx: click.Context, src: Path, n: int) -> None:
     """Dominant colors of SRC as hex + proportion (median-cut quantization).
 
@@ -163,7 +163,7 @@ def _convert_human(result: dict[str, Any]) -> None:
     help="Output path [default: <SRC>.<profile>.png/.jpg].",
 )
 @click.pass_context
-@_handled
+@handled
 def convert(ctx: click.Context, src: Path, to_profile: str, out: Path | None) -> None:
     """Convert SRC into an ICC profile and embed the profile in the output.
 

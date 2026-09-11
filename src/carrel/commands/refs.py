@@ -18,9 +18,8 @@ invoice PDF to the remittance email and the bank export that mention it.
 
 from __future__ import annotations
 
-import functools
 import re
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -30,28 +29,17 @@ from carrel.core import patterns as pat
 from carrel.core.adapters import MissingDependencyError
 from carrel.core.db import DeskDB
 from carrel.core.filetypes import FileType, detect
-from carrel.core.output import CarrelError, CarrelInputError, ExitCode, emit, fail, progress
+from carrel.core.output import (
+    CarrelError,
+    CarrelInputError,
+    ExitCode,
+    emit,
+    fail,
+    handled,
+    progress,
+    root_of,
+)
 from carrel.core.textextract import extract_text
-
-
-def _handled(fn: Callable) -> Callable:
-    """Convert CarrelError into a clean message + exit code (unless --debug)."""
-
-    @functools.wraps(fn)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        ctx = click.get_current_context(silent=True)
-        try:
-            return fn(*args, **kwargs)
-        except CarrelError as e:
-            if ctx is not None and ctx.obj and ctx.obj.get("debug"):
-                raise
-            fail(str(e), e.exit_code)
-
-    return wrapper
-
-
-def _root_of(ctx: click.Context) -> Path:
-    return Path((ctx.obj or {}).get("root", ".")).resolve()
 
 
 def tag_for(ref: dict[str, Any]) -> str:
@@ -243,7 +231,7 @@ def _human_links(groups: list[dict[str, Any]]) -> None:
 )
 @click.option("--fail-empty", is_flag=True, help="Exit 5 when no reference was found.")
 @click.pass_context
-@_handled
+@handled
 def cmd(
     ctx: click.Context,
     paths: tuple[Path, ...],
@@ -280,8 +268,8 @@ def cmd(
         kinds=kinds,
         extra=extra,
         ocr=ocr,
-        tag_root=_root_of(ctx) if tag_ else None,
-        root=_root_of(ctx),
+        tag_root=root_of(ctx) if tag_ else None,
+        root=root_of(ctx),
     )
     if link:
         emit(ctx, link_refs(records, all_=all_), human=_human_links)
