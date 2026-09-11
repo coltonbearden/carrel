@@ -663,7 +663,7 @@ def test_a_git_failure_is_never_read_as_nothing_tracked(
     real = fsops._git
 
     def fail_ls_files(root: Path, *args: str):
-        return None if args and args[0] == "ls-files" else real(root, *args)
+        return None if "ls-files" in args else real(root, *args)
 
     monkeypatch.setattr(fsops, "_git", fail_ls_files)
 
@@ -827,3 +827,155 @@ def test_a_non_recursive_watch_ignores_a_tracked_subdirectory(tmp_path: Path) ->
     )
     assert "git is tracking" in result.output
     assert "templates/keep.txt" in result.output
+
+
+# --------------------------------------------- guard precision (release review)
+
+
+@needs("git")
+@pytest.mark.skipif(os.name == "nt", reason="symlink creation needs privileges on Windows")
+def test_a_tracked_symlink_is_guarded_as_the_link(tmp_path: Path) -> None:
+    """A committed link pointing outside the work tree is tracked as the link.
+
+    Resolving it asked git about the target, found nothing, and let `organize`
+    and `watch --done-dir` move a tracked symlink out of the repository.
+    """
+    outside = tmp_path / "data" / "real.pdf"
+    outside.parent.mkdir()
+    outside.write_text("pdf\n", encoding="utf-8")
+    repo = make_repo(tmp_path / "repo")
+    incoming = repo / "incoming"
+    incoming.mkdir()
+    (incoming / "link.pdf").symlink_to(outside)
+    commit_all(repo)
+
+    assert would_move_tracked([incoming / "link.pdf"]) == {repo.resolve(): ["incoming/link.pdf"]}
+
+    result = run("organize", str(incoming), "--apply", expect=2)
+    assert "incoming/link.pdf" in result.output
+    assert (incoming / "link.pdf").is_symlink(), "a refused run must not move the link"
+
+    result = run(
+        "watch",
+        str(incoming),
+        "--run",
+        "true",
+        "--done-dir",
+        str(tmp_path / "done"),
+        "--print-service",
+        "systemd",
+        expect=2,
+    )
+    assert "incoming/link.pdf" in result.output
+
+
+@needs("git")
+@pytest.mark.skipif(os.name == "nt", reason="'*' is not a legal file-name character on Windows")
+def test_glob_characters_in_a_file_name_are_matched_literally(tmp_path: Path) -> None:
+    """As a pathspec, `sub*` matched a tracked `sub/keep.txt` and `Scan [1].pdf` matched `Scan 1.pdf`."""
+    repo = make_repo(tmp_path / "repo")
+    incoming = repo / "incoming"
+    (incoming / "sub").mkdir(parents=True)
+    (incoming / "sub" / "keep.txt").write_text("tracked\n", encoding="utf-8")
+    (incoming / "Scan 1.pdf").write_text("tracked\n", encoding="utf-8")
+    commit_all(repo)
+    (incoming / "sub*").write_text("untracked\n", encoding="utf-8")
+    (incoming / "Scan [1].pdf").write_text("untracked\n", encoding="utf-8")
+
+    assert would_move_tracked([incoming / "sub*", incoming / "Scan [1].pdf"]) == {}
+
+
+@needs("git")
+def test_watch_ignores_a_tracked_file_its_glob_can_never_match(tmp_path: Path) -> None:
+    """A committed `.gitkeep` is how an empty inbox lives in a repository."""
+    repo = make_repo(tmp_path / "repo")
+    inbox = repo / "inbox"
+    inbox.mkdir()
+    (inbox / ".gitkeep").write_text("", encoding="utf-8")
+    commit_all(repo)
+    done = tmp_path / "done"
+
+    result = run(
+        "watch",
+        str(inbox),
+        "--glob",
+        "*.pdf",
+        "--run",
+        "true",
+        "--done-dir",
+        str(done),
+        "--print-service",
+        "systemd",
+    )
+    assert "ExecStart=" in result.output
+
+    # without --glob the watch really could move .gitkeep, so it still refuses
+    run(
+        "watch",
+        str(inbox),
+        "--run",
+        "true",
+        "--done-dir",
+        str(done),
+        "--print-service",
+        "systemd",
+        expect=2,
+    )
+
+
+@needs("git")
+def test_the_repository_lookup_runs_once_per_repository(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Forty directories are one repository, so one `git rev-parse`.
+
+    It used to be one per directory: 1,500 directories took 2.5 s before a
+    recursive watch did anything, and far longer on Windows.
+    """
+    repo = make_repo(tmp_path / "repo")
+    files = []
+    for i in range(40):
+        directory = repo / f"d{i:02d}"
+        directory.mkdir()
+        f = directory / "x.txt"
+        f.write_text("x\n", encoding="utf-8")
+        files.append(f)
+
+    calls: list[tuple[str, ...]] = []
+    real = fsops._git
+
+    def counting(root: Path, *args: str):
+        calls.append(args)
+        return real(root, *args)
+
+    monkeypatch.setattr(fsops, "_git", counting)
+    assert fsops.would_move_tracked(files) == {}
+    assert [a for a in calls if "rev-parse" in a] == [("rev-parse", "--show-toplevel")]
+
+
+@needs("git")
+def test_watch_with_force_never_walks_or_asks_git(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """--force means "do not check", so the recursive walk must not run at all."""
+    repo = make_repo(tmp_path / "repo")
+    watched = docs(repo / "src")
+    commit_all(repo)
+    calls: list[tuple[str, ...]] = []
+    monkeypatch.setattr(fsops, "_git", lambda root, *args: calls.append(args))
+
+    result = run(
+        "watch",
+        str(watched),
+        "--recursive",
+        "--run",
+        "true",
+        "--done-dir",
+        str(tmp_path / "done"),
+        "--force",
+        "--print-service",
+        "systemd",
+    )
+
+    assert "ExecStart=" in result.output
+    assert calls == []

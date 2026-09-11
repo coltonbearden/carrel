@@ -169,6 +169,28 @@
   through. Owner call whether the next behaviour change bumps minor, and whether
   `publish.yml` should refuse a patch tag when the CHANGELOG entry says "Changed (behaviour)".
 
+- `watch --print-service schtasks` prints a one-line `schtasks /Create … /TR …` for pasting.
+  The `/TR` value is now quoted correctly for both of Windows' own parsing passes (a parser
+  model on every run; the real `CreateProcess` in the `test-minimal (windows)` job), but a
+  paste goes through cmd.exe first, which toggles quoting at every `"` regardless of
+  backslashes. An action containing `&`, `|`, `<`, `>`, `^` or a `%VAR%` reference is
+  therefore split or expanded before schtasks sees it, and PowerShell does not treat `\"`
+  as an escape at all; the printed REM lines now say so. The real fix is Task Scheduler XML
+  (`schtasks /Create /XML FILE`), where the command and its arguments are separate elements
+  and no shell is involved. That changes what `--print-service schtasks` prints and needs
+  the accepted file encoding verified on Windows, so it is its own change, not a fourth
+  fix round inside the v0.4.1 release PR.
+
+- `watch` filters hidden paths only at start: `--existing` skips hidden entries and the
+  `--done-dir`/`--error-dir` subtrees (`_existing_files`), but live events go through
+  `_Watcher.seed`, which applies only `--glob`. So a `--recursive` watch with `--done-dir`
+  queues `.git/` internals (or any dotfile) the moment something writes them, and files them
+  away after the actions run. The spec-29 guard covers the usual case at start — a tree with
+  tracked files refuses unless `--force` — leaving a repository with nothing tracked yet, or
+  an explicit `--force`, as the exposure. Found probing the v0.4.1 guard; pre-existing since
+  watch v2 (v0.4.0). Fix: apply the same hidden-component and skip-subtree test in `seed`,
+  with a regression test that writes into `.git/` under a recursive watch.
+
 - `--force` now carries two unrelated meanings. On `mail`, `edit`, `sign`, `form`, `catalog`,
   `meta` and `audiobook` it means "overwrite existing output"; on `rename`, `organize`,
   `intake` and `watch` it means "bypass the tracked-files guard" (spec 29) — and those four

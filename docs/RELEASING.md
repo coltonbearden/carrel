@@ -44,7 +44,7 @@ worth having because they are real.
 
 ```sh
 git switch main && git pull --ff-only
-sha=$(git rev-parse HEAD)                       # the release PR's merge commit
+sha=$(gh pr view N --json mergeCommit -q .mergeCommit.oid)   # N = the release PR
 awk '/^## vX\.Y\.Z /{f=1;next} /^## /{f=0} f' CHANGELOG.md > /tmp/notes.md
 gh release create vX.Y.Z --title "vX.Y.Z" --target "$sha" \
   --notes-file /tmp/notes.md --generate-notes
@@ -53,6 +53,9 @@ gh release create vX.Y.Z --title "vX.Y.Z" --target "$sha" \
 `--target` pins the tag to the commit you verified: without it the tag lands
 on whatever `main` points at, so a PR merged in the meantime ships to PyPI as
 this version, undescribed and unreviewable (PyPI versions are immutable).
+Take the SHA from the release PR itself, not from `git rev-parse HEAD` after
+the pull: if anything merged after the release PR, `HEAD` is that later commit
+and `--target` would pin exactly the change it exists to keep out.
 `--notes-file` puts the CHANGELOG entry first in the release body — that is
 where a behaviour change and its escape hatch have to be visible — and
 `--generate-notes` appends the PR list after it.
