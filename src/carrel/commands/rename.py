@@ -324,7 +324,7 @@ def _human_plan(applied: bool) -> Callable[[list[dict[str, Any]]], None]:
 @click.option(
     "--force",
     is_flag=True,
-    help="Rename even when a PATH directory is inside a git work tree (see the description).",
+    help="Rename even when a PATH is a file git tracks (see the description).",
 )
 @click.pass_context
 @handled
@@ -352,16 +352,19 @@ def cmd(
     row under --root along. JSON: [{src, dest, action: rename|renamed|skip,
     reason, sources}].
 
-    --apply refuses (exit 2) when a PATH *directory* is inside a git work tree,
-    where renaming tracked files breaks imports, tests and history. Explicitly
-    named files are never guarded; --force overrides.
+    --apply refuses (exit 2) when a PATH would rename a file git is tracking,
+    where a new name breaks imports, tests and history. Untracked files inside a
+    repository are fine; --force overrides.
     """
     if not _PLACEHOLDER.search(template):
         raise click.UsageError(f"--template has no placeholders: {template!r}")
     if apply_:
-        # only directory arguments: naming a file is already a decision at the
-        # granularity of the damage, while one directory name selects a set
-        guard_worktree([p for p in paths if p.is_dir()], force=force, what="rename --apply")
+        # every PATH, not just directories: a shell glob (`rename src/*.py --apply`)
+        # arrives as a list of files and is exactly the 2026-09-10 incident.
+        # Renames land next to their source, so guarding the inputs covers the
+        # destinations. Guarded after the template check so a bad template
+        # reports itself.
+        guard_worktree(paths, force=force, what="rename --apply")
     root = root_of(ctx)
     plan = plan_renames(
         list(paths),

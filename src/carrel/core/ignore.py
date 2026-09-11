@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from fnmatch import fnmatch
 from pathlib import Path
 
+from carrel.core.fsops import is_worktree_root
+
 
 @dataclass(frozen=True)
 class IgnoreRule:
@@ -81,7 +83,7 @@ def ancestor_ignores(top: Path, stop_at: Path | None = None) -> tuple[IgnoreFile
         ig = load_ignore(d)
         if ig:
             found.append(ig)
-        if (d / ".git").exists() or d == boundary:
+        if is_worktree_root(d) or d == boundary:
             bounded = True
             break
     if not bounded:

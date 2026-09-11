@@ -89,3 +89,13 @@ The `@_handled` decorator that turns a `CarrelError` into a clean message plus i
 Four more root lookups were open-coded rather than named (`organize`, `watch`, `pack`, `desk`) and three modules inlined the decorator's body as a `try/except CarrelError`. `audiobook` was a straight drop-in for `@handled`; `convert` and `thumb` deliberately are not — they record an error per source and keep going — so the part they do share, the `--debug` re-raise decision, is now `debugging(ctx)` in the same module.
 
 Consequence: a command module imports `handled`, `root_of` and `debugging` and never redefines them. `tests/test_command_conventions.py` fails the build if a private copy comes back, if the root lookup is open-coded again, or if the set of modules that skip `@handled` changes without a stated reason; it also covers the `--debug` re-raise branch, which nothing else in the suite did.
+
+## D-017 (2026-09-11) — The bulk-move guard asks "is it tracked?", not "is it in a repo?"
+
+`rename --apply`, `organize --apply`, `intake --apply` and `watch --done-dir/--error-dir` refuse when the move would touch a file git is tracking (spec 29; the motivating incident renamed 21 tracked files in this checkout). Three scope decisions, each a deliberate narrowing:
+
+1. **Tracked, not merely inside a work tree.** `~` under a dotfiles repository is a mainstream layout, so "inside a repo" would make `intake ~/Downloads --to ~/Documents/filed` refuse forever with `--force` the only way out — the reflex the guard exists to prevent. `git ls-files -- <paths>` separates `~/Downloads` (untracked, fine) from `src/carrel/commands/` (tracked, the incident). Without the git binary the question is unanswerable, so being inside a work tree counts and the message says so.
+2. **Explicit file arguments are guarded too.** The first draft exempted them ("naming a file is a decision at the granularity of the damage"). A shell glob refutes that: `rename src/carrel/commands/*.py --apply` arrives as 21 file arguments and is the original incident keystroke for keystroke.
+3. **`--apply` only, and after argument validation.** Dry-run is never guarded, and a bad `--into` or template reports itself rather than being masked by a refusal.
+
+Consequence: `git` becomes load-bearing for a safety property, so `repo_root` never raises and trusts git's answer in both directions (a ceiling directory or a malformed `.git` means "not ours"), and every git call drops `GIT_DIR`/`GIT_WORK_TREE` so a run from inside a git hook is not told about the hook's repository. The refusal is a `CarrelUsageError` (exit 2) rather than `click.UsageError`, which would print a `Usage:` banner implying the arguments were malformed, and which would put the CLI framework inside `core/`.

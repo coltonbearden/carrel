@@ -520,7 +520,7 @@ def _human(applied: bool) -> Callable[[list[dict[str, Any]]], None]:
 @click.option(
     "--force",
     is_flag=True,
-    help="File even when INBOX or --to is inside a git work tree (see the description).",
+    help="File even when INBOX or --to holds files git tracks (see the description).",
 )
 @click.pass_context
 @handled
@@ -563,9 +563,10 @@ def cmd(
     nothing could be read at all, 1 when some files errored during --apply,
     5 with --fail-empty when there was nothing to file.
 
-    --apply refuses (exit 2) when INBOX or --to is inside a git work tree,
-    where moving tracked files breaks imports, tests and history; --force
-    overrides. The refusal happens before anything is created or moved.
+    --apply refuses (exit 2) when INBOX or --to holds files git is tracking,
+    where a new path breaks imports, tests and history; --force overrides. The
+    refusal happens before anything is created or moved, and an untracked inbox
+    inside a repository (the usual ~/Downloads-under-dotfiles case) is fine.
     """
     inbox = inbox.resolve()
     if not inbox.is_dir():

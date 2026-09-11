@@ -533,6 +533,23 @@ def test_since_without_git_exits_3(repo: Path, monkeypatch: pytest.MonkeyPatch):
     assert "'git' is required" in res.output and "apt install git" in res.output
 
 
+def test_since_without_git_outside_a_repo_still_exits_3(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Missing binary beats "not a repository": the user must be told to install git.
+
+    `_git_root` delegates to `core.fsops.repo_root`, which is deliberately soft —
+    it answers "unknown" as None. Without the explicit `require("git")` this path
+    reported exit 4 and "not a git repository", sending the user to fix the wrong
+    thing (spec 29 review).
+    """
+    (tmp_path / "a.txt").write_text("x\n", newline="\n")
+    monkeypatch.setenv("CARREL_BIN_GIT", "/nonexistent/git")
+    res = run("pack", str(tmp_path), "--changed")
+    assert res.exit_code == 3, res.output
+    assert "'git' is required" in res.output and "apt install git" in res.output
+
+
 def test_query_and_since_intersect(repo: Path):
     res = run("--root", str(repo), "index", str(repo))
     assert res.exit_code == 0, res.output

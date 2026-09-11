@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -203,12 +204,22 @@ def run(
     input: bytes | str | None = None,
     timeout: int = 120,
     binary: bool = False,
+    drop_env: Sequence[str] = (),
 ) -> subprocess.CompletedProcess:
-    """Run an adapter binary. check=False — callers inspect returncode."""
+    """Run an adapter binary. check=False — callers inspect returncode.
+
+    `drop_env` removes variables from the child's environment. It exists for
+    `git`, which lets `GIT_DIR` in the environment override an explicit `-C`:
+    carrel invoked from a git hook or `git rebase -x` would otherwise be told
+    about the hook's repository no matter which directory it asked about.
+    """
     path = require(name)
     text = not binary
     if input is not None and text and isinstance(input, bytes):
         input = input.decode()
+    env = None
+    if drop_env:
+        env = {k: v for k, v in os.environ.items() if k not in set(drop_env)}
     try:
         return subprocess.run(
             [path, *args],
@@ -218,6 +229,7 @@ def run(
             errors="replace" if text else None,  # tool output is never allowed to crash us
             timeout=timeout,
             check=False,
+            env=env,
         )
     except subprocess.TimeoutExpired as e:
         raise ToolTimeoutError(name, timeout) from e

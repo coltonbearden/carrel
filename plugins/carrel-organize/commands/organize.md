@@ -19,8 +19,8 @@ Usage: carrel organize [OPTIONS] DIRECTORY
   Existing files are never overwritten — colliding names get a -1, -2, … suffix. JSON output is a
   list of {src, dest, action} ('move' planned, 'moved' executed, 'skip').
 
-  --apply refuses (exit 2) when DIRECTORY is inside a git work tree, where moving tracked files
-  breaks imports, tests and history; --force overrides.
+  --apply refuses (exit 2) when it would move files git is tracking, where a new path breaks
+  imports, tests and history; --force overrides. Untracked files inside a repository are fine.
 
 Options:
   --by [type|date|exif-date]  Grouping: 'type' -> pdf/, images/ (jpg, png, ico), data/ (json, xml,
@@ -30,8 +30,7 @@ Options:
   --into CATEGORY=DIR         Override a type category's destination subdir, e.g. --into images=pics
                               (only with --by type; repeatable).
   --apply / --dry-run         Execute the moves. Default is a dry-run that only prints the plan.
-  --force                     Move files even when DIRECTORY is inside a git work tree (see the
-                              description).
+  --force                     Move files even when they are tracked by git (see the description).
   --json                      Machine-readable JSON output.
   --help                      Show this message and exit.
 ```

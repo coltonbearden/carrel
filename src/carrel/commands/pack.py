@@ -35,6 +35,7 @@ from carrel.core import adapters
 from carrel.core.adapters import Adapter, MissingDependencyError
 from carrel.core.db import DeskDB, file_hash
 from carrel.core.filetypes import FileType, detect
+from carrel.core.fsops import repo_root
 from carrel.core.ignore import IgnoreFile as _IgnoreFile
 from carrel.core.ignore import ancestor_ignores as _ancestor_ignores
 from carrel.core.ignore import ignored as _ignored
@@ -642,10 +643,12 @@ def _git_root(path: Path) -> Path:
     """The work tree `path` sits in — `pack --since/--changed` needs one to exist.
 
     Shares `core.fsops.repo_root` with the `--apply` guard (spec 29) so the
-    `rev-parse` call lives in one place; that helper is soft, this caller is not.
+    `rev-parse` call lives in one place. That helper is soft by design — it
+    answers "unknown" as None — but `--since` cannot proceed without git, so
+    `require` runs first and a missing binary is still exit 3 with the install
+    hint, not a misleading "not a git repository".
     """
-    from carrel.core.fsops import repo_root
-
+    adapters.require("git")
     root = repo_root(path)
     if root is None:
         raise CarrelInputError(f"not a git repository (or any parent): {path}")

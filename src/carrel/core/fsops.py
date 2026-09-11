@@ -5,20 +5,20 @@ must (1) never overwrite (`uncollide`), (2) work across filesystems, and (3)
 carry the desk row — tags, notes, fields, index text — with the file when a
 desk exists under `desk_root`. Before v0.4.0 a move orphaned that row.
 
-Those same three commands also refuse to start when the directory they would
-rewrite is inside a git work tree (`repo_root` / `guard_worktree`, spec 29).
+Those same three commands (and `watch --done-dir`) refuse to start when the move
+would touch files git is tracking (`guard_worktree`, spec 29).
 """
 
 from __future__ import annotations
 
 import os
 import shutil
+import subprocess
 from collections.abc import Iterable
 from pathlib import Path
 
-import click
-
-from carrel.core.output import CarrelError
+from carrel.core import adapters
+from carrel.core.output import CarrelUsageError
 
 
 def uncollide(dest: Path, taken: Iterable[Path] = ()) -> Path:
@@ -57,8 +57,18 @@ def move_file(src: Path, dest: Path, *, desk_root: Path | None = None) -> Path:
 #
 # On 2026-09-10 a `rename --apply` aimed at carrel's own checkout renamed 21
 # tracked files after the fields it read out of their source. The command was
-# correct; the outcome was not. In a work tree the names are content — imports,
-# test collection, CI config and the history all address files by path.
+# correct; the outcome was not. In a work tree, tracked names are content —
+# imports, test collection, CI config and the history all address files by path.
+#
+# What matters is whether the move would touch files git is *tracking*, not
+# whether it happens inside a repository. `~/Downloads` under a dotfiles repo is
+# a mainstream layout, and refusing there would leave the user no way out but
+# `--force`, which is the habit this guard exists to avoid forming.
+
+#: variables that let the environment override an explicit `git -C`. carrel run
+#: from a git hook or `git rebase -x` would otherwise be told about the hook's
+#: repository no matter which directory it asked about.
+_GIT_ENV_OVERRIDES = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR")
 
 
 def _nearest_existing(path: Path) -> Path:
@@ -73,12 +83,29 @@ def _nearest_existing(path: Path) -> Path:
     return candidate
 
 
-def _walk_for_dot_git(start: Path) -> Path | None:
-    """Ancestor walk for a `.git` entry — the fallback when git is not installed."""
-    for directory in (start, *start.parents):
-        if (directory / ".git").exists():
-            return directory
-    return None
+def is_worktree_root(directory: Path) -> bool:
+    """True when `directory` holds a `.git` entry (a directory, or a file for
+    submodules and linked worktrees).
+
+    The single definition of the repository boundary: `core.ignore` stops its
+    `.gitignore` walk here, and `repo_root` falls back to it when git is absent.
+    """
+    return (directory / ".git").exists()
+
+
+def dot_git_ancestor(start: Path) -> Path | None:
+    """The nearest ancestor of `start` (inclusive) that `is_worktree_root`."""
+    return next((d for d in (start, *start.parents) if is_worktree_root(d)), None)
+
+
+def _git(root: Path, *args: str) -> subprocess.CompletedProcess[str] | None:
+    """Run git under `root` with the environment's repo overrides dropped, or None."""
+    try:
+        if not adapters.have("git"):
+            return None
+        return adapters.run("git", "-C", str(root), *args, timeout=15, drop_env=_GIT_ENV_OVERRIDES)
+    except Exception:  # noqa: BLE001 — a guard that crashes is worse than no guard
+        return None
 
 
 def repo_root(path: Path) -> Path | None:
@@ -86,49 +113,88 @@ def repo_root(path: Path) -> Path | None:
 
     Asks git first (`rev-parse --show-toplevel` through the adapter, D-008), so
     a `.git` *file* — submodules, linked worktrees — and `GIT_CEILING_DIRECTORIES`
-    are honoured. Falls back to an ancestor walk for a `.git` entry whenever git
-    is unavailable or unhelpful: a directory that merely looks like a repository
-    still guards, which is the safe direction when the cost of being wrong is a
-    rewritten checkout and the cost of being cautious is typing `--force`.
+    are honoured, including when git's answer is "no". Only when git cannot
+    answer at all (not installed, or the call failed) does it fall back to
+    looking for a `.git` entry in the parent directories.
     """
-    from carrel.core import adapters
-
-    start = _nearest_existing(path)
-    if not start.is_dir():
-        start = start.parent
-    if adapters.have("git"):
-        try:
-            proc = adapters.run("git", "-C", str(start), "rev-parse", "--show-toplevel", timeout=15)
-        except (CarrelError, OSError, ValueError):
-            proc = None
-        if proc is not None and proc.returncode == 0:
+    try:
+        start = _nearest_existing(path)
+        if not start.is_dir():
+            start = start.parent
+        proc = _git(start, "rev-parse", "--show-toplevel")
+        if proc is not None:
+            # git ran: trust it in both directions, so a ceiling directory or a
+            # refused `safe.directory` means "not ours to guard"
+            if proc.returncode != 0:
+                return None
             top = (proc.stdout or "").strip()
             return Path(top).resolve() if top else None
-    return _walk_for_dot_git(start)
+        return dot_git_ancestor(start)
+    except Exception:  # noqa: BLE001 — `Never raises` is the contract, not an aspiration
+        return None
+
+
+def tracked_paths(root: Path, paths: Iterable[Path]) -> list[str]:
+    """Repo-relative paths under `paths` that git is tracking in `root`.
+
+    Empty when nothing is tracked — or when git cannot be asked, in which case
+    the caller decides what to do with "unknown" (`would_move_tracked` treats it
+    as "assume yes"). A directory argument matches everything beneath it, which
+    is what `git ls-files -- DIR` already means.
+    """
+    args = [str(p) for p in paths]
+    if not args:
+        return []
+    proc = _git(root, "ls-files", "-z", "--", *args)
+    if proc is None or proc.returncode != 0:
+        return []
+    return [name for name in (proc.stdout or "").split("\0") if name]
+
+
+def would_move_tracked(paths: Iterable[Path]) -> dict[Path, list[str]]:
+    """{repo root: tracked paths} for every work tree `paths` would disturb.
+
+    Empty when nothing tracked is involved. When git is absent the question
+    cannot be answered, so being inside a work tree counts — the conservative
+    direction, with `--force` one word away.
+    """
+    by_root: dict[Path, list[Path]] = {}
+    for path in paths:
+        root = repo_root(path)
+        if root is not None:
+            by_root.setdefault(root, []).append(_nearest_existing(path))
+    if not by_root:
+        return {}
+    if not adapters.have("git"):
+        return {root: [] for root in by_root}  # unknown: guard anyway
+    hits = {root: tracked_paths(root, targets) for root, targets in by_root.items()}
+    return {root: names for root, names in hits.items() if names}
 
 
 def guard_worktree(paths: Iterable[Path], *, force: bool, what: str) -> None:
-    """Refuse a bulk move that would rewrite files inside a git work tree.
+    """Refuse a bulk move that would rewrite files git is tracking.
 
-    `paths` are the *directories* the command would write into. Explicit file
-    arguments are deliberately not passed here: naming a file is already a
-    decision at the granularity of the damage, while one directory name selects
-    an unbounded set. Raises `click.UsageError` (exit 2) naming every distinct
-    repository root involved, plus the way out.
+    `paths` are everything the command would read from or write into — source
+    directories, explicit file arguments and destinations alike. Raises
+    `CarrelUsageError` (exit 2) naming each repository and the way out.
     """
     if force:
         return
-    roots: list[Path] = []
-    for path in paths:
-        root = repo_root(path)
-        if root is not None and root not in roots:
-            roots.append(root)
-    if not roots:
+    offenders = would_move_tracked(paths)
+    if not offenders:
         return
-    listed = "\n".join(f"  {root}" for root in roots)
-    raise click.UsageError(
-        f"{what} would rewrite files inside a git work tree:\n{listed}\n"
-        "Moving tracked files breaks imports, tests and history. Run this "
-        "somewhere else, name the files explicitly, or pass --force if it is "
-        "what you meant."
+    lines = []
+    for root, names in sorted(offenders.items()):
+        if names:
+            shown = ", ".join(names[:3]) + (f", … ({len(names)} total)" if len(names) > 3 else "")
+            lines.append(f"  {root}\n    tracked: {shown}")
+        else:
+            lines.append(
+                f"  {root}\n    (git is not installed, so carrel cannot tell what is tracked)"
+            )
+    listed = "\n".join(lines)
+    raise CarrelUsageError(
+        f"{what} would move files that git is tracking:\n{listed}\n"
+        "Renaming tracked files breaks imports, tests and history. Point this "
+        "somewhere else, or pass --force if it is what you meant."
     )

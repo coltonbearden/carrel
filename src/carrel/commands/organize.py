@@ -151,7 +151,7 @@ def _human_plan(applied: bool) -> Callable[[list[dict[str, Any]]], None]:
 @click.option(
     "--force",
     is_flag=True,
-    help="Move files even when DIRECTORY is inside a git work tree (see the description).",
+    help="Move files even when they are tracked by git (see the description).",
 )
 @click.pass_context
 @handled
@@ -170,14 +170,13 @@ def cmd(
     names get a -1, -2, … suffix. JSON output is a list of
     {src, dest, action} ('move' planned, 'moved' executed, 'skip').
 
-    --apply refuses (exit 2) when DIRECTORY is inside a git work tree, where
-    moving tracked files breaks imports, tests and history; --force overrides.
+    --apply refuses (exit 2) when it would move files git is tracking, where a
+    new path breaks imports, tests and history; --force overrides. Untracked
+    files inside a repository are fine.
     """
     directory = directory.resolve()
     if not directory.is_dir():
         raise CarrelInputError(f"no such directory: {directory}")
-    if apply_:
-        guard_worktree([directory], force=force, what="organize --apply")
 
     into: dict[str, str] = {}
     for spec in into_:
@@ -190,6 +189,16 @@ def cmd(
         into[category] = dest
     if into and by != "type":
         raise click.UsageError("--into only applies to --by type")
+
+    if apply_:
+        # after validation, so a bad --into reports itself rather than the guard.
+        # --into takes a relative path that may climb out of DIRECTORY
+        # (`--into docs=../elsewhere`), so the destinations are guarded too.
+        guard_worktree(
+            [directory, *((directory / sub).resolve() for sub in into.values())],
+            force=force,
+            what="organize --apply",
+        )
 
     plan = _build_plan(directory, by, into)
 
