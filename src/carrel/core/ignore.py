@@ -13,7 +13,23 @@ from dataclasses import dataclass
 from fnmatch import fnmatch
 from pathlib import Path
 
-from carrel.core.fsops import is_worktree_root
+
+def is_worktree_root(directory: Path) -> bool:
+    """True when `directory` holds a `.git` entry (a directory, or a file for
+    submodules and linked worktrees).
+
+    The single definition of the repository boundary, used both by the
+    `.gitignore` walk below and by `core.fsops`'s guard. It lives here because
+    this module is a leaf: `fsops` pulls in the adapter layer and click, and
+    `batch`/`refs`/`mail` import `ignore` lazily to keep that cost off the
+    import path.
+    """
+    return (directory / ".git").exists()
+
+
+def dot_git_ancestor(start: Path) -> Path | None:
+    """The nearest ancestor of `start` (inclusive) that `is_worktree_root`."""
+    return next((d for d in (start, *start.parents) if is_worktree_root(d)), None)
 
 
 @dataclass(frozen=True)

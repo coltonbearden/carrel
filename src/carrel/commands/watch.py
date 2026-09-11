@@ -498,17 +498,20 @@ def cmd(
         )
     if stable_timeout is not None and stable is None:
         raise click.UsageError("--stable-timeout needs --stable")
-    if print_service:
-        click.echo(render_service(print_service, directory, ctx), nl=False)
-        return
     if done_dir is not None or error_dir is not None:
         # the fourth bulk mover (spec 29), and the only one with no dry-run to
-        # fall back on: --done-dir empties the watched directory as it goes
+        # fall back on: --done-dir empties the watched directory as it goes.
+        # Checked before --print-service returns, so carrel never hands back a
+        # systemd unit whose command would refuse with exit 2 at every start —
+        # Restart=on-failure would then loop it until the start limit trips.
         guard_worktree(
             [directory, *(d for d in (done_dir, error_dir) if d is not None)],
             force=force,
             what="watch --done-dir/--error-dir",
         )
+    if print_service:
+        click.echo(render_service(print_service, directory, ctx), nl=False)
+        return
     for target in (done_dir, error_dir):
         if target is not None:
             target.mkdir(parents=True, exist_ok=True)

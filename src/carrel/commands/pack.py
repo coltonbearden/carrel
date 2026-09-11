@@ -35,7 +35,7 @@ from carrel.core import adapters
 from carrel.core.adapters import Adapter, MissingDependencyError
 from carrel.core.db import DeskDB, file_hash
 from carrel.core.filetypes import FileType, detect
-from carrel.core.fsops import repo_root
+from carrel.core.fsops import GIT_ENV_OVERRIDES, repo_root
 from carrel.core.ignore import IgnoreFile as _IgnoreFile
 from carrel.core.ignore import ancestor_ignores as _ancestor_ignores
 from carrel.core.ignore import ignored as _ignored
@@ -631,8 +631,14 @@ def _chunked_documents(
 
 
 def _git(*args: str) -> str:
-    """Run git through the adapter; non-zero exit → CarrelInputError with git's first stderr line."""
-    proc = adapters.run("git", "-c", "core.quotePath=false", *args)
+    """Run git through the adapter; non-zero exit → CarrelInputError with git's first stderr line.
+
+    Drops the environment's repo overrides for the same reason the spec-29 guard
+    does: `GIT_DIR` beats an explicit `-C`, so carrel run from a git hook or
+    `git rebase -x` would resolve one repository's root and then query another's
+    object database, mixing two repos into one result.
+    """
+    proc = adapters.run("git", "-c", "core.quotePath=false", *args, drop_env=GIT_ENV_OVERRIDES)
     if proc.returncode != 0:
         first = next((ln for ln in (proc.stderr or "").splitlines() if ln.strip()), "")
         raise CarrelInputError(first.strip() or f"git {' '.join(args)} failed ({proc.returncode})")
@@ -651,6 +657,10 @@ def _git_root(path: Path) -> Path:
     adapters.require("git")
     root = repo_root(path)
     if root is None:
+        # repo_root is deliberately silent; pack is not. Re-ask loudly so the
+        # user sees git's own reason — `detected dubious ownership`, a
+        # `safe.directory` refusal — instead of a flat "not a git repository".
+        _git("-C", str(path), "rev-parse", "--show-toplevel")
         raise CarrelInputError(f"not a git repository (or any parent): {path}")
     return root
 

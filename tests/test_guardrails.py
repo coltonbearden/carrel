@@ -28,7 +28,7 @@ from click.testing import CliRunner
 from conftest import needs
 
 from carrel.cli import cli
-from carrel.core import adapters
+from carrel.core import adapters, fsops
 from carrel.core.fsops import repo_root, would_move_tracked
 
 # ------------------------------------------------------------------ helpers
@@ -136,13 +136,18 @@ def test_repo_root_honours_a_ceiling_directory(
 
 
 @needs("git")
-def test_repo_root_trusts_git_rejecting_a_malformed_dot_git(tmp_path: Path) -> None:
-    """A `.git` file git calls invalid is git's call to make, not a lookalike to guard."""
-    fake = tmp_path / "fake" / "sub"
-    fake.mkdir(parents=True)
-    (tmp_path / "fake" / ".git").write_text("not a real gitfile\n", encoding="utf-8")
+def test_a_repository_git_cannot_read_still_guards(tmp_path: Path) -> None:
+    """ "git could not read this" is not "there is no repository here".
 
-    assert repo_root(fake) is None
+    `detected dubious ownership` — the default for a /mnt/c checkout under WSL —
+    and a `safe.directory` refusal both exit non-zero with a `.git` sitting right
+    there. Only the literal "not a git repository" is believed.
+    """
+    broken = tmp_path / "broken" / "sub"
+    broken.mkdir(parents=True)
+    (tmp_path / "broken" / ".git").write_text("not a real gitfile\n", encoding="utf-8")
+
+    assert repo_root(broken) == (tmp_path / "broken").resolve()
 
 
 @needs("git")
@@ -258,7 +263,7 @@ def test_organize_guards_an_into_destination_that_escapes_the_directory(tmp_path
     loose = docs(tmp_path / "loose")
     before = listing(repo / "src")
 
-    result = run("organize", str(loose), "--apply", "--into", "docs=../repo/src/sorted", expect=2)
+    result = run("organize", str(loose), "--apply", "--into", "docs=../repo/src", expect=2)
 
     assert "git is tracking" in result.output
     assert listing(repo / "src") == before
@@ -518,20 +523,36 @@ def test_watch_without_done_dir_is_not_guarded(tmp_path: Path) -> None:
 # ------------------------------------------------- the no-git conservative path
 
 
-def test_without_git_being_inside_a_work_tree_is_enough(
+def test_without_git_the_guard_asks_for_git_rather_than_guessing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """carrel cannot ask what is tracked, so it assumes the worst and says so."""
+    """carrel cannot tell what is tracked, so it exits 3 with the install hint.
+
+    The convention in CLAUDE.md: a missing optional binary is exit 3, naming the
+    binary and how to install it. Guessing "nothing is tracked" would fail open
+    on the one question this command exists to answer.
+    """
     monkeypatch.setenv("CARREL_BIN_GIT", str(tmp_path / "no-such-git"))
     repo = fake_repo(tmp_path / "repo")
     inside = docs(repo / "src")
     before = listing(inside)
 
-    result = run("organize", str(inside), "--apply", expect=2)
+    result = run("organize", str(inside), "--apply", expect=3)
 
-    assert "not installed" in result.output
-    assert str(repo.resolve()) in result.output
+    assert "'git' is required" in result.output
+    assert "apt install git" in result.output
     assert listing(inside) == before
+
+
+def test_without_git_force_still_proceeds(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """--force skips the question entirely, so a git-less box is never stuck."""
+    monkeypatch.setenv("CARREL_BIN_GIT", str(tmp_path / "no-such-git"))
+    repo = fake_repo(tmp_path / "repo")
+    inside = docs(repo / "src")
+
+    run("organize", str(inside), "--apply", "--force")
+
+    assert (inside / "docs" / "notes.txt").is_file()
 
 
 def test_without_git_a_plain_directory_is_still_free(
@@ -572,3 +593,173 @@ def test_a_path_reached_through_a_symlink_is_still_guarded(tmp_path: Path) -> No
 
     assert str(repo.resolve()) in result.output
     assert listing(tracked) == {"notes.txt", "report.md", "data.json"}
+
+
+@needs("git")
+def test_the_lookup_is_cached_per_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A glob arrives as hundreds of siblings; one `git rev-parse` should cover them all.
+
+    Without this, 300 file arguments cost 300 process spawns (0.46s measured)
+    before the command did anything, growing linearly with the glob.
+    """
+    repo = make_repo(tmp_path / "repo")
+    inside = repo / "many"
+    inside.mkdir()
+    files = []
+    for i in range(25):
+        f = inside / f"f{i:02d}.txt"
+        f.write_text("x\n", encoding="utf-8")
+        files.append(f)
+
+    calls: list[tuple[str, ...]] = []
+    real = fsops._git
+
+    def counting(root: Path, *args: str):
+        calls.append(args)
+        return real(root, *args)
+
+    monkeypatch.setattr(fsops, "_git", counting)
+    fsops.would_move_tracked(files)
+
+    rev_parses = [a for a in calls if a[0] == "rev-parse"]
+    assert len(rev_parses) == 1, f"one directory, {len(rev_parses)} rev-parse calls"
+
+
+@needs("git")
+def test_a_glob_too_long_for_one_git_call_is_still_answered(tmp_path: Path) -> None:
+    """`ls-files` argv is chunked; a huge glob must not become "nothing is tracked".
+
+    ARG_MAX is ~2 MB on Linux and far smaller on Windows. Passing every path in
+    one call meant a big enough glob raised E2BIG, which the old code read as an
+    empty answer — the guard failing open on precisely the case it exists for.
+    """
+    repo = make_repo(tmp_path / "repo")
+    many = repo / "many"
+    many.mkdir()
+    files = []
+    for i in range(1000):
+        f = many / f"file-with-a-fairly-long-name-{i:05d}.txt"
+        f.write_text("x\n", encoding="utf-8")
+        files.append(f)
+    commit_all(repo)
+
+    tracked = would_move_tracked(files)
+
+    assert list(tracked) == [repo.resolve()]
+    assert len(tracked[repo.resolve()]) == 1000
+
+
+@needs("git")
+def test_a_git_failure_is_never_read_as_nothing_tracked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An ls-files that cannot run raises, so guard_worktree refuses rather than passes."""
+    repo = make_repo(tmp_path / "repo")
+    tracked = docs(repo / "src")
+    commit_all(repo)
+
+    real = fsops._git
+
+    def fail_ls_files(root: Path, *args: str):
+        return None if args and args[0] == "ls-files" else real(root, *args)
+
+    monkeypatch.setattr(fsops, "_git", fail_ls_files)
+
+    with pytest.raises(fsops.TrackedUnknownError):
+        would_move_tracked([tracked])
+
+
+@needs("git")
+def test_a_destination_that_does_not_exist_yet_tracks_nothing(tmp_path: Path) -> None:
+    """`intake --to ~/filed` on a first run must not be judged by its parent.
+
+    `--to` is documented as "created if missing". Judging it by the nearest
+    existing ancestor meant that in a dotfiles repo the guard climbed to `~` and
+    refused, naming every tracked dotfile — the false refusal D-017 exists to
+    avoid, and the layout TROUBLESHOOTING.md promises works.
+    """
+    home = make_repo(tmp_path / "home")
+    (home / ".bashrc").write_text("export X=1\n", encoding="utf-8")
+    commit_all(home)
+    inbox = docs(home / "Downloads")
+    dest = home / "filed"  # does not exist
+
+    assert would_move_tracked([dest]) == {}
+
+    result = run(
+        "--json",
+        "intake",
+        str(inbox),
+        "--to",
+        str(dest),
+        "--apply",
+        "--no-refs",
+        "--no-index",
+        "--fallback",
+        "unknown",
+    )
+    assert any(r["action"] == "filed" for r in json.loads(result.output))
+
+
+@needs("git")
+def test_a_mistyped_path_reports_itself_not_the_guard(tmp_path: Path) -> None:
+    """A non-existent PATH used to climb to the repo root and refuse there."""
+    repo = make_repo(tmp_path / "repo")
+    docs(repo / "src")
+    commit_all(repo)
+
+    result = run("rename", str(repo / "typo.pdf"), "--apply", "--template", "x{ext}", expect=4)
+
+    assert "git is tracking" not in result.output
+
+
+@needs("git")
+def test_print_service_refuses_before_emitting_a_doomed_unit(tmp_path: Path) -> None:
+    """The unit would fail with exit 2 at every start, and Restart=on-failure loops it."""
+    repo = make_repo(tmp_path / "repo")
+    watched = docs(repo / "src")
+    commit_all(repo)
+
+    result = run(
+        "watch",
+        str(watched),
+        "--run",
+        "true",
+        "--done-dir",
+        str(tmp_path / "done"),
+        "--print-service",
+        "systemd",
+        expect=2,
+    )
+
+    assert "git is tracking" in result.output
+    assert "ExecStart" not in result.output
+
+
+@needs("git")
+def test_organize_ignores_a_tracked_subdirectory_it_would_never_touch(tmp_path: Path) -> None:
+    """organize only moves files directly inside DIRECTORY, so `ls-files -- DIR` overreached."""
+    repo = make_repo(tmp_path / "repo")
+    (repo / "sub").mkdir()
+    (repo / "sub" / "tracked.py").write_text("x = 1\n", encoding="utf-8")
+    commit_all(repo)
+    docs(repo)  # untracked loose files at the top level
+
+    run("organize", str(repo), "--apply")
+
+    assert (repo / "docs" / "notes.txt").is_file()
+    assert (repo / "sub" / "tracked.py").is_file(), "the tracked subtree is untouched"
+
+
+@needs("git")
+def test_intake_reports_its_own_usage_error_ahead_of_the_guard(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path / "repo")
+    inbox = docs(repo / "inbox")
+    commit_all(repo)
+
+    result = run("intake", str(inbox), "--to", str(inbox / "filed"), "--apply", expect=2)
+
+    assert "must be separate directories" in result.output
+    assert "git is tracking" not in result.output

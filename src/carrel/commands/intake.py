@@ -578,18 +578,19 @@ def cmd(
             )
         apply_ = True
     dest_root = dest_root.resolve()
+    if inbox == dest_root or dest_root.is_relative_to(inbox) or inbox.is_relative_to(dest_root):
+        # a --to inside INBOX would re-file its own archive on the next pass,
+        # and churn for as long as --watch runs. Checked before the guard so a
+        # genuine usage error reports itself rather than being masked (D-017).
+        raise click.UsageError(
+            "INBOX and --to must be separate directories, neither inside the other"
+        )
     if apply_:
         # before the mkdir below: a refused run must leave the disk untouched.
         # Both sides count — INBOX is emptied, --to is written into.
         guard_worktree([inbox, dest_root], force=force, what="intake --apply")
         dest_root.mkdir(parents=True, exist_ok=True)
     desk_root = dest_root if _root_is_default(ctx) else root_of(ctx)
-    if inbox == dest_root or dest_root.is_relative_to(inbox) or inbox.is_relative_to(dest_root):
-        # a --to inside INBOX would re-file its own archive on the next pass,
-        # and churn for as long as --watch runs
-        raise click.UsageError(
-            "INBOX and --to must be separate directories, neither inside the other"
-        )
     if ocr_ is True:
         adapters.require("ocrmypdf")  # exit 3 before a single file is touched
 

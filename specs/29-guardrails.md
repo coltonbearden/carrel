@@ -19,25 +19,30 @@ The first draft of this guard asked "is this path inside a git work tree?". That
 
 So: `git -C <root> ls-files -z -- <paths>`. Non-empty ⇒ refuse and name what it found. Empty ⇒ proceed.
 
-When the `git` binary is absent the question cannot be answered at all. Being inside something that looks like a work tree then counts, and the message says why — the conservative direction, with `--force` one word away.
+When the `git` binary is absent the question cannot be answered at all. carrel then exits **3** with git's install hint, the same as every other missing-binary path (CLAUDE.md's exit-code convention) — never a guess. `--force` skips the question entirely, so a git-less box is not stuck. The same applies to any git call that fails: "could not ask" and "nothing is tracked" are different answers and must never collapse into the safe-looking one.
 
 ### What is guarded
 
 | Input | Guarded |
 |---|---|
-| A directory argument | yes — `ls-files -- DIR` covers everything beneath it |
+| A directory argument | yes — but only over what the command would actually move |
 | Explicit file arguments | **yes** |
 | `intake` INBOX and `--to` | yes, both |
 | `organize --into CATEGORY=DIR` destinations | yes — a relative `--into` can climb out of DIRECTORY |
+| A path that does not exist yet | no — creating a directory tracks nothing |
 | `watch --done-dir` / `--error-dir` and the watched directory | yes |
 | Anything without `--apply` (the dry-run default) | no |
 | What a `watch --run` action does | no — that is the user's own command |
 
 Explicit files are **not** exempt. The first draft exempted them on the theory that "naming a file is a decision at the granularity of the damage". A shell glob demolishes that: `carrel rename src/carrel/commands/*.py --apply` arrives as 21 file arguments and is the original incident, keystroke for keystroke. One word still selected a set the user never enumerated.
 
+`organize` passes the top-level files it plans to move, not the directory: `ls-files -- DIR` matches recursively, so a tracked `sub/` would otherwise refuse a run that documented behaviour guarantees leaves it alone.
+
+A path that does not exist yet is judged by *itself*, not by its nearest existing ancestor. Only the repository lookup climbs. Otherwise `intake --to ~/filed` on a first run (`--to` is "created if missing") would be judged by `~`, and in a dotfiles repo the guard would refuse and name every tracked dotfile — the false refusal this whole design exists to avoid.
+
 ### Ordering
 
-The guard runs **after** the command's own argument validation, so `--into bogus=x` and a template with no placeholders report themselves instead of being masked by a refusal. It runs **before** anything is created or moved — `intake` refuses before `mkdir`-ing `--to`, so a refused run leaves the disk untouched.
+The guard runs **after** the command's own argument validation — `--into bogus=x`, a template with no placeholders, and `intake`'s "INBOX and --to must be separate" all report themselves instead of being masked by a refusal. It runs **before** anything is created or moved: `intake` refuses before `mkdir`-ing `--to`, and `watch` refuses before `--print-service` returns, so carrel never hands back a systemd unit whose command would fail with exit 2 at every start (with `Restart=on-failure` looping it until the start limit trips).
 
 ## `core/fsops.py`
 
@@ -50,7 +55,9 @@ would_move_tracked(paths) -> {root: [paths]}
 guard_worktree(paths, *, force, what)      # CarrelUsageError (exit 2)
 ```
 
-`repo_root` asks git first — `rev-parse --show-toplevel` through the adapter (D-008), which handles a `.git` **file** (submodules, linked worktrees) and `GIT_CEILING_DIRECTORIES`. **git's answer is trusted in both directions**: a ceiling directory, a `safe.directory` refusal or a malformed `.git` all mean "not ours to guard". Only when git cannot answer *at all* — not installed, or the call failed — does it fall back to `dot_git_ancestor`.
+`repo_root` asks git first — `rev-parse --show-toplevel` through the adapter (D-008), which handles a `.git` **file** (submodules, linked worktrees) and `GIT_CEILING_DIRECTORIES`. git saying literally **"not a git repository"** is believed, because that is how a ceiling directory reports itself and it is the one negative meaning "there is nothing here to protect". **Every other git failure falls back to the `.git` walk**: `detected dubious ownership` — the default for a `/mnt/c` checkout under WSL — and a `safe.directory` refusal mean "git could not read this repository", not "there is none", and both must still guard.
+
+`ls-files` argv is chunked (400 paths per call). ARG_MAX is about 2 MB on Linux and far smaller on Windows; one call with a few thousand absolute paths raises `E2BIG`, which a naive reading turns into "nothing is tracked" — the guard failing open on the largest glob, which is the case it exists for. The repository lookup is memoised per directory, so a glob of siblings costs one `rev-parse` rather than one per file (300 files: 0.46s → 0.011s).
 
 Every git call drops `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE` and `GIT_COMMON_DIR` from the child environment (`adapters.run(drop_env=…)`). Those override an explicit `-C`, so carrel invoked from a git hook or `git rebase -x` would otherwise be told about the hook's repository no matter which directory it asked about, and would refuse to organize an unrelated photo folder.
 

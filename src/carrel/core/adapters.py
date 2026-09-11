@@ -219,7 +219,8 @@ def run(
         input = input.decode()
     env = None
     if drop_env:
-        env = {k: v for k, v in os.environ.items() if k not in set(drop_env)}
+        dropped = set(drop_env)
+        env = {k: v for k, v in os.environ.items() if k not in dropped}
     try:
         return subprocess.run(
             [path, *args],

@@ -12,7 +12,7 @@
   because on 2026-09-10 a `rename --apply` aimed at carrel's own checkout renamed 21 tracked
   files after the "fields" it read out of their source; the command was correct and the outcome
   was still wrong, because a tracked file's name is content. Without the git binary carrel
-  cannot tell what is tracked, so being inside a work tree counts and the message says so
+  cannot tell what is tracked, so it exits 3 with git's install hint rather than guessing
   (spec 29, D-017). If you script one of these against tracked files, add `--force`.
 - **Changed:** the `@handled` decorator (CarrelError → message + exit code) and the `root_of`
   desk-root resolver live once, in `carrel.core.output` (D-016). They had 25 and 12

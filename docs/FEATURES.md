@@ -81,9 +81,11 @@ Outlook `.msg` item files are **cut** (D-011): no pure-Python writer exists, so 
   Untracked files inside a repository are fine, so `~/Downloads` under a dotfiles repo keeps
   working — the guard asks "is it tracked?", not "is it in a repo?", because the second
   question refuses cases with no way out and teaches the `--force` reflex it exists to prevent.
-  The dry-run default is never guarded. This exists because a `rename --apply` aimed at
-  carrel's own checkout renamed 21 tracked files (spec 29, D-017). Git tracking is the only
-  hazard carrel detects: unambiguous to check and catastrophic to break.
+  The dry-run default is never guarded, nor is a destination that does not exist yet.
+  Without the git binary the question cannot be answered, so carrel exits 3 with git's install
+  hint rather than guessing. This exists because a `rename --apply` aimed at carrel's own
+  checkout renamed 21 tracked files (spec 29, D-017). Git tracking is the only hazard carrel
+  detects: unambiguous to check and catastrophic to break.
 - **PDF redaction** is true redaction (rasterization destroys the text layer) — documented tradeoff; searchability restorable via `carrel ocr` afterwards.
 - **html thumbnails** go through weasyprint→pdf→pdftoppm; if weasyprint missing, degrade with hint.
 - **Near-dupe** uses a dependency-free dHash (no numpy/imagehash) to keep install light.

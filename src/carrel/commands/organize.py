@@ -84,13 +84,18 @@ def _bucket(src: Path, by: str, into: dict[str, str]) -> tuple[str | None, str |
     return f"{year:04d}/{month:02d}", None
 
 
-def _build_plan(directory: Path, by: str, into: dict[str, str]) -> list[dict[str, Any]]:
-    plan: list[dict[str, Any]] = []
-    taken: set[Path] = set()
-    files = sorted(
+def _movable(directory: Path) -> list[Path]:
+    """The files organize considers: directly inside, not hidden, not a directory."""
+    return sorted(
         (p for p in directory.iterdir() if p.is_file() and not p.name.startswith(".")),
         key=lambda p: p.name,
     )
+
+
+def _build_plan(directory: Path, by: str, into: dict[str, str]) -> list[dict[str, Any]]:
+    plan: list[dict[str, Any]] = []
+    taken: set[Path] = set()
+    files = _movable(directory)
     for src in files:
         subdir, reason = _bucket(src, by, into)
         if subdir is None:
@@ -192,10 +197,12 @@ def cmd(
 
     if apply_:
         # after validation, so a bad --into reports itself rather than the guard.
-        # --into takes a relative path that may climb out of DIRECTORY
-        # (`--into docs=../elsewhere`), so the destinations are guarded too.
+        # Only the top-level files organize actually moves: `ls-files -- DIR`
+        # matches recursively, and a tracked subdirectory would otherwise refuse
+        # a run that leaves it alone by definition. --into takes a relative path
+        # that may climb out of DIRECTORY, so the destinations count too.
         guard_worktree(
-            [directory, *((directory / sub).resolve() for sub in into.values())],
+            [*_movable(directory), *((directory / sub).resolve() for sub in into.values())],
             force=force,
             what="organize --apply",
         )

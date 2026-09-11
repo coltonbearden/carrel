@@ -212,11 +212,24 @@ A shell glob is guarded like a directory: `carrel rename src/*.py --apply`
 expands to a list of files that git tracks, which is the incident above.
 
 `intake` refuses *before* creating `--to`, so a refused run leaves the disk
-untouched. Detection asks `git ls-files`, and git's answer is trusted in both
-directions — a `GIT_CEILING_DIRECTORIES` entry or a malformed `.git` means
-"not carrel's business". **Without the git binary** carrel cannot tell what is
-tracked, so it refuses on merely being inside a work tree and says so in the
-message; install git or pass `--force`.
+untouched, and `watch --print-service` refuses before printing a unit whose
+command would fail at every start. A destination that does not exist yet is
+never guarded — creating a directory tracks nothing — so the first
+`intake ~/Downloads --to ~/filed --apply` works even when `~` is a repository.
+
+**Without the git binary** carrel cannot tell what is tracked, so it exits 3
+with git's install hint rather than guessing:
+
+```console
+$ carrel organize ~/projects/myapp/src --apply
+error: 'git' is required for this operation but was not found.
+  purpose: changed-file lists for pack --since/--changed
+  install: sudo apt install git
+```
+
+Install git, or pass `--force` to skip the question. carrel never treats "could
+not ask" as "nothing is tracked" — that would fail open on exactly the case the
+guard exists for.
 
 ## Watch doesn't fire on /mnt/c
 
