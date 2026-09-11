@@ -230,16 +230,21 @@ def extract_text(path: Path | str, ocr: bool = False) -> str:
     if ftype is FileType.XLSX:
         return xlsx_text(path)
     if ftype is FileType.HTML:
-        return html_to_text(path.read_text(errors="replace"))
+        return html_to_text(path.read_text(encoding="utf-8", errors="replace"))
     if ftype is FileType.JSON:
         try:
-            return "\n".join(_flatten_json(json.loads(path.read_text()))) + "\n"
+            return (
+                "\n".join(
+                    _flatten_json(json.loads(path.read_text(encoding="utf-8", errors="replace")))
+                )
+                + "\n"
+            )
         except json.JSONDecodeError as e:
             raise CarrelInputError(f"invalid JSON in {path}: {e}") from e
     if ftype is FileType.XML:
-        return html_to_text(path.read_text(errors="replace"))
+        return html_to_text(path.read_text(encoding="utf-8", errors="replace"))
     if ftype is FileType.CSV:
-        with path.open(newline="") as fh:
+        with path.open(encoding="utf-8", errors="replace", newline="") as fh:
             return "\n".join(", ".join(row) for row in csv.reader(fh)) + "\n"
     if ftype is FileType.PDF:
         return pdf_text(path, ocr=ocr)

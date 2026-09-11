@@ -648,7 +648,7 @@ def test_read_guard_converts_pdf_and_rewrites_read_input(tmp_path: Path):
     reference = subprocess.run(
         ["pdftotext", str(src), "-"], capture_output=True, text=True, check=True
     ).stdout
-    assert " ".join(txt.read_text().split()) == " ".join(reference.split())
+    assert " ".join(txt.read_text(encoding="utf-8").split()) == " ".join(reference.split())
 
     ctx = hso["additionalContext"]
     assert ctx.startswith("carrel-guard: ")

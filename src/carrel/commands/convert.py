@@ -136,8 +136,8 @@ def _md_to_html(src: Path, dest: Path, opts: dict) -> dict:
     if adapters.have("pandoc"):
         _run_pandoc(src, dest, "markdown", "html", "-s", "--metadata", f"title={src.stem}")
         return {"via": "pandoc"}
-    body = textextract.markdown_to_html(src.read_text(errors="replace"))
-    dest.write_text(_html_doc(src.stem, body))
+    body = textextract.markdown_to_html(src.read_text(encoding="utf-8", errors="replace"))
+    dest.write_text(_html_doc(src.stem, body), encoding="utf-8")
     return {"via": "markdown-it"}
 
 
@@ -145,8 +145,8 @@ def _md_to_txt(src: Path, dest: Path, opts: dict) -> dict:
     if adapters.have("pandoc"):
         _run_pandoc(src, dest, "markdown", "plain")
         return {"via": "pandoc"}
-    html = textextract.markdown_to_html(src.read_text(errors="replace"))
-    dest.write_text(textextract.html_to_text(html))
+    html = textextract.markdown_to_html(src.read_text(encoding="utf-8", errors="replace"))
+    dest.write_text(textextract.html_to_text(html), encoding="utf-8")
     return {"via": "markdown-it"}
 
 
@@ -160,13 +160,16 @@ def _html_to_txt(src: Path, dest: Path, opts: dict) -> dict:
     if adapters.have("pandoc"):
         _run_pandoc(src, dest, "html", "plain")
         return {"via": "pandoc"}
-    dest.write_text(textextract.html_to_text(src.read_text(errors="replace")))
+    dest.write_text(
+        textextract.html_to_text(src.read_text(encoding="utf-8", errors="replace")),
+        encoding="utf-8",
+    )
     return {"via": "textextract"}
 
 
 def _txt_to_html(src: Path, dest: Path, opts: dict) -> dict:
-    body = f"<pre>{htmllib.escape(src.read_text(errors='replace'))}</pre>"
-    dest.write_text(_html_doc(src.stem, body))
+    body = f"<pre>{htmllib.escape(src.read_text(encoding='utf-8', errors='replace'))}</pre>"
+    dest.write_text(_html_doc(src.stem, body), encoding="utf-8")
     return {"via": "builtin"}
 
 
@@ -189,7 +192,7 @@ def _to_pdf(src: Path, dest: Path, opts: dict) -> dict:
 
 
 def _pdf_to_txt(src: Path, dest: Path, opts: dict) -> dict:
-    dest.write_text(textextract.pdf_text(src))
+    dest.write_text(textextract.pdf_text(src), encoding="utf-8")
     return {"via": "pdftotext"}
 
 
@@ -198,7 +201,7 @@ def _pdf_to_md(src: Path, dest: Path, opts: dict) -> dict:
     if proc.returncode != 0:
         raise CarrelError(f"pdftotext failed ({proc.returncode}) on {src}")
     pages = [p.strip("\n") for p in proc.stdout.split("\f")]
-    dest.write_text("\n\n---\n\n".join(p for p in pages if p.strip()) + "\n")
+    dest.write_text("\n\n---\n\n".join(p for p in pages if p.strip()) + "\n", encoding="utf-8")
     return {"via": "pdftotext"}
 
 
@@ -207,7 +210,7 @@ def _pdf_to_html(src: Path, dest: Path, opts: dict) -> dict:
     if proc.returncode != 0:
         raise CarrelError(f"pdftotext failed ({proc.returncode}) on {src}")
     body = f"<pre>\n{htmllib.escape(proc.stdout)}</pre>"
-    dest.write_text(_html_doc(src.stem, body))
+    dest.write_text(_html_doc(src.stem, body), encoding="utf-8")
     return {"via": "pdftotext"}
 
 
@@ -285,7 +288,7 @@ def _image_convert(src: Path, dest: Path, opts: dict) -> dict:
 
 def _load_json(src: Path) -> Any:
     try:
-        return jsonlib.loads(src.read_text(errors="replace"))
+        return jsonlib.loads(src.read_text(encoding="utf-8", errors="replace"))
     except jsonlib.JSONDecodeError as e:
         raise CarrelInputError(f"invalid JSON in {src}: {e}") from e
 
@@ -328,7 +331,7 @@ def _cell(v: Any) -> str:
 
 def _json_to_csv(src: Path, dest: Path, opts: dict) -> dict:
     fields, rows = _json_records(_load_json(src))
-    with dest.open("w", newline="") as fh:
+    with dest.open("w", encoding="utf-8", newline="") as fh:
         writer = csv.DictWriter(fh, fieldnames=fields, restval="")
         writer.writeheader()
         for row in rows:
@@ -349,17 +352,17 @@ def _infer(s: str) -> Any:
 
 
 def _csv_to_json(src: Path, dest: Path, opts: dict) -> dict:
-    with src.open(newline="") as fh:
+    with src.open(encoding="utf-8", newline="") as fh:
         reader = csv.DictReader(fh)
         if not reader.fieldnames:
             raise CarrelInputError(f"empty CSV (no header row): {src}")
         rows = [{k: _infer(v) for k, v in row.items() if k is not None} for row in reader]
-    dest.write_text(jsonlib.dumps(rows, indent=2, ensure_ascii=False) + "\n")
+    dest.write_text(jsonlib.dumps(rows, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return {"via": "builtin"}
 
 
 def _read_csv(src: Path) -> tuple[list[str], list[list[str]]]:
-    with src.open(newline="") as fh:
+    with src.open(encoding="utf-8", newline="") as fh:
         raw = [row for row in csv.reader(fh) if row]
     if not raw:
         raise CarrelInputError(f"empty CSV: {src}")
@@ -390,20 +393,20 @@ def _html_table(title: str, header: list[str], rows: list[list[str]]) -> str:
 
 def _csv_to_md(src: Path, dest: Path, opts: dict) -> dict:
     header, rows = _read_csv(src)
-    dest.write_text(_md_table(header, rows))
+    dest.write_text(_md_table(header, rows), encoding="utf-8")
     return {"via": "builtin"}
 
 
 def _csv_to_html(src: Path, dest: Path, opts: dict) -> dict:
     header, rows = _read_csv(src)
-    dest.write_text(_html_table(src.stem, header, rows))
+    dest.write_text(_html_table(src.stem, header, rows), encoding="utf-8")
     return {"via": "builtin"}
 
 
 def _json_to_html(src: Path, dest: Path, opts: dict) -> dict:
     fields, flat = _json_records(_load_json(src))
     rows = [[_cell(row.get(f, "")) for f in fields] for row in flat]
-    dest.write_text(_html_table(src.stem, fields, rows))
+    dest.write_text(_html_table(src.stem, fields, rows), encoding="utf-8")
     return {"via": "builtin"}
 
 
@@ -428,7 +431,9 @@ def _json_to_element(value: Any, tag: str, key: str | None = None) -> ET.Element
 def _json_to_xml(src: Path, dest: Path, opts: dict) -> dict:
     root = _json_to_element(_load_json(src), "root")
     ET.indent(root)
-    dest.write_text(ET.tostring(root, encoding="unicode", xml_declaration=True) + "\n")
+    dest.write_text(
+        ET.tostring(root, encoding="unicode", xml_declaration=True) + "\n", encoding="utf-8"
+    )
     return {"via": "builtin"}
 
 
@@ -454,7 +459,7 @@ def _xml_to_json(src: Path, dest: Path, opts: dict) -> dict:
     except ET.ParseError as e:
         raise CarrelInputError(f"invalid XML in {src}: {e}") from e
     data = {root.tag: _element_to_json(root)}
-    dest.write_text(jsonlib.dumps(data, indent=2, ensure_ascii=False) + "\n")
+    dest.write_text(jsonlib.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return {"via": "builtin"}
 
 
@@ -487,7 +492,7 @@ def _pandoc_doc(to_fmt: str, *extra: str) -> Callable[[Path, Path, dict], dict]:
         if src_type is FileType.TXT:  # pandoc has no plain-text reader; wrap first
             with tempfile.TemporaryDirectory(prefix="carrel-convert-") as td:
                 page = Path(td) / f"{src.stem}.html"
-                body = _txt_paragraph_html(src.read_text(errors="replace"))
+                body = _txt_paragraph_html(src.read_text(encoding="utf-8", errors="replace"))
                 page.write_text(_html_doc(src.stem, body))
                 _run_pandoc(page, dest, "html", to_fmt, *extra)
             return {"via": "pandoc"}
@@ -523,7 +528,7 @@ def _doc_to_pdf(src: Path, dest: Path, opts: dict) -> dict:
 
 
 def _write_csv_rows(dest: Path, rows: list[list[Any]]) -> None:
-    with dest.open("w", newline="") as fh:
+    with dest.open("w", encoding="utf-8", newline="") as fh:
         writer = csv.writer(fh)
         for row in rows:
             writer.writerow([textextract.cell_text(v) for v in row])
@@ -570,7 +575,7 @@ def _xlsx_to_json(src: Path, dest: Path, opts: dict) -> dict:
         name = textextract.select_sheet(sheets, which)
         sheets = {name: sheets[name]}
     data = {name: _sheet_records(rows) for name, rows in sheets.items()}
-    dest.write_text(jsonlib.dumps(data, indent=2, ensure_ascii=False) + "\n")
+    dest.write_text(jsonlib.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return {"via": "openpyxl"}
 
 

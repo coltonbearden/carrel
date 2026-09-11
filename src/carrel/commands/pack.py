@@ -1183,10 +1183,10 @@ def cmd(
         if chunk:
             for i, doc in enumerate(result.documents, 1):
                 part = output.with_name(f"{output.name}.part{i}")
-                part.write_text(doc)
+                part.write_text(doc, encoding="utf-8")
                 written.append(part)
         else:
-            output.write_text(result.document)
+            output.write_text(result.document, encoding="utf-8")
             written.append(output)
 
     if show_stats:

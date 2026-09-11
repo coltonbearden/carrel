@@ -227,6 +227,10 @@ def run(
             input=input,
             capture_output=True,
             text=text,
+            # every tool here speaks UTF-8. Without this, `text=True` decodes
+            # with locale.getencoding() — cp1252 on a stock Windows box — so a
+            # PDF containing "café" came back from pdftotext as "cafÃ©".
+            encoding="utf-8" if text else None,
             errors="replace" if text else None,  # tool output is never allowed to crash us
             timeout=timeout,
             check=False,

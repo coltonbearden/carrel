@@ -141,7 +141,7 @@ def _json_depth(value: Any) -> int:
 
 def _json_detail(path: Path) -> dict[str, Any]:
     try:
-        data = jsonlib.loads(path.read_text(errors="replace"))
+        data = jsonlib.loads(path.read_text(encoding="utf-8", errors="replace"))
     except jsonlib.JSONDecodeError as e:
         return {"error": f"invalid JSON: {e}"}
     if isinstance(data, dict):
@@ -155,13 +155,13 @@ def _json_detail(path: Path) -> dict[str, Any]:
 
 def _csv_detail(path: Path) -> dict[str, Any]:
     try:
-        with path.open(newline="", errors="replace") as fh:
+        with path.open(encoding="utf-8", newline="", errors="replace") as fh:
             sample = fh.read(64 * 1024)
         try:
             delimiter = csv.Sniffer().sniff(sample).delimiter
         except csv.Error:
             delimiter = ","
-        with path.open(newline="", errors="replace") as fh:
+        with path.open(encoding="utf-8", newline="", errors="replace") as fh:
             reader = csv.reader(fh, delimiter=delimiter)
             header = next(reader, [])
             rows = sum(1 for _ in reader)
@@ -220,7 +220,7 @@ class _HTMLOutline(HTMLParser):
 
 def _html_detail(path: Path) -> dict[str, Any]:
     parser = _HTMLOutline()
-    parser.feed(path.read_text(errors="replace"))
+    parser.feed(path.read_text(encoding="utf-8", errors="replace"))
     return {
         "title": parser.title,
         "headings": parser.headings,
@@ -230,7 +230,7 @@ def _html_detail(path: Path) -> dict[str, Any]:
 
 
 def _md_detail(path: Path) -> dict[str, Any]:
-    text = path.read_text(errors="replace")
+    text = path.read_text(encoding="utf-8", errors="replace")
     headings: list[dict[str, Any]] = []
     in_fence = False
     for line in text.splitlines():
@@ -248,7 +248,7 @@ def _md_detail(path: Path) -> dict[str, Any]:
 
 
 def _txt_detail(path: Path) -> dict[str, Any]:
-    text = path.read_text(errors="replace")
+    text = path.read_text(encoding="utf-8", errors="replace")
     return {"lines": len(text.splitlines()), "words": len(text.split()), "chars": len(text)}
 
 

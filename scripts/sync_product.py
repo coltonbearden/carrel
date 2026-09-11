@@ -39,7 +39,7 @@ def _sub_line(text: str, key: str, value: str) -> str:
 
 def sync_pyproject(product: dict[str, str]) -> None:
     path = ROOT / "pyproject.toml"
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     text = _sub_line(text, "version", product["version"])
     text = _sub_line(text, "description", f"{product['tagline']} {product['description']}")
 
@@ -59,7 +59,7 @@ def sync_pyproject(product: dict[str, str]) -> None:
         text = block.sub(urls, text, count=1)
     else:
         text = text.replace("\n[project.scripts]", f"\n{urls}\n[project.scripts]", 1)
-    path.write_text(text)
+    path.write_text(text, encoding="utf-8", newline="\n")
 
 
 def sync_json_version(path: Path, version: str) -> None:
@@ -68,7 +68,7 @@ def sync_json_version(path: Path, version: str) -> None:
     plugin.json: the single top-level "version". marketplace.json: the "version"
     inside each plugins[] entry only (never metadata.version or anything else).
     """
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     data = json.loads(text)
     if "plugins" in data:
         for entry in data["plugins"]:
@@ -84,14 +84,14 @@ def sync_json_version(path: Path, version: str) -> None:
         if not top.search(text):
             raise SystemExit(f"{path}: no top-level version field to update")
         text = top.sub(lambda m: f'{m.group(1)}"{version}"', text, count=1)
-    path.write_text(text)
+    path.write_text(text, encoding="utf-8", newline="\n")
 
 
 def sync_citation(product: dict[str, str]) -> None:
     path = ROOT / "CITATION.cff"
     if not path.is_file():
         return
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     today = dt.datetime.now(dt.UTC).date().isoformat()
     if re.search(rf'(?m)^version: "{re.escape(product["version"])}"$', text) is None:
         text = re.sub(r'(?m)^date-released: ".*"$', f'date-released: "{today}"', text, count=1)
@@ -101,16 +101,18 @@ def sync_citation(product: dict[str, str]) -> None:
     )
     text = re.sub(r'(?m)^url: ".*"$', f'url: "{product["repository"]}"', text, count=1)
     text = re.sub(r'(?m)^title: ".*"$', f'title: "{product["name"]}"', text, count=1)
-    path.write_text(text)
+    path.write_text(text, encoding="utf-8", newline="\n")
 
 
 def main() -> int:
-    product = json.loads((ROOT / "product.json").read_text())
+    product = json.loads((ROOT / "product.json").read_text(encoding="utf-8"))
 
     gen = ROOT / "src" / product["package"] / "_product.py"
     gen.write_text(
         '"""GENERATED from /product.json by scripts/sync_product.py — do not edit."""\n\n'
-        f"PRODUCT = {json.dumps(product, indent=4, ensure_ascii=False)}\n"
+        f"PRODUCT = {json.dumps(product, indent=4, ensure_ascii=False)}\n",
+        encoding="utf-8",
+        newline="\n",
     )
 
     sync_pyproject(product)

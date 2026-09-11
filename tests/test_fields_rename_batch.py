@@ -861,6 +861,10 @@ def test_watch_existing_skips_the_done_and_error_dirs(tmp_path: Path):
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX permission bits")
+@pytest.mark.skipif(
+    hasattr(os, "geteuid") and os.geteuid() == 0,
+    reason="root ignores a read-only directory, so the move would succeed",
+)
 def test_rename_records_a_failed_move_and_keeps_going(tmp_path: Path, fixtures: Path):
     ro = tmp_path / "ro"
     ro.mkdir()

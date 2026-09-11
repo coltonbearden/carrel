@@ -102,7 +102,7 @@ class _ImgCollector(HTMLParser):
 
 def _extract_html(src: Path, out_dir: Path) -> list[Path]:
     parser = _ImgCollector()
-    parser.feed(src.read_text(errors="replace"))
+    parser.feed(src.read_text(encoding="utf-8", errors="replace"))
     extracted: list[Path] = []
     seen: set[Path] = set()
     for ref in parser.srcs:

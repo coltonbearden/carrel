@@ -64,7 +64,7 @@ def _read_text(path: Path, ftype: FileType) -> str:
         return extract_text(path)
     if ftype.is_image:
         raise CarrelInputError(f"--mode text cannot read an image: {path}")
-    return path.read_text(errors="replace")
+    return path.read_text(encoding="utf-8", errors="replace")
 
 
 def _unified(a_text: str, b_text: str, a: Path, b: Path) -> dict[str, Any]:
@@ -118,7 +118,7 @@ def _flatten_json(value: Any, prefix: str, out: dict[str, Any]) -> None:
 
 def _json_leaves(path: Path) -> dict[str, Any]:
     try:
-        data = jsonlib.loads(path.read_text(errors="replace"))
+        data = jsonlib.loads(path.read_text(encoding="utf-8", errors="replace"))
     except jsonlib.JSONDecodeError as e:
         raise CarrelInputError(f"invalid JSON in {path}: {e}") from e
     out: dict[str, Any] = {}
@@ -170,7 +170,7 @@ def _leaf_diff(la: dict[str, Any], lb: dict[str, Any]) -> dict[str, Any]:
 
 
 def _read_csv(path: Path) -> list[list[str]]:
-    with path.open(newline="", errors="replace") as fh:
+    with path.open(encoding="utf-8", newline="", errors="replace") as fh:
         sample = fh.read(64 * 1024)
         fh.seek(0)
         try:

@@ -291,7 +291,7 @@ class TestMcpProtocol:
     def test_mcp_module_owns_no_walk_or_token_estimate(self):
         import carrel.commands.mcp as mcp_mod
 
-        source = Path(mcp_mod.__file__).read_text()
+        source = Path(mcp_mod.__file__).read_text(encoding="utf-8")
         assert "def _walk" not in source
         assert "def _tokens_est" not in source
 

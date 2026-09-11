@@ -66,6 +66,8 @@ def run_action(rendered: str, timeout: float | None) -> subprocess.CompletedProc
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
         )
     else:
@@ -75,6 +77,8 @@ def run_action(rendered: str, timeout: float | None) -> subprocess.CompletedProc
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             start_new_session=True,
         )
     with child:

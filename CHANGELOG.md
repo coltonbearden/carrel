@@ -14,6 +14,14 @@
   was still wrong, because a tracked file's name is content. Without the git binary carrel
   cannot tell what is tracked, so it exits 3 with git's install hint rather than guessing
   (spec 29, D-017). If you script one of these against tracked files, add `--force`.
+- **Fixed (Windows):** every text read and write now names its encoding. `text=True` on
+  `subprocess` and `Path.read_text()` both fall back to `locale.getencoding()`, which is
+  cp1252 on a stock Windows box — so **every** external tool's output (`pdftotext`, `pandoc`,
+  `tesseract`, `git`) was being decoded as cp1252, and a PDF containing `café` came back as
+  `cafÃ©`. CI never noticed because it sets `PYTHONUTF8=1`. `ruff`'s `PLW1514` is now enabled
+  and is the gate; 9 of the 52 sites were beyond what that rule can see and were found by
+  hand. Files carrel generates (`_product.py`, the manifests) are written with `newline="\n"`,
+  matching the other sync scripts, so a Windows run no longer produces CRLF diff churn.
 - **Changed:** the `@handled` decorator (CarrelError → message + exit code) and the `root_of`
   desk-root resolver live once, in `carrel.core.output` (D-016). They had 25 and 12
   byte-identical copies across the command modules, four more root lookups open-coded, and
