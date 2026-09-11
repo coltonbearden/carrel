@@ -20,6 +20,7 @@ is exercised with a stale `CARREL_BIN_GIT`, which counts as missing (D-008).
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -542,3 +543,32 @@ def test_without_git_a_plain_directory_is_still_free(
     run("organize", str(plain), "--apply")
 
     assert (plain / "docs" / "notes.txt").is_file()
+
+
+@needs("git")
+def test_a_staged_file_counts_as_tracked(tmp_path: Path) -> None:
+    """`git add` with no commit is already tracked — `ls-files` lists the index."""
+    repo = make_repo(tmp_path / "repo")
+    staged = docs(repo / "src")
+    git(repo, "add", "-A")  # staged, never committed
+
+    result = run("organize", str(staged), "--apply", expect=2)
+
+    assert "git is tracking" in result.output
+    assert listing(staged) == {"notes.txt", "report.md", "data.json"}
+
+
+@needs("git")
+@pytest.mark.skipif(os.name == "nt", reason="symlink creation needs privileges on Windows")
+def test_a_path_reached_through_a_symlink_is_still_guarded(tmp_path: Path) -> None:
+    """Paths are resolved before git is asked, so a symlinked route is not an escape."""
+    repo = make_repo(tmp_path / "repo")
+    tracked = docs(repo / "src")
+    commit_all(repo)
+    link = tmp_path / "link"
+    link.symlink_to(repo, target_is_directory=True)
+
+    result = run("organize", str(link / "src"), "--apply", expect=2)
+
+    assert str(repo.resolve()) in result.output
+    assert listing(tracked) == {"notes.txt", "report.md", "data.json"}
