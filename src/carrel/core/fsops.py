@@ -14,7 +14,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from pathlib import Path
 
 from carrel.core import adapters
@@ -132,11 +132,29 @@ class TrackedUnknownError(CarrelError):
     exit_code = ExitCode.MISSING_DEP
 
 
-#: `git ls-files -- <paths>` is passed absolute paths; ARG_MAX is ~2 MB on Linux
-#: and far smaller on Windows, and a glob of a few thousand files blows past it.
-#: An E2BIG would surface as "git failed" and, before this cap, as "nothing is
-#: tracked" — the guard failing open on exactly the case it exists for.
-_LS_FILES_CHUNK = 400
+#: Budget for one `git ls-files -- <paths>` command line, in characters.
+#: Windows' CreateProcess caps the whole line at 32,767; Linux ARG_MAX is ~2 MB.
+#: Chunking by path *count* is not enough — 400 long absolute paths already
+#: overflow on Windows, which is how CI caught this — so the budget is measured
+#: in characters. An overflow raises, and before the "could not ask" distinction
+#: that read as "nothing is tracked": the guard failing open on the largest
+#: glob, which is the case it exists for.
+_ARGV_BUDGET = 24_000
+
+
+def _chunked(paths: Sequence[Path]) -> Iterator[list[str]]:
+    """`paths` as argv batches that fit one command line (at least one each)."""
+    batch: list[str] = []
+    size = 0
+    for path in paths:
+        text = str(path)
+        if batch and size + len(text) + 1 > _ARGV_BUDGET:
+            yield batch
+            batch, size = [], 0
+        batch.append(text)
+        size += len(text) + 1
+    if batch:
+        yield batch
 
 
 def tracked_paths(root: Path, paths: Sequence[Path]) -> list[str]:
@@ -147,8 +165,7 @@ def tracked_paths(root: Path, paths: Sequence[Path]) -> list[str]:
     value: one of them means it is safe to proceed and the other does not.
     """
     found: list[str] = []
-    for i in range(0, len(paths), _LS_FILES_CHUNK):
-        chunk = [str(p) for p in paths[i : i + _LS_FILES_CHUNK]]
+    for chunk in _chunked(paths):
         proc = _git(root, "ls-files", "-z", "--", *chunk)
         if proc is None or proc.returncode != 0:
             detail = (proc.stderr or "").strip().splitlines()[:1] if proc else []

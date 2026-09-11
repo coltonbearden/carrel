@@ -763,3 +763,20 @@ def test_intake_reports_its_own_usage_error_ahead_of_the_guard(tmp_path: Path) -
 
     assert "must be separate directories" in result.output
     assert "git is tracking" not in result.output
+
+
+def test_argv_chunks_stay_inside_one_command_line() -> None:
+    """Windows caps a command line at 32,767 characters, so count-based chunking was not enough.
+
+    Chunking 400 paths per call passed on Linux and failed on the Windows CI
+    job: 400 long absolute paths is roughly 44,000 characters. The budget is
+    measured in characters now, and a single path longer than the budget still
+    gets its own call rather than being dropped.
+    """
+    paths = [Path(f"/tmp/a/fairly/long/directory/name/file-{i:05d}.txt") for i in range(1000)]
+    chunks = list(fsops._chunked(paths))
+
+    assert sum(len(c) for c in chunks) == len(paths), "no path may be dropped"
+    assert [p for c in chunks for p in c] == [str(p) for p in paths], "order is preserved"
+    assert max(sum(len(p) + 1 for p in c) for c in chunks) <= fsops._ARGV_BUDGET
+    assert len(list(fsops._chunked([Path("x" * (fsops._ARGV_BUDGET * 2))]))) == 1
