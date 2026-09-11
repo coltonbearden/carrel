@@ -9,9 +9,7 @@ first), and `status` reports schema version, row counts and index staleness.
 
 from __future__ import annotations
 
-import functools
 import json
-from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -21,29 +19,9 @@ import click
 from carrel._product import PRODUCT
 from carrel.core.db import DeskDB
 from carrel.core.filetypes import FileType, detect
-from carrel.core.output import CarrelError, CarrelInputError, emit, fail
+from carrel.core.output import CarrelError, CarrelInputError, emit, handled, root_of
 
 _EXAMPLES = 5  # paths listed per stale bucket in `status`
-
-
-def _handled(fn: Callable) -> Callable:
-    """Convert CarrelError into a clean message + exit code (unless --debug)."""
-
-    @functools.wraps(fn)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        ctx = click.get_current_context(silent=True)
-        try:
-            return fn(*args, **kwargs)
-        except CarrelError as e:
-            if ctx is not None and ctx.obj and ctx.obj.get("debug"):
-                raise
-            fail(str(e), e.exit_code)
-
-    return wrapper
-
-
-def _root_of(ctx: click.Context) -> Path:
-    return Path((ctx.obj or {}).get("root", ".")).resolve()
 
 
 def _require_desk(root: Path) -> None:
@@ -88,7 +66,7 @@ def cmd() -> None:
 )
 @click.option("--force", is_flag=True, help="Overwrite an existing --out file.")
 @click.pass_context
-@_handled
+@handled
 def export(ctx: click.Context, out: Path | None, force: bool) -> None:
     """Export every file's tags, notes and meta fields as JSON (files with at least one).
 
@@ -99,7 +77,7 @@ def export(ctx: click.Context, out: Path | None, force: bool) -> None:
     itself is printed (always JSON); with -o a short summary is printed
     instead. Exit 4 when no desk db exists.
     """
-    root = _root_of(ctx)
+    root = root_of(ctx)
     _require_desk(root)
     doc = build_export(root)
     if out is None:
@@ -168,7 +146,7 @@ def _human_import(data: dict[str, Any]) -> None:
     help="Delete ALL existing tags, notes and fields first, then import (prints what was removed).",
 )
 @click.pass_context
-@_handled
+@handled
 def import_(ctx: click.Context, file: Path, replace: bool) -> None:
     """Merge FILE (a `catalog export` document) into the desk under --root.
 
@@ -181,7 +159,7 @@ def import_(ctx: click.Context, file: Path, replace: bool) -> None:
     notes_added, meta_set, files_touched, skipped_missing, tags_removed,
     notes_removed, meta_removed, skipped_outside}.
     """
-    root = _root_of(ctx)
+    root = root_of(ctx)
     data = _load_catalog(file.resolve())
     with DeskDB(root) as db:
         result = db.import_catalog(data, replace=replace)
@@ -265,7 +243,7 @@ def emit_status(ctx: click.Context, root: Path) -> None:
 
 @cmd.command("status")
 @click.pass_context
-@_handled
+@handled
 def status(ctx: click.Context) -> None:
     """Report the desk db: schema version, row counts, and stale index entries.
 
@@ -274,4 +252,4 @@ def status(ctx: click.Context) -> None:
     unindexed} (up to 5 paths each)}. Always exit 0 (it is a report); exit 4
     when no .carrel/carrel.db exists under --root.
     """
-    emit_status(ctx, _root_of(ctx))
+    emit_status(ctx, root_of(ctx))

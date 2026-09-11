@@ -8,8 +8,6 @@ success.
 
 from __future__ import annotations
 
-import functools
-from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -18,27 +16,7 @@ import click
 
 from carrel.core.db import DeskDB
 from carrel.core.filetypes import FileType, detect_or_die
-from carrel.core.output import CarrelError, CarrelInputError, emit, fail
-
-
-def _handled(fn: Callable) -> Callable:
-    """Convert CarrelError into a clean message + exit code (unless --debug)."""
-
-    @functools.wraps(fn)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        ctx = click.get_current_context(silent=True)
-        try:
-            return fn(*args, **kwargs)
-        except CarrelError as e:
-            if ctx is not None and ctx.obj and ctx.obj.get("debug"):
-                raise
-            fail(str(e), e.exit_code)
-
-    return wrapper
-
-
-def _root_of(ctx: click.Context) -> Path:
-    return Path((ctx.obj or {}).get("root", ".")).resolve()
+from carrel.core.output import CarrelError, CarrelInputError, emit, handled, root_of
 
 
 def _iso(ts: float) -> str:
@@ -62,13 +40,13 @@ def cmd() -> None:
 @click.argument("path", type=click.Path(path_type=Path))
 @click.argument("text")
 @click.pass_context
-@_handled
+@handled
 def add(ctx: click.Context, path: Path, text: str) -> None:
     """Attach TEXT as a sidecar note to PATH (stored in the desk db)."""
     path = path.resolve()
     if not path.is_file():
         raise CarrelInputError(f"no such file: {path}")
-    with DeskDB(_root_of(ctx)) as db:
+    with DeskDB(root_of(ctx)) as db:
         note_id = db.add_note(path, text)
         newest = db.notes_of(path)[0]
         data = {
@@ -83,10 +61,10 @@ def add(ctx: click.Context, path: Path, text: str) -> None:
 @cmd.command("ls")
 @click.argument("path", type=click.Path(path_type=Path))
 @click.pass_context
-@_handled
+@handled
 def ls(ctx: click.Context, path: Path) -> None:
     """List PATH's sidecar notes, newest first (ISO timestamps)."""
-    root = _root_of(ctx)
+    root = root_of(ctx)
     path = path.resolve()
     notes: list[dict[str, str]] = []
     if DeskDB.exists(root):
@@ -137,7 +115,7 @@ def _pdf_annotations(path: Path) -> list[dict[str, Any]]:
 @cmd.command("pdf")
 @click.argument("path", type=click.Path(path_type=Path))
 @click.pass_context
-@_handled
+@handled
 def pdf(ctx: click.Context, path: Path) -> None:
     """List PATH's PDF annotations: page, subtype, contents."""
     path = path.resolve()
@@ -172,7 +150,7 @@ def pdf(ctx: click.Context, path: Path) -> None:
     "pass PATH itself to annotate in place).",
 )
 @click.pass_context
-@_handled
+@handled
 def pdf_add(
     ctx: click.Context, path: Path, text: str, page: int, pos: str, out: Path | None
 ) -> None:

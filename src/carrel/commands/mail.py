@@ -12,9 +12,8 @@ points (MCP `carrel_mail`).
 
 from __future__ import annotations
 
-import functools
 import hashlib
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Iterator, Sequence
 from email import policy
 from email.parser import BytesParser
 from pathlib import Path
@@ -25,27 +24,16 @@ import click
 from carrel.core import adapters, mail
 from carrel.core.filetypes import FileType, detect, detect_or_die
 from carrel.core.fsops import uncollide
-from carrel.core.output import CarrelError, CarrelInputError, ExitCode, emit, fail, progress
-
-
-def _handled(fn: Callable) -> Callable:
-    """Convert CarrelError into a clean message + exit code (unless --debug)."""
-
-    @functools.wraps(fn)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        ctx = click.get_current_context(silent=True)
-        try:
-            return fn(*args, **kwargs)
-        except CarrelError as e:
-            if ctx is not None and ctx.obj and ctx.obj.get("debug"):
-                raise
-            fail(str(e), e.exit_code)
-
-    return wrapper
-
-
-def _root_of(ctx: click.Context) -> Path:
-    return Path((ctx.obj or {}).get("root", ".")).resolve()
+from carrel.core.output import (
+    CarrelError,
+    CarrelInputError,
+    ExitCode,
+    emit,
+    fail,
+    handled,
+    progress,
+    root_of,
+)
 
 
 def _unplanned(dest: Path, taken: set[Path]) -> Path:
@@ -280,7 +268,7 @@ def _human_attachments(records: list[dict[str, Any]]) -> None:
 )
 @click.option("--fail-empty", is_flag=True, help="Exit 5 when no attachment was found.")
 @click.pass_context
-@_handled
+@handled
 def attachments(
     ctx: click.Context, files: tuple[Path, ...], out_dir: Path, force: bool, fail_empty: bool
 ) -> None:
@@ -320,7 +308,7 @@ def _human_split(rows: list[dict[str, Any]]) -> None:
 )
 @click.option("--force", is_flag=True, help="Overwrite existing files.")
 @click.pass_context
-@_handled
+@handled
 def split(ctx: click.Context, box: Path, out_dir: Path, template: str, force: bool) -> None:
     """Split BOX (an mbox) into one .eml file per message under --out-dir.
 
@@ -346,7 +334,7 @@ def _human_threads(groups: list[dict[str, Any]]) -> None:
 @cmd.command("threads")
 @click.argument("paths", nargs=-1, required=True, type=click.Path(path_type=Path))
 @click.pass_context
-@_handled
+@handled
 def threads(ctx: click.Context, paths: tuple[Path, ...]) -> None:
     """Group the messages in PATHS (eml/mbox files or directories) into threads.
 
@@ -354,7 +342,7 @@ def threads(ctx: click.Context, paths: tuple[Path, ...]) -> None:
     reply-chain length when the parent is present. JSON: [{root_subject,
     first_date, messages: [{where, message_id, date, from, subject, depth}]}].
     """
-    emit(ctx, threads_of(list(paths), root=_root_of(ctx)), human=_human_threads)
+    emit(ctx, threads_of(list(paths), root=root_of(ctx)), human=_human_threads)
 
 
 @cmd.command("pst")
@@ -374,7 +362,7 @@ def threads(ctx: click.Context, paths: tuple[Path, ...]) -> None:
     help="One .eml per message (readpst -e), or one mbox file per mail folder (readpst -r).",
 )
 @click.pass_context
-@_handled
+@handled
 def pst(ctx: click.Context, src: Path, out_dir: Path, fmt: str) -> None:
     """Convert an Outlook SRC (.pst/.ost) into eml or mbox files via readpst.
 

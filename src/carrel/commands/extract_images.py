@@ -14,10 +14,8 @@ Routes by detected type:
 
 from __future__ import annotations
 
-import functools
 import shutil
 import urllib.parse
-from collections.abc import Callable
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
@@ -26,25 +24,9 @@ import click
 
 from carrel.core import adapters
 from carrel.core.filetypes import FileType, detect_or_die
-from carrel.core.output import CarrelError, CarrelInputError, emit, fail
+from carrel.core.output import CarrelError, CarrelInputError, emit, handled
 
 DEFAULT_MIN_SIZE = 32
-
-
-def _handled(fn: Callable) -> Callable:
-    """Convert CarrelError into a clean message + exit code (unless --debug)."""
-
-    @functools.wraps(fn)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        ctx = click.get_current_context(silent=True)
-        try:
-            return fn(*args, **kwargs)
-        except CarrelError as e:
-            if ctx is not None and ctx.obj and ctx.obj.get("debug"):
-                raise
-            fail(str(e), e.exit_code)
-
-    return wrapper
 
 
 # --------------------------------------------------------------------------
@@ -195,7 +177,7 @@ def _human(result: dict[str, Any]) -> None:
     help="pdf mode: discard images smaller than this on either edge.",
 )
 @click.pass_context
-@_handled
+@handled
 def cmd(ctx: click.Context, src: Path, out_dir: Path | None, min_size: int) -> None:
     """Extract images embedded in / referenced by SRC (pdf, ico, html).
 

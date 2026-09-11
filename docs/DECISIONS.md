@@ -81,3 +81,11 @@ When `intake` OCRs a scanned PDF, the OCRed copy is what gets filed and the orig
 
 `.carrel/carrel.db` gains a `meta(file_id, key, value, kind, source, updated)` table through the migration mechanism of D-009. Kinds (`str|num|date|bool`) are inferred unless forced, values are stored canonically (`1,234.50` → `1234.5`, ISO dates, `true`/`false`; digit strings with a leading zero stay `str`), and every write path — CLI, MCP, `catalog import` — goes through the same `coerce_meta`, so a comparison such as `total>1000` or `due<2026-11` is meaningful. Catalog documents are `schema: 2`; schema-1 documents still import. Consequence: any automation that fills fields names itself in `source`.
 
+
+## D-016 (2026-09-10) — One `handled`, one `root_of`, in `core/output.py`
+
+The `@_handled` decorator that turns a `CarrelError` into a clean message plus its exit code was copy-pasted into 25 command modules, and the `_root_of(ctx)` desk-root resolver into 12 — byte-identical every time, so the exit-code convention in CLAUDE.md depended on 25 copies never drifting, and `color.py` had already resorted to importing `proof._handled` across modules. Both are now public helpers in `carrel.core.output`, beside `emit` and `fail` which they call, and `handled` is generic in the wrapped signature so mypy still checks calls through it.
+
+Four more root lookups were open-coded rather than named (`organize`, `watch`, `pack`, `desk`) and three modules inlined the decorator's body as a `try/except CarrelError`. `audiobook` was a straight drop-in for `@handled`; `convert` and `thumb` deliberately are not — they record an error per source and keep going — so the part they do share, the `--debug` re-raise decision, is now `debugging(ctx)` in the same module.
+
+Consequence: a command module imports `handled`, `root_of` and `debugging` and never redefines them. `tests/test_command_conventions.py` fails the build if a private copy comes back, if the root lookup is open-coded again, or if the set of modules that skip `@handled` changes without a stated reason; it also covers the `--debug` re-raise branch, which nothing else in the suite did.

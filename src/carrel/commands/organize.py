@@ -17,7 +17,6 @@ exists under --root, a moved file's tags, notes and fields follow it.
 
 from __future__ import annotations
 
-import functools
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -27,7 +26,7 @@ import click
 
 from carrel.core.filetypes import FileType, detect
 from carrel.core.fsops import move_file, uncollide
-from carrel.core.output import CarrelError, CarrelInputError, emit, fail
+from carrel.core.output import CarrelInputError, emit, handled, root_of
 
 TYPE_DIRS: dict[FileType, str] = {
     FileType.PDF: "pdf",
@@ -44,22 +43,6 @@ TYPE_DIRS: dict[FileType, str] = {
     FileType.MBOX: "mail",
 }
 TYPE_CATEGORIES = ("pdf", "images", "data", "docs", "mail")
-
-
-def _handled(fn: Callable) -> Callable:
-    """Convert CarrelError into a clean message + exit code (unless --debug)."""
-
-    @functools.wraps(fn)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        ctx = click.get_current_context(silent=True)
-        try:
-            return fn(*args, **kwargs)
-        except CarrelError as e:
-            if ctx is not None and ctx.obj and ctx.obj.get("debug"):
-                raise
-            fail(str(e), e.exit_code)
-
-    return wrapper
 
 
 def _exif_year_month(path: Path) -> tuple[int, int] | None:
@@ -166,7 +149,7 @@ def _human_plan(applied: bool) -> Callable[[list[dict[str, Any]]], None]:
     help="Execute the moves. Default is a dry-run that only prints the plan.",
 )
 @click.pass_context
-@_handled
+@handled
 def cmd(ctx: click.Context, directory: Path, by: str, into_: tuple[str, ...], apply_: bool) -> None:
     """Plan (default) or perform (--apply) sorting DIRECTORY's files.
 
@@ -194,7 +177,7 @@ def cmd(ctx: click.Context, directory: Path, by: str, into_: tuple[str, ...], ap
     plan = _build_plan(directory, by, into)
 
     if apply_:
-        desk_root = Path((ctx.obj or {}).get("root", ".")).resolve()
+        desk_root = root_of(ctx)
         for entry in plan:
             if entry["action"] != "move":
                 continue

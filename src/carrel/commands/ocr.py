@@ -9,10 +9,8 @@ overwrite policy and output plumbing.
 
 from __future__ import annotations
 
-import functools
 import shutil
 import tempfile
-from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -20,7 +18,7 @@ import click
 
 from carrel.core import adapters
 from carrel.core.filetypes import FileType, detect_or_die
-from carrel.core.output import CarrelError, CarrelInputError, ExitCode, emit, fail, progress
+from carrel.core.output import CarrelError, CarrelInputError, ExitCode, emit, handled, progress
 
 if TYPE_CHECKING:
     import subprocess
@@ -169,22 +167,6 @@ def ocr_file(
 # ----------------------------------------------------------------- CLI shell
 
 
-def _handled(fn: Callable) -> Callable:
-    """Convert CarrelError into a clean message + exit code (unless --debug)."""
-
-    @functools.wraps(fn)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        ctx = click.get_current_context(silent=True)
-        try:
-            return fn(*args, **kwargs)
-        except CarrelError as e:
-            if ctx is not None and ctx.obj and ctx.obj.get("debug"):
-                raise
-            fail(str(e), e.exit_code)
-
-    return wrapper
-
-
 def _human(record: dict[str, Any]) -> None:
     chars = record["chars"]
     click.echo(f"ocr [{record['engine']}]: {record['src']}")
@@ -222,7 +204,7 @@ def _human(record: dict[str, Any]) -> None:
 )
 @click.option("--force", is_flag=True, help="Allow overwriting an existing output file.")
 @click.pass_context
-@_handled
+@handled
 def cmd(
     ctx: click.Context, src: Path, out: Path | None, lang: str, to: str, redo: bool, force: bool
 ) -> None:

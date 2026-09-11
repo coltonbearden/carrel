@@ -11,11 +11,9 @@ an explicit -i/--in-place.
 
 from __future__ import annotations
 
-import functools
 import json as jsonlib
 import re
 import tempfile
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -23,25 +21,9 @@ import click
 
 from carrel.core import adapters
 from carrel.core.filetypes import FileType, detect_or_die
-from carrel.core.output import CarrelError, CarrelInputError, emit, fail
+from carrel.core.output import CarrelError, CarrelInputError, emit, handled
 
 # ---------------------------------------------------------------- shared bits
-
-
-def _handled(fn: Callable) -> Callable:
-    """Convert CarrelError into a clean message + exit code (unless --debug)."""
-
-    @functools.wraps(fn)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        ctx = click.get_current_context(silent=True)
-        try:
-            return fn(*args, **kwargs)
-        except CarrelError as e:
-            if ctx is not None and ctx.obj and ctx.obj.get("debug"):
-                raise
-            fail(str(e), e.exit_code)
-
-    return wrapper
 
 
 def _expect_type(src: Path, wanted: tuple[FileType, ...], what: str) -> FileType:
@@ -125,7 +107,7 @@ def _qpdf(*args: str, action: str) -> None:
 )
 @click.option("--force", is_flag=True, help="Allow overwriting existing files.")
 @click.pass_context
-@_handled
+@handled
 def pdf(
     ctx: click.Context,
     src: Path,
@@ -274,7 +256,7 @@ def _parse_resize(spec: str, size: tuple[int, int]) -> tuple[int, int]:
 )
 @click.option("--force", is_flag=True, help="Allow overwriting existing files.")
 @click.pass_context
-@_handled
+@handled
 def image(
     ctx: click.Context,
     src: Path,
@@ -375,7 +357,7 @@ _TEXT_TYPES = (FileType.TXT, FileType.MD, FileType.HTML, FileType.CSV, FileType.
 @click.option("-o", "--out", type=click.Path(path_type=Path), help="Output file.")
 @click.option("--force", is_flag=True, help="Allow overwriting an existing output file.")
 @click.pass_context
-@_handled
+@handled
 def text(
     ctx: click.Context,
     src: Path,
@@ -530,7 +512,7 @@ def _del_path(data: Any, dotted: str) -> None:
 )
 @click.option("--force", is_flag=True, help="Allow overwriting existing files.")
 @click.pass_context
-@_handled
+@handled
 def json_cmd(
     ctx: click.Context,
     src: Path,

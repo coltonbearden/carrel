@@ -9,10 +9,8 @@ viewers actually render the values) and reports any unmatched data keys.
 
 from __future__ import annotations
 
-import functools
 import html
 import json as jsonlib
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -20,27 +18,11 @@ import click
 
 from carrel.core import adapters
 from carrel.core.filetypes import FileType, detect_or_die
-from carrel.core.output import CarrelError, CarrelInputError, emit, fail
+from carrel.core.output import CarrelError, CarrelInputError, emit, handled
 
 FIELD_TYPES = ("text", "textarea", "select", "checkbox", "radio", "date", "email", "number")
 
 _PDF_FIELD_TYPES = {"/Tx": "text", "/Btn": "button", "/Ch": "choice", "/Sig": "signature"}
-
-
-def _handled(fn: Callable) -> Callable:
-    """Convert CarrelError into a clean message + exit code (unless --debug)."""
-
-    @functools.wraps(fn)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        ctx = click.get_current_context(silent=True)
-        try:
-            return fn(*args, **kwargs)
-        except CarrelError as e:
-            if ctx is not None and ctx.obj and ctx.obj.get("debug"):
-                raise
-            fail(str(e), e.exit_code)
-
-    return wrapper
 
 
 @click.group(name="form")
@@ -188,7 +170,7 @@ def _render_html(spec: dict[str, Any]) -> str:
 @click.option("--pdf", "to_pdf", is_flag=True, help="Also render the HTML to PDF (weasyprint).")
 @click.option("--force", is_flag=True, help="Allow overwriting existing output files.")
 @click.pass_context
-@_handled
+@handled
 def build(ctx: click.Context, spec_path: Path, out: Path | None, to_pdf: bool, force: bool) -> None:
     """Render a JSON form spec into clean, standalone, print-friendly HTML."""
     spec = _load_spec(spec_path)
@@ -238,7 +220,7 @@ def _acroform_fields(src: Path) -> dict[str, Any]:
 @cmd.command("fields")
 @click.argument("src", type=click.Path(path_type=Path))
 @click.pass_context
-@_handled
+@handled
 def fields(ctx: click.Context, src: Path) -> None:
     """List a PDF's AcroForm fields (name, type, current value)."""
     found = _acroform_fields(src)
@@ -290,7 +272,7 @@ def _coerce(value: Any, fld: Any) -> str:
 @click.option("-o", "--out", required=True, type=click.Path(path_type=Path), help="Output PDF.")
 @click.option("--force", is_flag=True, help="Allow overwriting an existing output file.")
 @click.pass_context
-@_handled
+@handled
 def fill(ctx: click.Context, src: Path, data_path: Path, out: Path, force: bool) -> None:
     """Fill a PDF's AcroForm fields from a JSON object {field: value}."""
     from pypdf import PdfWriter

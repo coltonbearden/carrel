@@ -20,8 +20,7 @@ and the MCP `carrel_index` tool (spec 15). `--status` is an alias of
 
 from __future__ import annotations
 
-import functools
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -31,28 +30,17 @@ from carrel.core.adapters import MissingDependencyError
 from carrel.core.db import DeskDB
 from carrel.core.filetypes import FileType, detect
 from carrel.core.ignore import IgnoreFile, ancestor_ignores, ignored, load_ignore
-from carrel.core.output import CarrelError, CarrelInputError, ExitCode, emit, fail, progress
+from carrel.core.output import (
+    CarrelError,
+    CarrelInputError,
+    ExitCode,
+    emit,
+    fail,
+    handled,
+    progress,
+    root_of,
+)
 from carrel.core.textextract import extract_text
-
-
-def _handled(fn: Callable) -> Callable:
-    """Convert CarrelError into a clean message + exit code (unless --debug)."""
-
-    @functools.wraps(fn)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        ctx = click.get_current_context(silent=True)
-        try:
-            return fn(*args, **kwargs)
-        except CarrelError as e:
-            if ctx is not None and ctx.obj and ctx.obj.get("debug"):
-                raise
-            fail(str(e), e.exit_code)
-
-    return wrapper
-
-
-def _root_of(ctx: click.Context) -> Path:
-    return Path((ctx.obj or {}).get("root", ".")).resolve()
 
 
 def _walk(
@@ -220,7 +208,7 @@ def _human_summary(data: dict[str, Any]) -> None:
     "other options are ignored. Exit 4 when no desk db exists under --root.",
 )
 @click.pass_context
-@_handled
+@handled
 def cmd(
     ctx: click.Context,
     paths: tuple[Path, ...],
@@ -243,7 +231,7 @@ def cmd(
     stderr; the JSON summary is {"indexed", "skipped", "pruned", "errors"}.
     `--status` prints the `carrel catalog status` report instead.
     """
-    root = _root_of(ctx)
+    root = root_of(ctx)
     if status:
         from carrel.commands.catalog import emit_status
 

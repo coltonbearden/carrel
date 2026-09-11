@@ -16,10 +16,9 @@ fallback such as the file's mtime. `--save` writes the fields into the desk
 
 from __future__ import annotations
 
-import functools
 import re
 from collections import Counter
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -30,7 +29,7 @@ from carrel.core import dates, money
 from carrel.core import patterns as pat
 from carrel.core.adapters import MissingDependencyError
 from carrel.core.db import DeskDB
-from carrel.core.output import CarrelError, CarrelInputError, ExitCode, emit, fail, progress
+from carrel.core.output import CarrelInputError, ExitCode, emit, fail, handled, progress, root_of
 from carrel.core.textextract import extract_text
 
 PROFILES: tuple[str, ...] = ("auto", "invoice", "receipt", "statement")
@@ -123,26 +122,6 @@ _PROFILE_WORDS: dict[str, tuple[str, ...]] = {
     ),
 }
 _HEADING_WORDS = {"invoice", "receipt", "statement", "tax invoice", "bill", "order"}
-
-
-def _handled(fn: Callable) -> Callable:
-    """Convert CarrelError into a clean message + exit code (unless --debug)."""
-
-    @functools.wraps(fn)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        ctx = click.get_current_context(silent=True)
-        try:
-            return fn(*args, **kwargs)
-        except CarrelError as e:
-            if ctx is not None and ctx.obj and ctx.obj.get("debug"):
-                raise
-            fail(str(e), e.exit_code)
-
-    return wrapper
-
-
-def _root_of(ctx: click.Context) -> Path:
-    return Path((ctx.obj or {}).get("root", ".")).resolve()
 
 
 def _field(value: str, confidence: str, evidence: str | None) -> dict[str, Any]:
@@ -468,7 +447,7 @@ def _human(records: list[dict[str, Any]]) -> None:
 )
 @click.option("--fail-empty", is_flag=True, help="Exit 5 when no file yielded any field.")
 @click.pass_context
-@_handled
+@handled
 def cmd(
     ctx: click.Context,
     paths: tuple[Path, ...],
@@ -494,7 +473,7 @@ def cmd(
             date_order=date_order,
             ocr=ocr,
             overrides=overrides,
-            save_root=_root_of(ctx) if save else None,
+            save_root=root_of(ctx) if save else None,
         )
     except CarrelInputError as e:
         if "--set" in str(e):

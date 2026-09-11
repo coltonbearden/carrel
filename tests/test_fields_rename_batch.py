@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -634,6 +635,50 @@ def test_watch_print_service_and_usage(tmp_path: Path):
         and "schtasks /Create /SC ONLOGON" in task
         and "--print-service" not in task
     )
+
+
+def test_watch_print_service_writes_absolute_paths(tmp_path: Path, monkeypatch):
+    """A generated service starts in the manager's working directory, not the caller's.
+
+    A systemd *user* unit has no WorkingDirectory, so it runs from $HOME. Every
+    relative path baked into the unit would resolve against the wrong place:
+    `--root` is click.Path(exists=True), so a relative one makes the unit die
+    with exit 2 on every start, and a relative --done-dir would quietly file
+    documents into a directory under $HOME.
+    """
+    watched = tmp_path / "inbox"
+    done = tmp_path / "done"
+    for d in (watched, done):
+        d.mkdir()
+    monkeypatch.chdir(tmp_path)
+
+    unit = run(
+        "--root",
+        ".",
+        "watch",
+        "inbox",
+        "--run",
+        "echo {path}",
+        "--done-dir",
+        "done",
+        "--print-service",
+        "systemd",
+    ).output
+
+    exec_start = next(ln for ln in unit.splitlines() if ln.startswith("ExecStart="))
+    # the line was built with shlex.join, so it round-trips through shlex.split;
+    # a bare `in` check would pass on Windows, where every path comes out quoted
+    argv = shlex.split(exec_start.removeprefix("ExecStart="))
+    after = {flag: argv[argv.index(flag) + 1] for flag in ("--root", "--done-dir", "watch")}
+
+    assert after["--root"] == str(tmp_path.resolve()), argv
+    assert after["watch"] == str(watched.resolve()), argv
+    assert after["--done-dir"] == str(done.resolve()), argv
+    assert all(Path(p).is_absolute() for p in after.values()), argv
+
+    # without --root the unit should not name one at all
+    plain = run("watch", "inbox", "--run", "echo {path}", "--print-service", "systemd").output
+    assert "--root" not in plain
     assert (
         "--stable-timeout needs"
         in run(

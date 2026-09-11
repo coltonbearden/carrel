@@ -11,7 +11,6 @@ newest|oldest AND --apply are given. The kept member is never deleted.
 
 from __future__ import annotations
 
-import functools
 from collections import defaultdict
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -21,25 +20,9 @@ import click
 
 from carrel.core.db import file_hash
 from carrel.core.filetypes import detect
-from carrel.core.output import CarrelError, CarrelInputError, emit, fail
+from carrel.core.output import CarrelInputError, emit, handled
 
 NEAR_HAMMING_MAX = 8
-
-
-def _handled(fn: Callable) -> Callable:
-    """Convert CarrelError into a clean message + exit code (unless --debug)."""
-
-    @functools.wraps(fn)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        ctx = click.get_current_context(silent=True)
-        try:
-            return fn(*args, **kwargs)
-        except CarrelError as e:
-            if ctx is not None and ctx.obj and ctx.obj.get("debug"):
-                raise
-            fail(str(e), e.exit_code)
-
-    return wrapper
 
 
 def _walk(top: Path) -> Iterator[Path]:
@@ -174,7 +157,7 @@ def _human_report(reclaimable: int, applied: bool) -> Callable[[list[dict]], Non
     "--apply", "apply_", is_flag=True, help="Actually delete (only together with --delete)."
 )
 @click.pass_context
-@_handled
+@handled
 def cmd(
     ctx: click.Context, dirs: tuple[Path, ...], near: bool, delete_: str | None, apply_: bool
 ) -> None:

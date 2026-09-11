@@ -12,7 +12,7 @@ from pathlib import Path
 import click
 
 from carrel._product import PRODUCT
-from carrel.core.output import ExitCode, fail
+from carrel.core.output import ExitCode, fail, root_of
 
 # Shared with `carrel doctor`, whose capability row for desk reads the same hint.
 TUI_INSTALL_HINT = (
@@ -42,5 +42,5 @@ def cmd(ctx: click.Context, root: Path | None) -> None:
                 ExitCode.MISSING_DEP,
             )
         raise
-    base = root or Path((ctx.obj or {}).get("root", "."))
-    DeskApp(base.resolve()).run()
+    base = root.resolve() if root else root_of(ctx)
+    DeskApp(base).run()

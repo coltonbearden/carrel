@@ -11,13 +11,11 @@ from __future__ import annotations
 
 import contextlib
 import csv
-import functools
 import hashlib
 import json as jsonlib
 import mimetypes
 import xml.etree.ElementTree as ET
 import zipfile
-from collections.abc import Callable
 from datetime import datetime
 from html.parser import HTMLParser
 from pathlib import Path
@@ -27,7 +25,7 @@ import click
 
 from carrel.core import adapters, textextract
 from carrel.core.filetypes import FileType, detect_or_die
-from carrel.core.output import CarrelError, CarrelInputError, emit, fail
+from carrel.core.output import CarrelError, CarrelInputError, emit, handled
 
 _SHA256_CAP = 512 * 1024 * 1024  # skip hashing files >= 512 MB
 
@@ -37,22 +35,6 @@ _NS_DCTERMS = "{http://purl.org/dc/terms/}"
 _NS_W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 _NS_OPF = "{http://www.idpf.org/2007/opf}"
 _NS_CONTAINER = "{urn:oasis:names:tc:opendocument:xmlns:container}"
-
-
-def _handled(fn: Callable) -> Callable:
-    """Convert CarrelError into a clean message + exit code (unless --debug)."""
-
-    @functools.wraps(fn)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        ctx = click.get_current_context(silent=True)
-        try:
-            return fn(*args, **kwargs)
-        except CarrelError as e:
-            if ctx is not None and ctx.obj and ctx.obj.get("debug"):
-                raise
-            fail(str(e), e.exit_code)
-
-    return wrapper
 
 
 def _sha256(path: Path) -> str | None:
@@ -506,7 +488,7 @@ def _render(info: dict[str, Any]) -> None:
     "without it the output notes 'not installed' (never an error).",
 )
 @click.pass_context
-@_handled
+@handled
 def cmd(ctx: click.Context, path: Path, as_json: bool, deep: bool) -> None:
     """Show metadata for one file.
 

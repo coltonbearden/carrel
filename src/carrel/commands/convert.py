@@ -53,7 +53,7 @@ import click
 
 from carrel.core import adapters, textextract
 from carrel.core.filetypes import FileType, detect_or_die
-from carrel.core.output import CarrelError, CarrelInputError, emit
+from carrel.core.output import CarrelError, CarrelInputError, debugging, emit
 
 ICO_SIZES = (16, 32, 48, 64, 128, 256)
 PDF_RASTER_DPI = "150"
@@ -900,7 +900,7 @@ def cmd(
         try:
             results.append(convert_file(src, dest, force=force, pages=pages, sheet=sheet))
         except CarrelError as e:
-            if ctx.obj and ctx.obj.get("debug"):
+            if debugging(ctx):
                 raise
             results.append(
                 {"src": str(src), "dest": str(dest), "via": None, "ok": False, "error": str(e)}

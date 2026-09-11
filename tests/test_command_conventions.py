@@ -1,0 +1,189 @@
+"""D-016 — the command modules share one `handled` and one `root_of`.
+
+The error-to-exit-code decorator used to be copy-pasted into 25 modules under
+``src/carrel/commands`` and the desk-root resolver into 12, byte for byte, with
+four more root resolutions open-coded inline and `color.py` reaching across to
+import `proof._handled`. A change to the exit-code convention in CLAUDE.md had
+to be made in 25 places or it silently diverged. Both helpers now live beside
+`emit`/`fail` in ``carrel.core.output``.
+
+These tests are a drift gate *and* the behavioural cover for the two helpers.
+The counts here are exact, not floors: a floor set below the real number leaves
+room for exactly the partial revert the gate exists to catch. When a command
+module is added, add it to the count or to `NO_HANDLED` with the reason.
+"""
+
+from __future__ import annotations
+
+import ast
+from pathlib import Path
+
+import click
+import pytest
+from click.testing import CliRunner
+
+from carrel.cli import cli
+from carrel.core.output import CarrelError, CarrelInputError, ExitCode, handled, root_of
+
+COMMANDS_DIR = Path(__file__).resolve().parent.parent / "src" / "carrel" / "commands"
+MODULES = sorted(p for p in COMMANDS_DIR.glob("*.py") if p.name != "__init__.py")
+
+#: the private names D-016 retired, mapped to their shared replacement
+RETIRED = {"_handled": "carrel.core.output.handled", "_root_of": "carrel.core.output.root_of"}
+
+#: the open-coded form of `root_of`'s body — the duplication that has no name
+INLINE_ROOT = 'ctx.obj or {}).get("root"'
+
+#: modules that deliberately do not decorate with @handled, and why
+NO_HANDLED = {
+    "convert.py": "per-file loop: records an error per source and keeps going",
+    "thumb.py": "per-file loop: records an error per source and keeps going",
+    "desk.py": "catches ImportError for the tui extra; raises nothing else",
+    "doctor.py": "reports adapter state; never raises CarrelError out of the callback",
+    "completion.py": "prints a shell script; no file input to fail on",
+    "mcp.py": "a JSON-RPC server; errors become responses, not exits",
+}
+
+
+def module_ids() -> list[str]:
+    return [p.name for p in MODULES]
+
+
+def test_the_commands_package_is_not_empty() -> None:
+    """Guard the guard: a bad glob would make every parametrized test here vacuous."""
+    assert len(MODULES) == 33, (
+        f"expected 33 command modules, found {len(MODULES)} in {COMMANDS_DIR}"
+    )
+
+
+@pytest.mark.parametrize("path", MODULES, ids=module_ids())
+def test_no_command_module_redefines_a_shared_helper(path: Path) -> None:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    defined = {
+        node.name for node in tree.body if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+    }
+    clashes = sorted(defined & (RETIRED.keys() | {"handled", "root_of"}))
+    assert not clashes, (
+        f"{path.name} defines {', '.join(clashes)} locally; "
+        "import it from carrel.core.output instead (D-016)"
+    )
+
+
+@pytest.mark.parametrize("path", MODULES, ids=module_ids())
+def test_no_command_module_open_codes_the_root_lookup(path: Path) -> None:
+    """The duplication that survived the first pass had no name to grep for."""
+    assert INLINE_ROOT not in path.read_text(encoding="utf-8"), (
+        f"{path.name} open-codes the desk-root lookup; call root_of(ctx) (D-016)"
+    )
+
+
+@pytest.mark.parametrize("path", MODULES, ids=module_ids())
+def test_shared_helpers_come_from_core_output(path: Path) -> None:
+    """A module that uses `handled` or `root_of` must import it from the shared home."""
+    source = path.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(path))
+    for helper, marker in (("handled", "@handled"), ("root_of", "root_of(")):
+        if marker not in source:
+            continue
+        sources = {
+            node.module
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom)
+            and any(alias.name == helper for alias in node.names)
+        }
+        assert sources == {"carrel.core.output"}, (
+            f"{path.name} imports `{helper}` from {sources or 'nowhere'}; "
+            "it belongs to carrel.core.output (D-016)"
+        )
+
+
+def test_every_module_either_uses_handled_or_says_why() -> None:
+    """Exact, not a floor: a floor below the real count permits a partial revert."""
+    without = {p.name for p in MODULES if "@handled" not in p.read_text(encoding="utf-8")}
+    assert without == set(NO_HANDLED), (
+        "modules not using @handled changed — add the new one to NO_HANDLED with a "
+        f"reason, or decorate it.\n  unexpected: {sorted(without - set(NO_HANDLED))}"
+        f"\n  now decorated: {sorted(set(NO_HANDLED) - without)}"
+    )
+    assert len(MODULES) - len(without) == 27
+
+
+# ------------------------------------------------------------------ behaviour
+
+
+def test_root_of_resolves_the_context_root(tmp_path: Path) -> None:
+    """Through a real click.Context, not a stand-in: --root if given, else the cwd."""
+    ctx = click.Context(click.Command("x"), obj={"root": str(tmp_path)})
+    assert root_of(ctx) == tmp_path.resolve()
+
+    bare = click.Context(click.Command("x"), obj=None)
+    assert root_of(bare) == Path.cwd().resolve()
+
+    empty = click.Context(click.Command("x"), obj={})
+    assert root_of(empty) == Path.cwd().resolve()
+
+
+def test_handled_is_transparent_when_nothing_raises() -> None:
+    """The decorator preserves the wrapped callable's name, doc and return value."""
+
+    @handled
+    def add(a: int, b: int) -> int:
+        """Add two numbers."""
+        return a + b
+
+    assert add(2, 3) == 5
+    assert add.__name__ == "add"
+    assert add.__doc__ == "Add two numbers."
+
+
+def _one_shot(exc: Exception) -> click.Group:
+    """A throwaway CLI shaped like carrel's root group, whose only command raises `exc`.
+
+    Built fresh per test rather than bolted onto `carrel.cli.cli`: that group is
+    a module-level singleton, and `add_command` on it would leak into every
+    other test in the session.
+    """
+
+    @click.group()
+    @click.option("--debug", is_flag=True)
+    @click.pass_context
+    def group(ctx: click.Context, debug: bool) -> None:
+        ctx.ensure_object(dict)
+        ctx.obj["debug"] = debug
+
+    @group.command(name="boom")
+    @click.pass_context
+    @handled
+    def boom(ctx: click.Context) -> None:
+        raise exc
+
+    return group
+
+
+def test_handled_maps_carrel_error_onto_its_exit_code() -> None:
+    """A clean message, the error's own exit code, and no traceback."""
+    result = CliRunner().invoke(_one_shot(CarrelInputError("bad input here")), ["boom"])
+
+    assert result.exit_code == int(ExitCode.BAD_INPUT)
+    assert "error: bad input here" in result.output
+    assert "Traceback" not in result.output
+
+
+def test_handled_reraises_under_debug() -> None:
+    """--debug is the documented escape hatch; nothing else in the suite covers it.
+
+    Inverting this condition would make all 27 decorated callbacks dump
+    tracebacks at end users while every other test still passed.
+    """
+    sentinel = CarrelError("boom with a traceback")
+    result = CliRunner().invoke(_one_shot(sentinel), ["--debug", "boom"])
+
+    assert result.exception is sentinel, f"expected it to propagate, got {result.exception!r}"
+
+
+def test_the_real_cli_maps_a_bad_input_to_exit_4() -> None:
+    """The shared decorator is wired into the actual command tree, not just a stub."""
+    result = CliRunner().invoke(cli, ["inspect", "/no/such/file/anywhere.pdf"])
+
+    assert result.exit_code == int(ExitCode.BAD_INPUT)
+    assert "Traceback" not in result.output

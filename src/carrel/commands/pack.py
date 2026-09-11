@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import ast
 import dataclasses
-import functools
 import json as jsonlib
 import math
 import os
@@ -40,7 +39,7 @@ from carrel.core.ignore import IgnoreFile as _IgnoreFile
 from carrel.core.ignore import ancestor_ignores as _ancestor_ignores
 from carrel.core.ignore import ignored as _ignored
 from carrel.core.ignore import load_ignore as _load_ignore
-from carrel.core.output import CarrelError, CarrelInputError, ExitCode, emit, fail
+from carrel.core.output import CarrelError, CarrelInputError, ExitCode, emit, fail, handled, root_of
 from carrel.core.textextract import extract_text
 
 CHARS_PER_TOKEN = 3.6
@@ -922,22 +921,6 @@ def _safe_hash(path: Path) -> str | None:
 # CLI
 
 
-def _handled(fn: Callable) -> Callable:
-    """Convert CarrelError into a clean message + exit code (unless --debug)."""
-
-    @functools.wraps(fn)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        ctx = click.get_current_context(silent=True)
-        try:
-            return fn(*args, **kwargs)
-        except CarrelError as e:
-            if ctx is not None and ctx.obj and ctx.obj.get("debug"):
-                raise
-            fail(str(e), e.exit_code)
-
-    return wrapper
-
-
 def _print_stats_table(data: dict[str, Any]) -> None:
     from rich.console import Console
     from rich.table import Table
@@ -1081,7 +1064,7 @@ def _print_stats_table(data: dict[str, Any]) -> None:
     help="Exit 5 when no file is packed (e.g. --query without hits, --since with no changes).",
 )
 @click.pass_context
-@_handled
+@handled
 def cmd(
     ctx: click.Context,
     paths: tuple[Path, ...],
@@ -1143,7 +1126,7 @@ def cmd(
     as_json = bool(ctx.obj and ctx.obj.get("json"))
     if as_json and not output and not show_stats:
         fmt = "json"  # global --json: stdout must be one JSON document
-    desk_root = Path((ctx.obj or {}).get("root", ".")).resolve()
+    desk_root = root_of(ctx)
 
     try:
         result = pack_paths(
