@@ -25,6 +25,19 @@
 
 ## Done
 
+- 2026-09-11 process + settings: `.claude/settings.json` is committed, so an unattended agent
+  run never stalls on a permission prompt for the release loop (`uv`, the git branch verbs,
+  `gh pr`/`run`/`release`, `claude plugin`, `mkdocs`, and `gh api` as read-only GETs plus the
+  two named write shapes); the deny list covers `rm -rf` outside `/tmp`, `git push --force`,
+  `git reset --hard`, `git clean`, `gh api --method DELETE` and `carrel *--apply`. The repo's
+  own `.gitignore` now excludes `.claude/settings.local.json` — it was only ever excluded by
+  this machine's *global* gitignore, so a fresh clone could have committed someone's local
+  permissions. CLAUDE.md gains two rules: a PR merges only after its review completes, and
+  mutating smoke tests run in `/tmp`. `docs/index.md` said "ten MCP tools" two releases after
+  it became 14; `tests/test_docs_drift.py` now pins the count in README, `docs/index.md` and
+  `docs/FEATURES.md` and every tool name in `docs/AGENTS.md` against `mcp.TOOLS`
+  (`docs/TEST_REPORT.md` and `docs/BUILD_PLAN.md` are dated history and stay unpinned).
+  GitHub: `test-minimal (macos)` is a required check on the `main` ruleset.
 - 2026-09-11 (spec 29, D-017): `rename --apply`, `organize --apply`, `intake --apply` and
   `watch --done-dir/--error-dir` refuse (exit 2) when the move would touch a file **git is
   tracking**, naming the repository and the paths; each gains `--force`. Motivated by the
@@ -38,6 +51,17 @@
   wrote outside the guarded directory; the guard masked genuine argument errors by running
   before validation; and `click.UsageError` printed a `Usage:` banner implying the command
   line was malformed (now `CarrelUsageError`, which also keeps click out of `core/`).
+  A **second** review then found the guard failing open twice over: a glob too long for one
+  `git ls-files` command line raised, and "git could not be asked" was being read as "nothing
+  is tracked" (argv is chunked by character budget now — Windows caps a command line at
+  32,767 — and "could not ask" is its own answer); and a repository git refuses to read,
+  including `detected dubious ownership`, the default for a `/mnt/c` checkout under WSL, was
+  left unguarded, because "git ran and failed" was treated as "not a repository". Only git's
+  literal "not a git repository" is believed now. It also found the guard refusing what it
+  had promised to allow: a `--to` that does not exist yet was judged by its nearest existing
+  ancestor, so a first `intake ~/Downloads --to ~/filed` in a dotfiles repo refused and named
+  every tracked dotfile. With git absent the command exits **3** with the install hint rather
+  than guessing, and `--force` still skips the question.
 - 2026-09-11: the latent Windows text-IO gap is closed and gated. `ruff`'s `PLW1514` is on
   (via `lint.preview` + `lint.explicit-preview-rules`, so only that preview rule turns on —
   a blanket `preview = true` would surface 324 findings) and it found 43 sites across
