@@ -41,7 +41,7 @@ from carrel.core.ignore import ancestor_ignores as _ancestor_ignores
 from carrel.core.ignore import ignored as _ignored
 from carrel.core.ignore import load_ignore as _load_ignore
 from carrel.core.output import CarrelError, CarrelInputError, ExitCode, emit, fail, handled, root_of
-from carrel.core.textextract import extract_text
+from carrel.core.textextract import extract_text, read_text_file
 
 CHARS_PER_TOKEN = 3.6
 DEFAULT_TOP = 20
@@ -257,7 +257,7 @@ def _extract(path: Path, ftype: FileType, ocr: bool) -> tuple[str | None, str | 
     """(content, skip_reason) — exactly one is None."""
     if ftype is FileType.UNKNOWN:  # plain-text source file (.py, .toml, ...)
         try:
-            return path.read_text(encoding="utf-8", errors="replace"), None
+            return read_text_file(path), None
         except OSError as e:
             return None, f"unreadable ({e.__class__.__name__})"
     try:
@@ -266,7 +266,7 @@ def _extract(path: Path, ftype: FileType, ocr: bool) -> tuple[str | None, str | 
         return None, f"needs {e.adapter.name}"
     except CarrelInputError:
         try:  # e.g. invalid JSON: fall back to the raw bytes as text
-            return path.read_text(encoding="utf-8", errors="replace"), None
+            return read_text_file(path), None
         except OSError as e:
             return None, f"unreadable ({e.__class__.__name__})"
 
@@ -313,7 +313,7 @@ def _outline_of(path: Path) -> tuple[str, ...]:
     if suffix not in (".py", ".md", ".markdown"):
         return ()  # other types: size only (rendered on the tree line)
     try:
-        source = path.read_text(encoding="utf-8", errors="replace")
+        source = read_text_file(path)
     except OSError:
         return ("[unreadable]",)
     return tuple(_outline_py(source) if suffix == ".py" else _outline_md(source))
@@ -1183,10 +1183,10 @@ def cmd(
         if chunk:
             for i, doc in enumerate(result.documents, 1):
                 part = output.with_name(f"{output.name}.part{i}")
-                part.write_text(doc)
+                part.write_text(doc, encoding="utf-8", newline="\n")
                 written.append(part)
         else:
-            output.write_text(result.document)
+            output.write_text(result.document, encoding="utf-8", newline="\n")
             written.append(output)
 
     if show_stats:

@@ -59,7 +59,7 @@ def poke_until(trigger: Path, done, deadline: float = DEADLINE) -> None:
     between thread start and the watchdog observer actually being armed."""
     end = time.time() + deadline
     while time.time() < end and not done():
-        trigger.write_text("poke\n")
+        trigger.write_text("poke\n", encoding="utf-8")
         time.sleep(0.15)
     assert done(), f"watch never reacted within {deadline}s"
 

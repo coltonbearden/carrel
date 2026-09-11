@@ -292,7 +292,7 @@ def test_md_odt_txt(tmp_copy, tmp_path: Path):
     assert res.exit_code == 0, all_output(res)
     rec = json.loads(res.output)[0]
     assert rec["ok"] and rec["via"] == "pandoc"
-    assert MD_SENTINEL in Path(rec["dest"]).read_text()
+    assert MD_SENTINEL in Path(rec["dest"]).read_text(encoding="utf-8")
 
 
 @needs("pandoc")

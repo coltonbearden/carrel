@@ -22,7 +22,7 @@ import click
 
 from carrel.core.filetypes import FileType, detect_or_die
 from carrel.core.output import CarrelInputError, emit, handled
-from carrel.core.textextract import extract_text
+from carrel.core.textextract import extract_text, open_text_file, read_text_file
 
 MODES = ("auto", "text", "struct", "image", "pdf")
 _STRUCT_TYPES = (FileType.JSON, FileType.CSV, FileType.XML)
@@ -64,7 +64,7 @@ def _read_text(path: Path, ftype: FileType) -> str:
         return extract_text(path)
     if ftype.is_image:
         raise CarrelInputError(f"--mode text cannot read an image: {path}")
-    return path.read_text(errors="replace")
+    return read_text_file(path)
 
 
 def _unified(a_text: str, b_text: str, a: Path, b: Path) -> dict[str, Any]:
@@ -118,7 +118,7 @@ def _flatten_json(value: Any, prefix: str, out: dict[str, Any]) -> None:
 
 def _json_leaves(path: Path) -> dict[str, Any]:
     try:
-        data = jsonlib.loads(path.read_text(errors="replace"))
+        data = jsonlib.loads(read_text_file(path))
     except jsonlib.JSONDecodeError as e:
         raise CarrelInputError(f"invalid JSON in {path}: {e}") from e
     out: dict[str, Any] = {}
@@ -170,7 +170,7 @@ def _leaf_diff(la: dict[str, Any], lb: dict[str, Any]) -> dict[str, Any]:
 
 
 def _read_csv(path: Path) -> list[list[str]]:
-    with path.open(newline="", errors="replace") as fh:
+    with open_text_file(path) as fh:
         sample = fh.read(64 * 1024)
         fh.seek(0)
         try:

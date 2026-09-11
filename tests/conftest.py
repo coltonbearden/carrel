@@ -60,6 +60,15 @@ def bash_path() -> str | None:
 
 needs_bash = pytest.mark.skipif(bash_path() is None, reason="bash not installed")
 
+#: Root ignores a read-only directory, so a test proving a write fails because
+#: of permissions would instead see it succeed. The suite's six other chmod
+#: sites set execute bits or 0o644 and behave the same as root, so they do not
+#: need this.
+not_as_root = pytest.mark.skipif(
+    hasattr(os, "geteuid") and os.geteuid() == 0,
+    reason="root ignores permission bits, so the failure under test cannot happen",
+)
+
 
 @pytest.fixture
 def tmp_copy(tmp_path: Path):

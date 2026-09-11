@@ -272,7 +272,7 @@ def manifest(
     ]
     out.parent.mkdir(parents=True, exist_ok=True)
     lines = [f"{_sha256(f)}  {_manifest_entry_path(f, out.parent)}" for f in files]
-    out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    out.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 
     asc: Path | None = None
     if with_gpg or key:

@@ -17,6 +17,7 @@ CLI would print (CarrelError text, install hints included) — never a crash.
 
 from __future__ import annotations
 
+import contextlib
 import inspect as pyinspect
 import json
 import sys
@@ -1002,4 +1003,13 @@ _TOOL_SUMMARY = ", ".join(t["name"].removeprefix("carrel_") for t in TOOLS)
 @click.pass_context
 def cmd(ctx: click.Context) -> None:
     ctx.ensure_object(dict)
+    # MCP frames are UTF-8 by specification, but Python wires stdio to the
+    # locale encoding — cp1252 on a stock Windows box, with errors="strict".
+    # A document containing CJK, an em dash or an emoji would then raise
+    # mid-session and take the server down for the agent talking to it.
+    for stream in (sys.stdin, sys.stdout):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:  # not a real TextIOWrapper under some hosts
+            with contextlib.suppress(OSError, ValueError):
+                reconfigure(encoding="utf-8")
     serve(sys.stdin, sys.stdout, default_root=ctx.obj.get("root", "."))

@@ -425,7 +425,7 @@ def test_manifest_gpg_sign_and_verify(tmp_path: Path, gpg_home: Path):
     record = run_json("sign", "manifest", str(docs), "-o", str(manifest), "--gpg")
     asc = Path(record["signature"])
     assert asc == manifest.with_name("m.sha256.asc") and asc.is_file()
-    assert "BEGIN PGP SIGNATURE" in asc.read_text()
+    assert "BEGIN PGP SIGNATURE" in asc.read_text(encoding="utf-8")
     verdict = run_json("sign", "verify", str(manifest))
     assert verdict["ok"] is True
     assert verdict["signature"] == {"present": True, "valid": True}

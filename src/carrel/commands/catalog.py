@@ -87,7 +87,7 @@ def export(ctx: click.Context, out: Path | None, force: bool) -> None:
     if out.exists() and not force:
         raise CarrelError(f"refusing to overwrite {out} (use --force)")
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(_dump(doc), encoding="utf-8")
+    out.write_text(_dump(doc), encoding="utf-8", newline="\n")
     summary = {
         "out": str(out),
         "files": len(doc["files"]),

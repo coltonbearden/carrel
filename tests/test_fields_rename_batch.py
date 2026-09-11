@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
-from conftest import needs
+from conftest import needs, not_as_root
 
 from carrel.cli import cli
 from carrel.commands.batch import collect_files, load_manifest_done, run_batch
@@ -861,6 +861,7 @@ def test_watch_existing_skips_the_done_and_error_dirs(tmp_path: Path):
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX permission bits")
+@not_as_root
 def test_rename_records_a_failed_move_and_keeps_going(tmp_path: Path, fixtures: Path):
     ro = tmp_path / "ro"
     ro.mkdir()

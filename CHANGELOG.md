@@ -14,6 +14,26 @@
   was still wrong, because a tracked file's name is content. Without the git binary carrel
   cannot tell what is tracked, so it exits 3 with git's install hint rather than guessing
   (spec 29, D-017). If you script one of these against tracked files, add `--force`.
+- **Fixed (Windows):** every text read and write now names its encoding. `text=True` on
+  `subprocess` and `Path.read_text()` both fall back to `locale.getencoding()`, which is
+  cp1252 on a stock Windows box — so **every** external tool's output (`pdftotext`, `pandoc`,
+  `tesseract`, `git`) was being decoded as cp1252, and a PDF containing `café` came back as
+  `cafÃ©`. CI never noticed because it sets `PYTHONUTF8=1`. `ruff`'s `PLW1514` is the first
+  gate and `tests/test_text_encoding.py` the second, because that rule only fires where it can
+  infer a `Path` receiver; 10 of the sites were beyond its reach, including the write that
+  recreates `product.json` and would have truncated it to 0 bytes on a non-UTF-8 locale.
+- **Fixed:** `carrel mcp` now forces UTF-8 on its stdio. MCP frames are UTF-8 by
+  specification, but Python wires stdio to the locale encoding with `errors="strict"`, so a
+  document containing CJK or an em dash could kill the server mid-session on Windows.
+- **Fixed:** reading a user's document goes through one place (`utf-8-sig`, `errors="replace"`),
+  so Excel's "CSV UTF-8" export no longer names its first column `\ufeffname`, and its plain
+  cp1252 export converts instead of raising. Four readers had drifted to three different
+  error policies.
+- **Fixed:** generated output that gets hashed — `pack`, `sign manifest`, `catalog export` —
+  is written with `newline="\n"`. On Windows the same source tree produced CRLF and therefore
+  a different sha256, which `diff --mode bytes`, catalog hashes and `sign manifest` all read
+  as a changed file. The files carrel generates for itself (`_product.py`, the manifests) are
+  pinned the same way, matching the other sync scripts.
 - **Changed:** the `@handled` decorator (CarrelError → message + exit code) and the `root_of`
   desk-root resolver live once, in `carrel.core.output` (D-016). They had 25 and 12
   byte-identical copies across the command modules, four more root lookups open-coded, and

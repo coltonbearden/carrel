@@ -69,12 +69,12 @@ def patch_text_files(old: str, new: str) -> int:
             if not path.is_file() or path.suffix in {".png", ".jpg", ".ico", ".pdf"}:
                 continue
             try:
-                text = path.read_text()
+                text = path.read_text(encoding="utf-8")
             except (UnicodeDecodeError, OSError):
                 continue
             new_text = _rename_text(text, old, new)
             if new_text != text:
-                path.write_text(new_text)
+                path.write_text(new_text, encoding="utf-8", newline="\n")
                 changed += 1
     return changed
 
@@ -86,26 +86,30 @@ def main() -> int:
     new = sys.argv[1]
 
     product_path = ROOT / "product.json"
-    product = json.loads(product_path.read_text())
+    product = json.loads(product_path.read_text(encoding="utf-8"))
     old = product["name"]
     if old == new:
         print(f"name already '{new}' — nothing to do")
         return 0
 
     product.update(name=new, displayName=new.capitalize(), cli=new, marketplace=new)
-    product_path.write_text(json.dumps(product, indent=2, ensure_ascii=False) + "\n")
+    product_path.write_text(
+        json.dumps(product, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
 
     # text references (CLI invocations in docs, plugins, snippets, examples)
     n = patch_text_files(old, new)
 
     # pyproject: project name + console-script key (module path stays carrel.cli:main)
     pyproject = ROOT / "pyproject.toml"
-    text = pyproject.read_text()
+    text = pyproject.read_text(encoding="utf-8")
     text = re.sub(r'(?m)^name = ".*"$', f'name = "{new}"', text, count=1)
     text = re.sub(
         rf'(?m)^{re.escape(old)} = "carrel\.cli:main"$', f'{new} = "carrel.cli:main"', text, count=1
     )
-    pyproject.write_text(text)
+    pyproject.write_text(text, encoding="utf-8", newline="\n")
 
     # plugin directory names (plugins/carrel-convert -> plugins/<new>-convert)
     renamed_dirs = 0

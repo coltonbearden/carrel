@@ -365,7 +365,7 @@ class DeskApp(App[None]):
             def job(src: Path = sel, dest: Path = dest) -> str:
                 result = pack_paths([src], fmt="md")
                 dest.parent.mkdir(parents=True, exist_ok=True)
-                dest.write_text(result.document)
+                dest.write_text(result.document, encoding="utf-8")
                 return (
                     f"wrote {dest} ({result.meta['files_included']} files, "
                     f"~{result.meta['tokens_est']} tokens_est)"

@@ -51,6 +51,8 @@ def load_ignore(directory: Path) -> IgnoreFile | None:
         return None
     rules: list[IgnoreRule] = []
     try:
+        # not the shared reader: this module is a leaf by design, and a
+        # .gitignore is git's file, not a user document
         lines = gi.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
         return None

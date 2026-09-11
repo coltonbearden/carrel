@@ -36,6 +36,30 @@
   wrote outside the guarded directory; the guard masked genuine argument errors by running
   before validation; and `click.UsageError` printed a `Usage:` banner implying the command
   line was malformed (now `CarrelUsageError`, which also keeps click out of `core/`).
+- 2026-09-11: the latent Windows text-IO gap is closed and gated. `ruff`'s `PLW1514` is on
+  (via `lint.preview` + `lint.explicit-preview-rules`, so only that preview rule turns on —
+  a blanket `preview = true` would surface 324 findings) and it found 43 sites across
+  `src`, `tests` and `scripts`. Hand-auditing found 9 more the rule could not see, because
+  it only fires where it can infer the receiver is a `Path`: four in `core/textextract.py`
+  (the JSON/HTML/XML/CSV readers), two in `commands/pack.py`, one in `commands/audiobook.py`
+  and two in `scripts/rename_product.py` — plus one more the *review* caught, the write that
+  recreates `product.json`, which on a non-UTF-8 locale truncated the single source of truth
+  to 0 bytes before raising. `PLW1514` fires only on an inferable `Path` receiver, so it is
+  the first gate, not the only one: `tests/test_text_encoding.py` scans shipped code by AST
+  for what ruff cannot see. Worse, `text=True` on `subprocess` decodes with
+  `locale.getencoding()`, so **every** adapter's output — `pdftotext`, `pandoc`, `tesseract`,
+  `git` — came back cp1252-decoded on Windows; `café` in a PDF arrived as `cafÃ©`. Both
+  `adapters.run` says `encoding="utf-8"` now; the two `Popen` calls in `core/actions.py`
+  deliberately do **not** — a `--run` action is the user's own command line, and on Windows it
+  emits the OEM code page, so forcing UTF-8 there would destroy recoverable text. They gained
+  `errors="replace"`, which is what was actually missing. `carrel mcp` reconfigures its stdio
+  to UTF-8: MCP frames are UTF-8 by specification, and fixing the adapters made real non-ASCII
+  reach stdout where a strict cp1252 encode would have killed the server mid-session. Reading
+  a user's document goes through one `textextract.read_text_file` now (`utf-8-sig`, so Excel's
+  "CSV UTF-8" BOM stops naming the first column `\ufeffname`, plus `errors="replace"` so a
+  cp1252 export still converts). Generated output that gets hashed — `pack`, `sign manifest`,
+  `catalog export` — is written LF, so one tree no longer hashes two ways across platforms.
+  CI passed throughout only because it sets `PYTHONUTF8=1`.
 - 2026-09-11 (D-016): `handled` and `root_of` live once, in `core/output.py`. The decorator
   had 25 byte-identical copies and the desk-root resolver 12, plus four open-coded root
   lookups and three inlined copies of the decorator's body; `color.py` was importing
@@ -98,11 +122,6 @@
 
 ## Open issues
 
-- Windows, latent (not covered by the suite): ~30 text-IO sites read or write without
-  `encoding="utf-8"` (`commands/pack.py`, `core/textextract.py`, `desk/app.py`). CI sets
-  `PYTHONUTF8=1`, so they pass there; a user on a cp1252 console would see mojibake on
-  non-ASCII documents. `scripts/sync_product.py` writes without an encoding too (run on
-  Linux only today).
 - 16 of 26 commands are not exposed over MCP; `ocr`, `edit`, `sign`, `catalog`, `thumb`,
   `dedupe`, `organize`, `form`, `color` already have `_file()`/`_paths()` entry points, and
   six headline `pack` flags are agent-invisible. Its own spec.
@@ -118,6 +137,17 @@
   `--force` because the session brief specified that flag by name. A distinct spelling
   (`--allow-tracked`) would not be reachable by reflex — an owner call, since it is a
   user-facing rename.
+
+- The suite cannot run under a non-UTF-8 locale: `LC_ALL=C PYTHONUTF8=0 uv run pytest -q`
+  fails 45 tests across 9 files with `UnicodeDecodeError`. Every one is *test-side* —
+  `subprocess.run(..., text=True)` and `Path.read_text()` in the harness, not in shipped code,
+  which `tests/test_text_encoding.py::test_no_unencoded_text_io_in_shipped_code` now gates by
+  AST (ruff's PLW1514 only fires on an inferable `Path` receiver, so it sees roughly an eighth
+  of the sites and cannot see `(tmp_path / "a.txt").write_text(...)` at all). Fixing the
+  harness is ~123 mechanical call sites across 30 files and would let CI add one
+  `PYTHONUTF8=0` job, which is the only way to catch this class end to end. Deliberately not
+  bundled into the encoding PR: the risky part of that PR is the product change, and a
+  30-file test rewrite riding alongside it would obscure the diff.
 
 - `tests/test_guardrails.py` adds a ninth near-verbatim copy of the `run()` CliRunner helper
   (also in `test_refs.py`, `test_desk_db_cmds.py`, `test_watch_org_dedupe.py`,
