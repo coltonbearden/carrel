@@ -175,6 +175,43 @@ fc-list | grep -i "dejavu"     # confirm the font is visible to fontconfig
 
 For CJK or emoji coverage add `fonts-noto-cjk` / `fonts-noto-color-emoji`.
 
+## `--apply` exits 2: "would rewrite files inside a git work tree"
+
+`carrel rename --apply`, `organize --apply` and `intake --apply` refuse to
+start when a directory they would rewrite is inside a git repository. The
+message names the repository root:
+
+```console
+$ carrel organize ~/projects/myapp --apply
+Error: organize --apply would rewrite files inside a git work tree:
+  /home/you/projects/myapp
+Moving tracked files breaks imports, tests and history. Run this somewhere
+else, name the files explicitly, or pass --force if it is what you meant.
+```
+
+This is a guard, not a bug. In a work tree the file names *are* content:
+imports, test collection, CI configuration and the history all address files
+by path, so a bulk rename leaves a repository that no longer builds. carrel
+learned this the hard way — a `rename --apply` aimed at its own checkout
+renamed 21 tracked files after the "fields" it read out of their source.
+
+Your options, best first:
+
+1. **Point the command somewhere else.** Bulk renaming and filing are for
+   document directories, not source trees.
+2. **Name the files explicitly.** `carrel rename report.pdf --apply` works
+   inside a repository — an explicit file argument is never guarded.
+3. **Preview first.** Drop `--apply`; the dry-run default prints the whole
+   plan and is never guarded.
+4. **`--force`**, when rewriting the repository is genuinely what you want.
+   Commit first, so `git status` can show you what happened.
+
+`intake` checks both `INBOX` and `--to`, and refuses *before* creating `--to`,
+so a refused run leaves the disk untouched. Detection asks `git rev-parse
+--show-toplevel` and falls back to looking for a `.git` entry in the parent
+directories when git is not installed; a directory that merely looks like a
+repository still guards.
+
 ## Watch doesn't fire on /mnt/c
 
 `carrel watch` uses native inotify events (via the watchdog library). On the

@@ -25,7 +25,7 @@ from typing import Any
 import click
 
 from carrel.core.filetypes import FileType, detect
-from carrel.core.fsops import move_file, uncollide
+from carrel.core.fsops import guard_worktree, move_file, uncollide
 from carrel.core.output import CarrelInputError, emit, handled, root_of
 
 TYPE_DIRS: dict[FileType, str] = {
@@ -148,19 +148,36 @@ def _human_plan(applied: bool) -> Callable[[list[dict[str, Any]]], None]:
     default=False,
     help="Execute the moves. Default is a dry-run that only prints the plan.",
 )
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Move files even when DIRECTORY is inside a git work tree (see the description).",
+)
 @click.pass_context
 @handled
-def cmd(ctx: click.Context, directory: Path, by: str, into_: tuple[str, ...], apply_: bool) -> None:
+def cmd(
+    ctx: click.Context,
+    directory: Path,
+    by: str,
+    into_: tuple[str, ...],
+    apply_: bool,
+    force: bool,
+) -> None:
     """Plan (default) or perform (--apply) sorting DIRECTORY's files.
 
     Only files directly inside DIRECTORY are considered; subdirectories and
     hidden files stay put. Existing files are never overwritten — colliding
     names get a -1, -2, … suffix. JSON output is a list of
     {src, dest, action} ('move' planned, 'moved' executed, 'skip').
+
+    --apply refuses (exit 2) when DIRECTORY is inside a git work tree, where
+    moving tracked files breaks imports, tests and history; --force overrides.
     """
     directory = directory.resolve()
     if not directory.is_dir():
         raise CarrelInputError(f"no such directory: {directory}")
+    if apply_:
+        guard_worktree([directory], force=force, what="organize --apply")
 
     into: dict[str, str] = {}
     for spec in into_:

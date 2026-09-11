@@ -75,6 +75,15 @@ Outlook `.msg` item files are **cut** (D-011): no pure-Python writer exists, so 
 
 ## Explicit scope notes
 
+- **The three bulk-move commands refuse a git work tree.** `rename --apply`, `organize --apply`
+  and `intake --apply` exit 2 when a *directory* they would rewrite is inside a repository
+  (`intake` checks both INBOX and `--to`), naming the repository root and `--force`. Dry-run —
+  the default for all three — is unaffected, and an explicitly named file is never guarded:
+  naming a file is already a decision at the granularity of the damage, while one directory
+  name selects an unbounded set. This exists because a `rename --apply` aimed at carrel's own
+  checkout renamed 21 tracked files (spec 29). Git is the only precious directory carrel
+  detects: it is unambiguous and catastrophic to rewrite, and a broader heuristic would train
+  users to reach for `--force` by reflex.
 - **PDF redaction** is true redaction (rasterization destroys the text layer) — documented tradeoff; searchability restorable via `carrel ocr` afterwards.
 - **html thumbnails** go through weasyprint→pdf→pdftoppm; if weasyprint missing, degrade with hint.
 - **Near-dupe** uses a dependency-free dHash (no numpy/imagehash) to keep install light.

@@ -729,6 +729,10 @@ Usage: carrel intake [OPTIONS] INBOX
   reason}]. Exit 3 when a missing optional binary is the reason nothing could be read at all, 1 when
   some files errored during --apply, 5 with --fail-empty when there was nothing to file.
 
+  --apply refuses (exit 2) when INBOX or --to is inside a git work tree, where moving tracked files
+  breaks imports, tests and history; --force overrides. The refusal happens before anything is
+  created or moved.
+
 Options:
   --to DIRECTORY          Where filed documents land (created if missing).  [required]
   --apply / --dry-run     Perform the intake. Default is a dry-run that only prints the plan.
@@ -755,6 +759,8 @@ Options:
   --fallback TEXT         Use TEXT for a name placeholder that has no value instead of skipping the
                           file.
   --fail-empty            Exit 5 when no file was filed (or planned).
+  --force                 File even when INBOX or --to is inside a git work tree (see the
+                          description).
   --json                  Machine-readable JSON output.
   --help                  Show this message and exit.
 ```
@@ -1080,6 +1086,9 @@ Usage: carrel organize [OPTIONS] DIRECTORY
   Existing files are never overwritten — colliding names get a -1, -2, … suffix. JSON output is a
   list of {src, dest, action} ('move' planned, 'moved' executed, 'skip').
 
+  --apply refuses (exit 2) when DIRECTORY is inside a git work tree, where moving tracked files
+  breaks imports, tests and history; --force overrides.
+
 Options:
   --by [type|date|exif-date]  Grouping: 'type' -> pdf/, images/ (jpg, png, ico), data/ (json, xml,
                               csv), docs/ (md, txt, html), mail/ (eml, mbox); 'date' -> YYYY/MM from
@@ -1088,6 +1097,8 @@ Options:
   --into CATEGORY=DIR         Override a type category's destination subdir, e.g. --into images=pics
                               (only with --by type; repeatable).
   --apply / --dry-run         Execute the moves. Default is a dry-run that only prints the plan.
+  --force                     Move files even when DIRECTORY is inside a git work tree (see the
+                              description).
   --json                      Machine-readable JSON output.
   --help                      Show this message and exit.
 ```
@@ -1244,6 +1255,10 @@ Usage: carrel rename [OPTIONS] PATHS...
   suffixes), and carry the desk row under --root along. JSON: [{src, dest, action:
   rename|renamed|skip, reason, sources}].
 
+  --apply refuses (exit 2) when a PATH *directory* is inside a git work tree, where renaming tracked
+  files breaks imports, tests and history. Explicitly named files are never guarded; --force
+  overrides.
+
 Options:
   --template TEXT          Name template; see the placeholders in the command description.
                            [default: {date}_{vendor}_{ref}{ext}]
@@ -1255,6 +1270,8 @@ Options:
   --max-len INTEGER RANGE  Cap the stem length.  [default: 120; x>=8]
   --ocr                    OCR images and scanned PDFs to read their fields (needs tesseract /
                            ocrmypdf).
+  --force                  Rename even when a PATH directory is inside a git work tree (see the
+                           description).
   --json                   Machine-readable JSON output.
   --help                   Show this message and exit.
 ```

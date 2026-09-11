@@ -639,7 +639,17 @@ def _git(*args: str) -> str:
 
 
 def _git_root(path: Path) -> Path:
-    return Path(_git("-C", str(path), "rev-parse", "--show-toplevel").strip()).resolve()
+    """The work tree `path` sits in — `pack --since/--changed` needs one to exist.
+
+    Shares `core.fsops.repo_root` with the `--apply` guard (spec 29) so the
+    `rev-parse` call lives in one place; that helper is soft, this caller is not.
+    """
+    from carrel.core.fsops import repo_root
+
+    root = repo_root(path)
+    if root is None:
+        raise CarrelInputError(f"not a git repository (or any parent): {path}")
+    return root
 
 
 def _git_changed(root: Path, *, since: str | None, changed: bool) -> set[Path]:

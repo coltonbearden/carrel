@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **Changed (behaviour):** `rename --apply`, `organize --apply` and `intake --apply` now refuse
+  to start when a *directory* they would rewrite is inside a git work tree, exiting 2 with the
+  repository root named. `intake` checks both `INBOX` and `--to`, and refuses before creating
+  `--to`, so a refused run leaves the disk untouched. The new `--force` on each command
+  overrides it. **Not** guarded: the dry-run default, and explicitly named file arguments —
+  naming a file is already a decision at the granularity of the damage, while one directory
+  name selects an unbounded set. This exists because on 2026-09-10 a `rename --apply` aimed at
+  carrel's own checkout renamed 21 tracked files after the "fields" it read out of their
+  source; the command was correct and the outcome was still wrong, because in a work tree the
+  file names are content. Detection asks git (`rev-parse --show-toplevel`) and falls back to a
+  `.git` ancestor walk when git is absent (spec 29). If you script one of these against a
+  directory inside a repository, add `--force`.
 - **Changed:** the `@handled` decorator (CarrelError → message + exit code) and the `root_of`
   desk-root resolver live once, in `carrel.core.output` (D-016). They had 25 and 12
   byte-identical copies across the command modules, four more root lookups open-coded, and

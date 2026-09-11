@@ -29,7 +29,7 @@ import click
 from carrel.core import patterns as pat
 from carrel.core.db import DeskDB
 from carrel.core.filetypes import detect
-from carrel.core.fsops import move_file, uncollide
+from carrel.core.fsops import guard_worktree, move_file, uncollide
 from carrel.core.output import (
     CarrelError,
     CarrelInputError,
@@ -321,6 +321,11 @@ def _human_plan(applied: bool) -> Callable[[list[dict[str, Any]]], None]:
     is_flag=True,
     help="OCR images and scanned PDFs to read their fields (needs tesseract / ocrmypdf).",
 )
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Rename even when a PATH directory is inside a git work tree (see the description).",
+)
 @click.pass_context
 @handled
 def cmd(
@@ -333,6 +338,7 @@ def cmd(
     lower: bool,
     max_len: int,
     ocr: bool,
+    force: bool,
 ) -> None:
     """Plan (default) or perform (--apply) renaming PATH... from the documents' own fields.
 
@@ -345,9 +351,17 @@ def cmd(
     into subfolders), never overwrite (-1, -2, … suffixes), and carry the desk
     row under --root along. JSON: [{src, dest, action: rename|renamed|skip,
     reason, sources}].
+
+    --apply refuses (exit 2) when a PATH *directory* is inside a git work tree,
+    where renaming tracked files breaks imports, tests and history. Explicitly
+    named files are never guarded; --force overrides.
     """
     if not _PLACEHOLDER.search(template):
         raise click.UsageError(f"--template has no placeholders: {template!r}")
+    if apply_:
+        # only directory arguments: naming a file is already a decision at the
+        # granularity of the damage, while one directory name selects a set
+        guard_worktree([p for p in paths if p.is_dir()], force=force, what="rename --apply")
     root = root_of(ctx)
     plan = plan_renames(
         list(paths),

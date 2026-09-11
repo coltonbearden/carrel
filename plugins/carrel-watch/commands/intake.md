@@ -26,6 +26,10 @@ Usage: carrel intake [OPTIONS] INBOX
   reason}]. Exit 3 when a missing optional binary is the reason nothing could be read at all, 1 when
   some files errored during --apply, 5 with --fail-empty when there was nothing to file.
 
+  --apply refuses (exit 2) when INBOX or --to is inside a git work tree, where moving tracked files
+  breaks imports, tests and history; --force overrides. The refusal happens before anything is
+  created or moved.
+
 Options:
   --to DIRECTORY          Where filed documents land (created if missing).  [required]
   --apply / --dry-run     Perform the intake. Default is a dry-run that only prints the plan.
@@ -52,6 +56,8 @@ Options:
   --fallback TEXT         Use TEXT for a name placeholder that has no value instead of skipping the
                           file.
   --fail-empty            Exit 5 when no file was filed (or planned).
+  --force                 File even when INBOX or --to is inside a git work tree (see the
+                          description).
   --json                  Machine-readable JSON output.
   --help                  Show this message and exit.
 ```
