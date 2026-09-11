@@ -12,6 +12,8 @@ import json
 import re
 from pathlib import Path
 
+import pytest
+
 from carrel._product import PRODUCT
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -259,12 +261,14 @@ def test_the_prose_lists_would_notice_a_deletion():
     assert len(absent) >= 10, f"removing the list left {len(absent)} names missing; expected most"
 
 
-def test_repo_settings_doc_names_every_required_check():
-    """`scripts/github-harden.sh` says it asserts what REPO_SETTINGS.md documents.
+@pytest.mark.parametrize("doc", ["REPO_SETTINGS.md", "RELEASING.md"])
+def test_doc_names_every_required_check(doc: str):
+    """`scripts/github-harden.sh` owns the required checks; the docs must name every one.
 
     When `test-minimal (macos)` was added to `REQUIRED_CHECKS` and applied to the
-    live ruleset, the doc still listed the old five and still called macOS
-    "Pending" — drift inside the very PR whose subject is a doc-drift gate.
+    live ruleset, REPO_SETTINGS.md still listed the old five and RELEASING.md told
+    a release run to wait for only those — so it would try to merge while the
+    required macOS check was still pending.
     """
     script = _read(REPO_ROOT / "scripts" / "github-harden.sh")
     match = re.search(r"REQUIRED_CHECKS='(\[.*?\])'", script)
@@ -272,9 +276,43 @@ def test_repo_settings_doc_names_every_required_check():
     checks = json.loads(match.group(1))
     assert len(checks) >= 5, f"suspiciously few required checks: {checks}"
 
-    doc = _read(DOCS / "REPO_SETTINGS.md")
-    missing = [name for name in checks if f"`{name}`" not in doc]
-    assert not missing, (
-        "docs/REPO_SETTINGS.md does not mention every required check "
-        f"the hardening script applies: {missing}"
-    )
+    text = _read(DOCS / doc)
+    missing = [name for name in checks if f"`{name}`" not in text]
+    assert not missing, f"docs/{doc} does not name every required check: {missing}"
+
+
+def _state_status() -> str:
+    """STATE.md's Status bullet, whitespace-normalised across its wrapped lines."""
+    text = _read(REPO_ROOT / "STATE.md")
+    match = re.search(r"^- \*\*Status:\*\*(.*?)^- \*\*In flight:\*\*", text, re.S | re.M)
+    assert match, "STATE.md has no Status bullet followed by In flight"
+    return " ".join(match.group(1).split())
+
+
+def test_state_status_counts_are_current():
+    """STATE.md is what a resuming session reads first, and its counts are hand-typed.
+
+    `docs/index.md` said "ten MCP tools" for two releases after it became 14; the
+    Status line is the same kind of sentence. Only the Status bullet is checked —
+    Done entries are dated history and keep the numbers of their day.
+    """
+    from carrel.cli import COMMANDS
+    from carrel.commands.mcp import TOOLS
+    from carrel.core.adapters import ADAPTERS
+
+    live = {
+        "commands": len(COMMANDS),
+        "MCP tools": len(TOOLS),
+        "adapters": len(ADAPTERS),
+        "marketplace plugins": len(_plugin_names()),
+    }
+    status = _state_status()
+    unstated: list[str] = []
+    wrong: list[str] = []
+    for noun, count in live.items():
+        stated = [int(n) for n in re.findall(rf"(\d+) {re.escape(noun)}\b", status)]
+        if not stated:
+            unstated.append(noun)
+        wrong += [f"{n} {noun} (live: {count})" for n in stated if n != count]
+    assert not unstated, f"STATE.md's Status no longer states: {unstated}"
+    assert not wrong, "STATE.md's Status is stale: " + "; ".join(wrong)

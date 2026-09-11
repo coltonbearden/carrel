@@ -37,8 +37,13 @@ worth having because they are real.
 
 ## 2. Land it through a PR
 
-`main` is protected: push a branch, open a PR, wait for `lint`, `test (py3.12 /
-3.13 / 3.14)` and `test-minimal` to go green, squash-merge.
+`main` is protected: push a branch, open a PR, and wait for every required check
+to go green — `lint`, `test (py3.12)`, `test (py3.13)`, `test (py3.14)`,
+`test-minimal` and `test-minimal (macos)`; the list is `REQUIRED_CHECKS` in
+`scripts/github-harden.sh`. `test-minimal (windows)` is advisory until it is
+promoted, so a red one does not block — read it anyway. Per CLAUDE.md the PR's
+`/code-review` must also have completed, with every confirmed finding fixed in
+the PR or deferred in STATE.md. Then squash-merge.
 
 ## 3. Tag and publish the GitHub Release
 
