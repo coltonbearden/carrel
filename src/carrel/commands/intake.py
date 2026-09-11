@@ -43,7 +43,7 @@ from carrel.core import adapters
 from carrel.core import patterns as pat
 from carrel.core.db import DeskDB
 from carrel.core.filetypes import FileType, detect
-from carrel.core.fsops import move_file, uncollide
+from carrel.core.fsops import guard_worktree, move_file, uncollide
 from carrel.core.output import (
     CarrelError,
     CarrelInputError,
@@ -517,6 +517,11 @@ def _human(applied: bool) -> Callable[[list[dict[str, Any]]], None]:
     help="Use TEXT for a name placeholder that has no value instead of skipping the file.",
 )
 @click.option("--fail-empty", is_flag=True, help="Exit 5 when no file was filed (or planned).")
+@click.option(
+    "--force",
+    is_flag=True,
+    help="File even when INBOX or --to holds files git tracks (see the description).",
+)
 @click.pass_context
 @handled
 def cmd(
@@ -540,6 +545,7 @@ def cmd(
     tags: tuple[str, ...],
     fallback: str | None,
     fail_empty: bool,
+    force: bool,
 ) -> None:
     """File everything waiting in INBOX into --to, named after what the documents say.
 
@@ -556,6 +562,11 @@ def cmd(
     tags, ocr, reason}]. Exit 3 when a missing optional binary is the reason
     nothing could be read at all, 1 when some files errored during --apply,
     5 with --fail-empty when there was nothing to file.
+
+    --apply refuses (exit 2) when INBOX or --to holds files git is tracking,
+    where a new path breaks imports, tests and history; --force overrides. The
+    refusal happens before anything is created or moved, and an untracked inbox
+    inside a repository (the usual ~/Downloads-under-dotfiles case) is fine.
     """
     inbox = inbox.resolve()
     if not inbox.is_dir():
@@ -567,15 +578,19 @@ def cmd(
             )
         apply_ = True
     dest_root = dest_root.resolve()
-    if apply_:
-        dest_root.mkdir(parents=True, exist_ok=True)
-    desk_root = dest_root if _root_is_default(ctx) else root_of(ctx)
     if inbox == dest_root or dest_root.is_relative_to(inbox) or inbox.is_relative_to(dest_root):
         # a --to inside INBOX would re-file its own archive on the next pass,
-        # and churn for as long as --watch runs
+        # and churn for as long as --watch runs. Checked before the guard so a
+        # genuine usage error reports itself rather than being masked (D-017).
         raise click.UsageError(
             "INBOX and --to must be separate directories, neither inside the other"
         )
+    if apply_:
+        # before the mkdir below: a refused run must leave the disk untouched.
+        # Both sides count — INBOX is emptied, --to is written into.
+        guard_worktree([inbox, dest_root], force=force, what="intake --apply")
+        dest_root.mkdir(parents=True, exist_ok=True)
+    desk_root = dest_root if _root_is_default(ctx) else root_of(ctx)
     if ocr_ is True:
         adapters.require("ocrmypdf")  # exit 3 before a single file is touched
 

@@ -533,6 +533,23 @@ def test_since_without_git_exits_3(repo: Path, monkeypatch: pytest.MonkeyPatch):
     assert "'git' is required" in res.output and "apt install git" in res.output
 
 
+def test_since_without_git_outside_a_repo_still_exits_3(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Missing binary beats "not a repository": the user must be told to install git.
+
+    `_git_root` delegates to `core.fsops.repo_root`, which is deliberately soft —
+    it answers "unknown" as None. Without the explicit `require("git")` this path
+    reported exit 4 and "not a git repository", sending the user to fix the wrong
+    thing (spec 29 review).
+    """
+    (tmp_path / "a.txt").write_text("x\n", newline="\n")
+    monkeypatch.setenv("CARREL_BIN_GIT", "/nonexistent/git")
+    res = run("pack", str(tmp_path), "--changed")
+    assert res.exit_code == 3, res.output
+    assert "'git' is required" in res.output and "apt install git" in res.output
+
+
 def test_query_and_since_intersect(repo: Path):
     res = run("--root", str(repo), "index", str(repo))
     assert res.exit_code == 0, res.output
@@ -774,3 +791,52 @@ def test_pack_paths_defaults_keep_v1_signature_behavior(proj: Path):
     }
     obj = json.loads(pack_paths([proj], fmt="json").document)
     assert all(set(f) == {"path", "tokens_est", "content"} for f in obj["files"])
+
+
+def test_git_queries_ignore_an_inherited_git_dir(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """GIT_DIR beats an explicit `-C`, so a git hook's repo must not leak in.
+
+    `_git_root` dropped the overrides but `_git` did not, so pack resolved one
+    repository's root and then queried another's object database — the `--changed`
+    list came back naming files that exist only in the other repo.
+    """
+    other = tmp_path / "other"
+    other.mkdir()
+    for args in (
+        ("init", "-q"),
+        ("config", "user.email", "t@e.invalid"),
+        ("config", "user.name", "t"),
+    ):
+        assert adapters.run("git", "-C", str(other), *args).returncode == 0
+    (other / "only-in-other.txt").write_text("x\n", newline="\n")
+    assert adapters.run("git", "-C", str(other), "add", "-A").returncode == 0
+    assert adapters.run("git", "-C", str(other), "commit", "-qm", "o").returncode == 0
+
+    monkeypatch.setenv("GIT_DIR", str(other / ".git"))
+    res = run("--json", "pack", str(repo), "--changed", "--tree-only")
+
+    assert res.exit_code == 0, res.output
+    assert "only-in-other.txt" not in res.output
+
+
+def test_a_repository_git_refuses_keeps_gits_own_diagnostic(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """ "dubious ownership" must not be reported as "not a git repository".
+
+    `repo_root` is deliberately silent, so routing through it flattened every
+    git failure into one misleading message and sent the user to fix the wrong
+    thing. pack re-asks loudly when the silent helper comes back empty.
+    """
+    broken = tmp_path / "broken"
+    broken.mkdir()
+    for args in (("init", "-q"), ("config", "core.repositoryformatversion", "99")):
+        assert adapters.run("git", "-C", str(broken), *args).returncode == 0
+    (broken / "a.txt").write_text("x\n", newline="\n")
+
+    res = run("pack", str(broken), "--changed")
+
+    assert res.exit_code == 4, res.output
+    assert "repositoryformatversion" in res.output or "repo version" in res.output

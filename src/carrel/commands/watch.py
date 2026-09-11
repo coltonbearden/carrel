@@ -36,7 +36,7 @@ from typing import Any
 import click
 
 from carrel.core.actions import PLACEHOLDERS, kill_tree, quote, render, run_action
-from carrel.core.fsops import move_file, uncollide
+from carrel.core.fsops import guard_worktree, move_file, uncollide
 from carrel.core.output import CarrelInputError, handled, root_of
 
 # private aliases: tests and older callers reach the shared implementations by these names
@@ -406,6 +406,11 @@ def _make_handler(watcher: _Watcher) -> Any:
     help="Append one JSON record per action (and per move) to FILE.",
 )
 @click.option(
+    "--force",
+    is_flag=True,
+    help="With --done-dir/--error-dir: move files even when git tracks them.",
+)
+@click.option(
     "--print-service",
     type=click.Choice(["systemd", "schtasks"]),
     default=None,
@@ -463,6 +468,7 @@ def cmd(
     done_dir: Path | None,
     error_dir: Path | None,
     log_path: Path | None,
+    force: bool,
     print_service: str | None,
 ) -> None:
     """Watch DIRECTORY and run shell actions on file events.
@@ -475,6 +481,10 @@ def cmd(
     --existing processes what is already there, --poll works where inotify
     does not (/mnt/c, shares), --done-dir/--error-dir file sources away
     after their actions, --log keeps a JSON trail. Ctrl-C exits cleanly.
+
+    --done-dir/--error-dir refuse to start (exit 2) when they would move files
+    git is tracking; --force overrides. Actions themselves are never guarded —
+    what a --run command does is the user's business.
     """
     json_lines = json_lines or bool(ctx.obj and ctx.obj.get("json"))
     directory = directory.resolve()
@@ -488,6 +498,17 @@ def cmd(
         )
     if stable_timeout is not None and stable is None:
         raise click.UsageError("--stable-timeout needs --stable")
+    if done_dir is not None or error_dir is not None:
+        # the fourth bulk mover (spec 29), and the only one with no dry-run to
+        # fall back on: --done-dir empties the watched directory as it goes.
+        # Checked before --print-service returns, so carrel never hands back a
+        # systemd unit whose command would refuse with exit 2 at every start —
+        # Restart=on-failure would then loop it until the start limit trips.
+        guard_worktree(
+            [directory, *(d for d in (done_dir, error_dir) if d is not None)],
+            force=force,
+            what="watch --done-dir/--error-dir",
+        )
     if print_service:
         click.echo(render_service(print_service, directory, ctx), nl=False)
         return

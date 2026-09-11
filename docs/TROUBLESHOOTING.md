@@ -175,6 +175,62 @@ fc-list | grep -i "dejavu"     # confirm the font is visible to fontconfig
 
 For CJK or emoji coverage add `fonts-noto-cjk` / `fonts-noto-color-emoji`.
 
+## `--apply` exits 2: "would move files that git is tracking"
+
+`carrel rename --apply`, `organize --apply`, `intake --apply` and
+`watch --done-dir/--error-dir` refuse to start when the move would touch a file
+git is tracking. The message names the repository and what it found:
+
+```console
+$ carrel organize ~/projects/myapp/src --apply
+error: organize --apply would move files that git is tracking:
+  /home/you/projects/myapp
+    tracked: src/a.py, src/b.py, src/c.py, … (21 total)
+Renaming tracked files breaks imports, tests and history. Point this
+somewhere else, or pass --force if it is what you meant.
+```
+
+This is a guard, not a bug. A tracked file's *name is content*: imports, test
+collection, CI configuration and the history all address it by path, so a bulk
+rename leaves a repository that no longer builds. carrel learned this the hard
+way — a `rename --apply` aimed at its own checkout renamed 21 tracked files
+after the "fields" it read out of their source.
+
+Your options, best first:
+
+1. **Point the command somewhere else.** Bulk renaming and filing are for
+   document directories, not source trees.
+2. **Preview first.** Drop `--apply`; the dry-run default prints the whole plan
+   and is never guarded.
+3. **`--force`**, when rewriting those files is genuinely what you want. Commit
+   first, so `git status` can show you what happened.
+
+**Untracked files inside a repository are fine.** If `~` is a dotfiles
+repository, `carrel intake ~/Downloads --to ~/Documents/filed --apply` still
+works, because nothing in `~/Downloads` is tracked. Only tracked paths refuse.
+A shell glob is guarded like a directory: `carrel rename src/*.py --apply`
+expands to a list of files that git tracks, which is the incident above.
+
+`intake` refuses *before* creating `--to`, so a refused run leaves the disk
+untouched, and `watch --print-service` refuses before printing a unit whose
+command would fail at every start. A destination that does not exist yet is
+never guarded — creating a directory tracks nothing — so the first
+`intake ~/Downloads --to ~/filed --apply` works even when `~` is a repository.
+
+**Without the git binary** carrel cannot tell what is tracked, so it exits 3
+with git's install hint rather than guessing:
+
+```console
+$ carrel organize ~/projects/myapp/src --apply
+error: 'git' is required for this operation but was not found.
+  purpose: changed-file lists for pack --since/--changed
+  install: sudo apt install git
+```
+
+Install git, or pass `--force` to skip the question. carrel never treats "could
+not ask" as "nothing is tracked" — that would fail open on exactly the case the
+guard exists for.
+
 ## Watch doesn't fire on /mnt/c
 
 `carrel watch` uses native inotify events (via the watchdog library). On the

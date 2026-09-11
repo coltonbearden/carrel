@@ -34,6 +34,19 @@ class CarrelInputError(CarrelError):
     exit_code = ExitCode.BAD_INPUT
 
 
+class CarrelUsageError(CarrelError):
+    """The command was asked to do something it refuses to do → exit 2.
+
+    `click.UsageError` is the wrong shape for this: click prefixes it with a
+    `Usage:` / `Try --help` banner, which tells the user their arguments were
+    malformed when in fact they were understood and refused. This goes through
+    `fail()` like every other carrel error, so the message reads `error: …` and
+    `core/` stays free of the CLI framework.
+    """
+
+    exit_code = ExitCode.USAGE
+
+
 def emit(ctx: click.Context | None, data: Any, human: Callable[[Any], None] | None = None) -> None:
     """Print `data` as JSON when --json is active, else via `human` (or pretty rich fallback)."""
     as_json = bool(ctx and ctx.obj and ctx.obj.get("json"))

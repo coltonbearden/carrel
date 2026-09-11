@@ -23,6 +23,19 @@
 
 ## Done
 
+- 2026-09-11 (spec 29, D-017): `rename --apply`, `organize --apply`, `intake --apply` and
+  `watch --done-dir/--error-dir` refuse (exit 2) when the move would touch a file **git is
+  tracking**, naming the repository and the paths; each gains `--force`. Motivated by the
+  2026-09-10 incident in which a `rename --apply` aimed at this checkout renamed 21 tracked
+  files. The first draft asked "is this inside a work tree?" and the review killed it twice
+  over: it refused forever on the `$HOME`-is-a-dotfiles-repo layout (no way out but `--force`,
+  the reflex the guard exists to prevent) while still letting `rename src/*.py --apply` —
+  the incident itself, arriving as file arguments — straight through. `git ls-files` answers
+  the right question. Also from that review: `pack --since` without git regressed to exit 4
+  "not a git repository" instead of exit 3 with the install hint; `organize --into ../escape`
+  wrote outside the guarded directory; the guard masked genuine argument errors by running
+  before validation; and `click.UsageError` printed a `Usage:` banner implying the command
+  line was malformed (now `CarrelUsageError`, which also keeps click out of `core/`).
 - 2026-09-11 (D-016): `handled` and `root_of` live once, in `core/output.py`. The decorator
   had 25 byte-identical copies and the desk-root resolver 12, plus four open-coded root
   lookups and three inlined copies of the decorator's body; `color.py` was importing
@@ -95,6 +108,21 @@
   six headline `pack` flags are agent-invisible. Its own spec.
 - Owner-only: add `test-minimal (macos)` to the `main` ruleset and to `REQUIRED_CHECKS`
   (docs/REPO_SETTINGS.md).
+
+- `--force` now carries two unrelated meanings. On `mail`, `edit`, `sign`, `form`, `catalog`,
+  `meta` and `audiobook` it means "overwrite existing output"; on `rename`, `organize`,
+  `intake` and `watch` it means "bypass the tracked-files guard" (spec 29) — and those four
+  never overwrite anything, so the habitual meaning does not apply. Someone who learned
+  `--force` from `mail attachments` and adds it to `intake --apply` expecting overwrite
+  semantics silently disables a safety guard instead. Raised by the spec-29 review; kept as
+  `--force` because the session brief specified that flag by name. A distinct spelling
+  (`--allow-tracked`) would not be reachable by reflex — an owner call, since it is a
+  user-facing rename.
+
+- `tests/test_guardrails.py` adds a ninth near-verbatim copy of the `run()` CliRunner helper
+  (also in `test_refs.py`, `test_desk_db_cmds.py`, `test_watch_org_dedupe.py`,
+  `test_redact_sign_form.py` and others). `tests/conftest.py` is the shared-plumbing home;
+  hoisting it is a whole-suite edit, deliberately not bundled into a behaviour PR.
 
 ## Key facts for a fresh session
 

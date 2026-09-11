@@ -23,6 +23,9 @@ Usage: carrel rename [OPTIONS] PATHS...
   suffixes), and carry the desk row under --root along. JSON: [{src, dest, action:
   rename|renamed|skip, reason, sources}].
 
+  --apply refuses (exit 2) when a PATH would rename a file git is tracking, where a new name breaks
+  imports, tests and history. Untracked files inside a repository are fine; --force overrides.
+
 Options:
   --template TEXT          Name template; see the placeholders in the command description.
                            [default: {date}_{vendor}_{ref}{ext}]
@@ -34,6 +37,7 @@ Options:
   --max-len INTEGER RANGE  Cap the stem length.  [default: 120; x>=8]
   --ocr                    OCR images and scanned PDFs to read their fields (needs tesseract /
                            ocrmypdf).
+  --force                  Rename even when a PATH is a file git tracks (see the description).
   --json                   Machine-readable JSON output.
   --help                   Show this message and exit.
 ```
