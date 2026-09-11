@@ -5,42 +5,58 @@
 
 ## Now
 
-- **Status:** v0.4.1 "consolidation and guardrails" released 2026-09-11 (GitHub Release pinned to
-  the release PR's merge commit `5aaed7b`, PyPI via Trusted Publishing). Verified from PyPI in a
-  clean venv: `carrel 0.4.1`, `doctor --json` 33 commands and 19 adapters, and the spec-29 guard
-  refusing (exit 2) to move a tracked file in a real repository. The wheel and the sdist each
-  carry a PEP 740 attestation naming `coltonbearden/carrel`, `publish.yml` and environment
-  `pypi`. The global `carrel[all]` install is upgraded. 33 commands, 14 MCP tools, 19 adapters,
+- **Status:** v0.4.1 "consolidation and guardrails" is the current release (2026-09-11); its
+  verification record is the v0.4.1 entry under Done. 33 commands, 14 MCP tools, 19 adapters,
   9 marketplace plugins, desk schema v2. Repo `coltonbearden/carrel`, docs at
   https://coltonbearden.github.io/carrel/, PyPI package `carrel`.
 - **In flight:** nothing.
-- **Next:** MCP v3 (spec 30) — the 15 commands with no tool, `rename`/`batch`/`intake`
-  first, so the accounting-inbox pipeline stops being CLI-only. See Open issues.
-- **Also pending:** promote `test-minimal (windows)` to required once it has been green on
-  `main` for two consecutive weeks (from 2026-09-10, so on or after **2026-09-24**): drop
-  `continue-on-error` in `.github/workflows/test.yml`, then re-run
-  `scripts/github-harden.sh` with the check added to `REQUIRED_CHECKS`.
-  `test-minimal (macos)` is **done** — added to `REQUIRED_CHECKS` and applied to the `main`
-  ruleset on 2026-09-11, verified by `scripts/github-harden.sh --verify-only`.
+- **Next:** MCP v3 (`specs/30-mcp-v3.md`): 11 new tools, 14 → 25, with `rename` and `intake`
+  first so the accounting-inbox pipeline stops being CLI-only. `batch` is cut from that wave —
+  it is the single `shell=True` site (D-013) — and `audiobook`, `color` and `proof` are
+  deferred; the spec says why. Do the owed review below first.
+- **Also pending:**
+  - **A review is owed.** The fixes for the v0.4.1 release PR's second review shipped verified
+    but unreviewed: systemd `ExecStart` quoting and the schtasks `/TR` escaping in
+    `commands/watch.py`, and the guard's symlink handling, `--literal-pathspecs` and
+    per-repository lookup in `core/fsops.py`. GitHub keeps that commit as the PR head:
+    `git fetch origin pull/36/head:pr36 && git diff pr36~1 pr36`. Review it before MCP v3
+    builds on those modules.
+  - **Owner's step, on or after 2026-09-24:** promote `test-minimal (windows)` to required once
+    it has been green on `main` for two consecutive weeks. That changes branch protection, so it
+    needs the owner's go-ahead in that session: drop `continue-on-error` in
+    `.github/workflows/test.yml`, add the check to `REQUIRED_CHECKS`, then run
+    `scripts/github-harden.sh`. (`test-minimal (macos)` was added on 2026-09-11 under the
+    owner's authorisation in the v0.4.1 brief.)
 
 ## Done
 
-- 2026-09-11 (v0.4.1): released and verified from PyPI — see Status — in five PRs (#32–#36).
-  The release PR itself took two review rounds. The first found the `watch` guard over-reaching
+- 2026-09-11 (v0.4.1): released in five PRs (#32–#36). The GitHub Release is pinned to the
+  release PR's merge commit `5aaed7b`, whose tree is byte-identical to the one CI tested; PyPI via
+  Trusted Publishing. Verified from PyPI in a clean venv with no extras: `carrel 0.4.1`,
+  `doctor --json` 33 commands (31 ok; `mail` degraded without readpst and `desk` unavailable
+  without the `tui` extra, both by design) and 19 adapters, and the spec-29 guard refusing
+  (exit 2) to move a tracked file in a real repository. The wheel and the sdist each carry a
+  PEP 740 attestation naming `coltonbearden/carrel`, `publish.yml` and environment `pypi`. The
+  global `carrel[all]` install went 0.4.0 → 0.4.1 (32 ok, `mail` degraded).
+  The release PR had two completed reviews. The first found the `watch` guard over-reaching
   into subdirectories, generated service units pinning whichever `carrel` was first on PATH, an
-  unescaped schtasks line, `publish.yml` free to re-resolve dependencies no PR check saw, and
-  QUICKSTART §7 catalog samples rotted since v0.4.0 (re-run for real). The second found a tracked
-  symlink slipping past the guard, glob characters in file names over-matching, `--glob`
-  ignored, one `git rev-parse` per directory (1,500 directories: 2.52 s, now 0.10 s), and systemd
-  `%`, `$` and backslash quoting wrong in every generated unit — fixed and verified by starting
-  a real systemd unit that re-prints its argv, and against real repositories. Before tagging,
-  `publish.yml` was simulated end to end under `UV_LOCKED=1`, because a pushed tag cannot be
-  moved and a broken publish would have burned the version.
+  unescaped schtasks line, `publish.yml` free to re-lock the environment its test step runs in,
+  and QUICKSTART §7 catalog samples rotted since v0.4.0 (re-run for real); the second review
+  covered those fixes. The second found a tracked symlink slipping past the guard, glob
+  characters in file names over-matching, `--glob` ignored, one `git rev-parse` per directory
+  (1,500 directories: 2.52 s, now 0.10 s) and systemd `%`, `$` and backslash quoting wrong in
+  every generated unit. Those fixes were verified — a real systemd unit re-printing its argv,
+  real repositories, the suite — but **not reviewed** (Also pending). Before tagging,
+  `publish.yml`'s build job was replayed at the release head under `UV_LOCKED=1` and passed;
+  that lock covers `uv run` only, and the `hatchling` build backend is still unpinned (Open issues).
 - 2026-09-11 process + settings: `.claude/settings.json` is committed, so an unattended agent
-  run never stalls on a permission prompt for the release loop (`uv`, the git branch verbs,
-  `gh pr`/`run`/`release`, `claude plugin`, `mkdocs`, and `gh api` as read-only GETs plus the
-  two named write shapes); the deny list covers `rm -rf` outside `/tmp`, `git push --force`,
-  `git reset --hard`, `git clean`, `gh api --method DELETE` and `carrel *--apply`. The repo's
+  run never stalls on a permission prompt for the release loop (`uv`, `git switch`/`fetch`/
+  `rebase`/`worktree`, the read-only and PR-opening halves of `gh`, `claude plugin`, `mkdocs`,
+  and `scripts/github-harden.sh`). Rules are prefix matches, so `gh api` is deliberately not
+  allow-listed — no prefix can express read-only. The deny list names destructive shapes:
+  specific `rm -rf` roots, `git push --force`, `git reset --hard`, `git clean`, the
+  work-destroying `git checkout`/`stash drop`/`branch -D` forms, `gh run delete` and
+  `gh release delete`. The repo's
   own `.gitignore` now excludes `.claude/settings.local.json` — it was only ever excluded by
   this machine's *global* gitignore, so a fresh clone could have committed someone's local
   permissions. CLAUDE.md gains two rules: a PR merges only after its review completes, and
@@ -113,6 +129,11 @@
   into the generated systemd unit, which runs from `$HOME` — a relative `--root` made the
   unit die on every start. `tests/test_command_conventions.py` is the drift gate and the
   first cover the `--debug` re-raise branch has ever had.
+- 2026-09-10 (v0.4.0): released (GitHub Release + PyPI via Trusted Publishing, with a PEP 740
+  attestation) and verified from PyPI in a clean venv: `carrel 0.4.0`, `doctor` 33 commands
+  (31 ok, `mail` degraded without readpst, `desk` unavailable without the `tui` extra — both by
+  design), and an end-to-end `intake` → `meta find` → `mail threads` against a fresh desk. The
+  global `carrel[all]` install was upgraded.
 - 2026-09-10 (v0.4.0, specs 23–28): the accounting-inbox release, in five PRs (#25, #26, #28, #29, #30).
   `meta` + `refs` (#25), email as a file type + `mail` (#26), `fields` + `rename` +
   `batch` + watch v2 (#28), the email review fixes (#29), and `intake`. Schema v2 adds
@@ -189,7 +210,7 @@
   as an escape at all; the printed REM lines now say so. The real fix is Task Scheduler XML
   (`schtasks /Create /XML FILE`), where the command and its arguments are separate elements
   and no shell is involved. That changes what `--print-service schtasks` prints and needs
-  the accepted file encoding verified on Windows, so it is its own change, not a fourth
+  the accepted file encoding verified on Windows, so it is its own change rather than another
   fix round inside the v0.4.1 release PR.
 
 - `watch` filters hidden paths only at start: `--existing` skips hidden entries and the
@@ -201,6 +222,14 @@
   an explicit `--force`, as the exposure. Found probing the v0.4.1 guard; pre-existing since
   watch v2 (v0.4.0). Fix: apply the same hidden-component and skip-subtree test in `seed`,
   with a regression test that writes into `.git/` under a recursive watch.
+
+- The build backend is unpinned. `pyproject.toml` asks for `hatchling` with no version and uv
+  has no build constraint, and `uv build` has no locked mode, so every build — CI's and
+  `publish.yml`'s — installs the newest hatchling at that moment. A release's PyPI files can be
+  built by a backend no PR check ran. `publish.yml`'s `UV_LOCKED=1` covers only its `uv run`
+  test step. Fix: pin `hatchling` exactly (in `[build-system] requires`, or through uv's build
+  constraints — `uv build --build-constraint`), keep it bumped by Dependabot, and let CI's build
+  job prove each bump.
 
 - `--force` now carries two unrelated meanings. On `mail`, `edit`, `sign`, `form`, `catalog`,
   `meta` and `audiobook` it means "overwrite existing output"; on `rename`, `organize`,
@@ -242,11 +271,12 @@
 - Extras (v0.2.0, specs/19, D-007): `tui` (textual, for `carrel desk`), `office`
   (openpyxl), `tokens` (tiktoken), `all`. A checkout uses `uv sync --all-extras`;
   the `test-minimal` CI jobs install none and must stay green via skips.
-- `main` is protected: changes land via PR with green `lint`, `test (py3.12/3.13/3.14)`,
-  `test-minimal`, and `test-minimal (macos)` checks (the macOS check must be added to the
-  ruleset by the repo owner — docs/REPO_SETTINGS.md). `test-minimal (windows)` runs the full
-  suite but is advisory (`continue-on-error`) until it has been green on `main` for two
-  consecutive weeks; its failure list by module is in docs/BUILD_PLAN.md.
+- `main` is protected: changes land via PR with green `lint`, `test (py3.12)`, `test (py3.13)`,
+  `test (py3.14)`, `test-minimal` and `test-minimal (macos)` (the list is `REQUIRED_CHECKS` in
+  `scripts/github-harden.sh`, mirrored in docs/REPO_SETTINGS.md; macOS was added 2026-09-11).
+  `test-minimal (windows)` runs the full suite and has passed since PR #22, but stays advisory
+  (`continue-on-error`) until it has been green on `main` for two consecutive weeks. The
+  failure-by-module list in docs/BUILD_PLAN.md is a 2026-09-09 snapshot, kept as history.
   Repo admin can bypass in an emergency. Do not run `scripts/finalize.sh` — it relocates the
   tree and creates a new repo; it was for the original hand-off only.
 - Marketplace: `claude plugin validate .` → `claude plugin marketplace add coltonbearden/carrel`
