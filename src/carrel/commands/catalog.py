@@ -247,7 +247,7 @@ def emit_status(ctx: click.Context, root: Path) -> None:
 def status(ctx: click.Context) -> None:
     """Report the desk db: schema version, row counts, and stale index entries.
 
-    JSON: {schema_version, db_path, counts: {files, docs, tags, notes},
+    JSON: {schema_version, db_path, counts: {files, docs, tags, notes, meta},
     stale: {changed, missing, unindexed}, examples: {changed, missing,
     unindexed} (up to 5 paths each)}. Always exit 0 (it is a report); exit 4
     when no .carrel/carrel.db exists under --root.

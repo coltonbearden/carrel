@@ -295,11 +295,11 @@ carrel catalog status
 ```text
 guides/release-checklist.md: process, release
 reference/glossary.md: reference
-note 1 on guides/release-checklist.md @ 2026-09-04T07:51:19
-…/docs/.carrel/carrel.db  (schema 1)
-                         desk catalog
-┃ files ┃ docs ┃ tags ┃ notes ┃ changed ┃ missing ┃ unindexed ┃
-│     6 │    6 │    3 │     1 │       0 │       0 │         0 │
+note 1 on guides/release-checklist.md @ 2026-09-11T13:34:25
+/home/you/docs/.carrel/carrel.db  (schema 2)
+                             desk catalog
+┃ files ┃ docs ┃ tags ┃ notes ┃ meta ┃ changed ┃ missing ┃ unindexed ┃
+│     6 │    6 │    3 │     1 │    0 │       0 │       0 │         0 │
 ```
 
 (Relative paths for `tag`/`note` resolve against your current directory, not
@@ -310,8 +310,11 @@ carrel catalog export -o desk.json
 ```
 
 ```text
-wrote desk.json: 2 file(s), 3 tag(s), 1 note(s)
+wrote /home/you/docs/desk.json: 2 file(s), 3 tag(s), 1 note(s), 0 field(s)
 ```
+
+(`field(s)` counts `carrel meta` fields, which travel with the catalog too —
+none have been set here.)
 
 `desk.json` is deterministic (sorted by path; only `exported` changes between
 runs), so it diffs cleanly and can live next to the files in version control:
@@ -321,16 +324,31 @@ runs), so it diffs cleanly and can live next to the files in version control:
   "schema": 2,
   "product": "carrel",
   "version": "0.4.1",
-  "exported": "2026-09-04T11:51:19+00:00",
+  "exported": "2026-09-11T17:34:25+00:00",
   "root": "/home/you/docs",
   "files": [
     {
       "path": "guides/release-checklist.md",
-      "tags": ["process", "release"],
-      "notes": [{"created": 1788522679.0094275, "body": "Step 4 needs the PyPI trusted publisher set up first."}],
+      "tags": [
+        "process",
+        "release"
+      ],
+      "notes": [
+        {
+          "created": 1789148065.4799895,
+          "body": "Step 4 needs the PyPI trusted publisher set up first."
+        }
+      ],
       "meta": []
     },
-    {"path": "reference/glossary.md", "tags": ["reference"], "notes": []}
+    {
+      "path": "reference/glossary.md",
+      "tags": [
+        "reference"
+      ],
+      "notes": [],
+      "meta": []
+    }
   ]
 }
 ```
@@ -340,18 +358,39 @@ same document twice adds nothing:
 
 ```console
 $ rm -rf .carrel && carrel index --json
-{"indexed": 6, "skipped": 0, "pruned": 0, "errors": []}
+{
+  "indexed": 7,
+  "skipped": 0,
+  "pruned": 0,
+  "errors": []
+}
 $ carrel catalog import desk.json
-imported 3 tag(s), 1 note(s) across 2 file(s)
+imported 3 tag(s), 1 note(s), 0 field(s) across 2 file(s)
 $ carrel --json catalog import desk.json
-{"tags_added": 0, "notes_added": 0, "files_touched": 0, "skipped_missing": 0, "tags_removed": 0, "notes_removed": 0}
+{
+  "tags_added": 0,
+  "notes_added": 0,
+  "meta_set": 0,
+  "files_touched": 0,
+  "skipped_missing": 0,
+  "tags_removed": 0,
+  "notes_removed": 0,
+  "meta_removed": 0,
+  "skipped_outside": 0
+}
 ```
+
+(Seven, not six: `desk.json` now sits in the folder and is a JSON document
+like any other, so the rebuilt index picks it up. `skipped_outside` counts
+catalog entries whose path falls outside the desk root — check it in scripts,
+since those are dropped silently.)
 
 `catalog status` (or `index --status`) is also how you learn the index is
 stale — edit one file, delete another, and:
 
 ```text
-│     6 │    6 │    3 │     1 │       1 │       1 │         0 │
+┃ files ┃ docs ┃ tags ┃ notes ┃ meta ┃ changed ┃ missing ┃ unindexed ┃
+│     7 │    7 │    3 │     1 │    0 │       1 │       1 │         0 │
   changed   reference/exit-codes.md
   missing   notes/topics.csv
 hint: `carrel index` refreshes changed/unindexed files; `carrel index --prune` drops missing ones

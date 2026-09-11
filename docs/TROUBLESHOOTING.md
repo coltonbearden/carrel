@@ -339,9 +339,11 @@ against `--root`. Run them from inside the desk root or pass absolute paths.
 To force one binary, use `CARREL_BIN_MAGICK`.
 
 **Old desk database after upgrading?** `.carrel/carrel.db` is versioned
-(`PRAGMA user_version`); a pre-v0.2.0 database is recognised and stamped
-version 1 on first open, data intact. `carrel catalog status` shows
-`(schema 1)`.
+(`PRAGMA user_version`) and migrated on open, data intact: a pre-v0.2.0 file
+is stamped 1 and then carried to the current schema in the same open, so
+`carrel catalog status` reports the current version (`(schema 2)` since
+v0.4.0) — never an older one. If it does not, the file was not opened by this
+carrel: check `--root` points at the desk you think it does.
 
 **Audiobook voice sounds robotic.** That's espeak-ng, the baseline. Install
 piper (`pipx install piper-tts`) and `--engine auto` picks it up next run.

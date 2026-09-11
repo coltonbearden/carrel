@@ -780,3 +780,50 @@ def test_argv_chunks_stay_inside_one_command_line() -> None:
     assert [p for c in chunks for p in c] == [str(p) for p in paths], "order is preserved"
     assert max(sum(len(p) + 1 for p in c) for c in chunks) <= fsops._ARGV_BUDGET
     assert len(list(fsops._chunked([Path("x" * (fsops._ARGV_BUDGET * 2))]))) == 1
+
+
+# --------------------------------------------- watch: scope of the guard
+
+
+@needs("git")
+def test_a_non_recursive_watch_ignores_a_tracked_subdirectory(tmp_path: Path) -> None:
+    """`ls-files -- DIR` matches recursively; a plain watch never descends.
+
+    The release review found `watch --done-dir` refusing over `incoming/templates/keep.txt`
+    while `organize` on the same directory (correctly) proceeded — the CHANGELOG's
+    "untracked files inside a repository are fine" was false for watch.
+    """
+    repo = make_repo(tmp_path / "repo")
+    incoming = repo / "incoming"
+    (incoming / "templates").mkdir(parents=True)
+    (incoming / "templates" / "keep.txt").write_text("tracked\n", encoding="utf-8")
+    commit_all(repo)
+    (incoming / "a.txt").write_text("untracked\n", encoding="utf-8")
+    done = tmp_path / "done"
+
+    result = run(
+        "watch",
+        str(incoming),
+        "--run",
+        "true",
+        "--done-dir",
+        str(done),
+        "--print-service",
+        "systemd",
+    )
+    assert "ExecStart=" in result.output
+
+    result = run(
+        "watch",
+        str(incoming),
+        "--run",
+        "true",
+        "--done-dir",
+        str(done),
+        "--recursive",
+        "--print-service",
+        "systemd",
+        expect=2,
+    )
+    assert "git is tracking" in result.output
+    assert "templates/keep.txt" in result.output

@@ -11,6 +11,11 @@ on:
 permissions:
   contents: read
 
+env:
+  # every job resolves from uv.lock, never re-resolves — the same guard
+  # test.yml carries; without it this was the one build allowed to drift
+  UV_LOCKED: "1"
+
 concurrency:
   group: publish-${{ github.ref }}
   cancel-in-progress: false

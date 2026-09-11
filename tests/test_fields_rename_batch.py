@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 from datetime import date, datetime
 from decimal import Decimal
@@ -876,3 +877,46 @@ def test_rename_records_a_failed_move_and_keeps_going(tmp_path: Path, fixtures: 
     assert [e["action"] for e in plan] == ["error"]
     assert "Permission" in plan[0]["reason"]  # the record names the file that did not move
     assert "could not be renamed" in result.output
+
+
+def test_print_service_reruns_this_carrel_not_the_first_on_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """A 0.4.1 venv must not print a unit pinned to an older global install.
+
+    `shutil.which("carrel")` picked whichever launcher was first on PATH; a
+    user who enabled that unit would run the older version forever, guard and
+    all. The launcher of the *printing* process is what the unit should name.
+    """
+    import sys
+
+    watched = tmp_path / "inbox"
+    watched.mkdir()
+    fake = tmp_path / "venv" / "bin" / "carrel"
+    fake.parent.mkdir(parents=True)
+    fake.write_text("#!/bin/sh\n", encoding="utf-8")
+
+    monkeypatch.setattr(sys, "argv", [str(fake)])
+    unit = run("watch", str(watched), "--run", "true", "--print-service", "systemd").output
+    exec_start = next(ln for ln in unit.splitlines() if ln.startswith("ExecStart="))
+    assert shlex.split(exec_start.removeprefix("ExecStart="))[0] == str(fake.resolve())
+
+    monkeypatch.setattr(sys, "argv", ["pytest"])  # not a carrel launcher
+    unit = run("watch", str(watched), "--run", "true", "--print-service", "systemd").output
+    exec_start = next(ln for ln in unit.splitlines() if ln.startswith("ExecStart="))
+    argv = shlex.split(exec_start.removeprefix("ExecStart="))
+    assert argv[:3] == [sys.executable, "-m", "carrel.cli"]
+
+
+def test_print_service_schtasks_escapes_quotes_inside_tr(tmp_path: Path):
+    """/TR is itself double-quoted; an inner quote must be \\" or cmd.exe truncates the action."""
+    watched = tmp_path / "inbox"
+    watched.mkdir()
+    task = run(
+        "watch", str(watched), "--run", "echo {path} done", "--print-service", "schtasks"
+    ).output
+    line = next(ln for ln in task.splitlines() if ln.startswith("schtasks /Create"))
+    tr = line.split(' /TR "', 1)[1].rsplit('" /F', 1)[0]
+    assert '\\"echo {path} done\\"' in tr, tr
+    # every quote inside the /TR value is escaped — none is bare
+    assert re.search(r'(?<!\\)"', tr) is None, tr

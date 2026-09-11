@@ -13,7 +13,7 @@
   upgraded. 33 commands, 14 MCP tools, 19 adapters, 9 marketplace plugins, desk schema v2.
   Repo `coltonbearden/carrel`, docs at https://coltonbearden.github.io/carrel/, PyPI
   package `carrel`.
-- **In flight:** nothing.
+- **In flight:** the v0.4.1 release PR (#36) — the four v0.4.1 PRs (#32–#35) are merged.
 - **Next:** MCP v3 (spec 30) — the 15 commands with no tool, `rename`/`batch`/`intake`
   first, so the accounting-inbox pipeline stops being CLI-only. See Open issues.
 - **Also pending:** promote `test-minimal (windows)` to required once it has been green on
@@ -160,6 +160,14 @@
   the tool layer can call, and six headline `pack` flags remain agent-invisible. Its own spec
   (30), scoped as MCP v3: 14 → 25 tools (`batch` is cut — it is the single `shell=True` site).
 
+
+- v0.4.1 ships a documented behaviour change (`--apply` refuses tracked files, exit 2) as a
+  **patch** bump. The release review argued for 0.5.0: a `carrel~=0.4.0` pin or a routine
+  `uv tool upgrade` pulls it in, and a cron `intake --apply` whose `--to` sits under a
+  dotfiles repo could start exiting 2. Kept at 0.4.1 because the session brief named that
+  version; the guard only bites on *tracked* files, and `--force` is the documented way
+  through. Owner call whether the next behaviour change bumps minor, and whether
+  `publish.yml` should refuse a patch tag when the CHANGELOG entry says "Changed (behaviour)".
 
 - `--force` now carries two unrelated meanings. On `mail`, `edit`, `sign`, `form`, `catalog`,
   `meta` and `audiobook` it means "overwrite existing output"; on `rename`, `organize`,

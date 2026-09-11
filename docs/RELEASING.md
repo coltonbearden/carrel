@@ -44,8 +44,18 @@ worth having because they are real.
 
 ```sh
 git switch main && git pull --ff-only
-gh release create vX.Y.Z --title "vX.Y.Z" --generate-notes
+sha=$(git rev-parse HEAD)                       # the release PR's merge commit
+awk '/^## vX\.Y\.Z /{f=1;next} /^## /{f=0} f' CHANGELOG.md > /tmp/notes.md
+gh release create vX.Y.Z --title "vX.Y.Z" --target "$sha" \
+  --notes-file /tmp/notes.md --generate-notes
 ```
+
+`--target` pins the tag to the commit you verified: without it the tag lands
+on whatever `main` points at, so a PR merged in the meantime ships to PyPI as
+this version, undescribed and unreviewable (PyPI versions are immutable).
+`--notes-file` puts the CHANGELOG entry first in the release body — that is
+where a behaviour change and its escape hatch have to be visible — and
+`--generate-notes` appends the PR list after it.
 
 The tag **must** be `v` + the `product.json` version — the workflow refuses
 anything else. Tags matching `v*` are protected by a ruleset (no deletion, no

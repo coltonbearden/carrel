@@ -24,7 +24,6 @@ from __future__ import annotations
 import fnmatch
 import json
 import shlex
-import shutil
 import subprocess
 import sys
 import threading
@@ -256,11 +255,25 @@ def _abs(value: Any) -> str:
     return str(Path(value).resolve()) if isinstance(value, Path) else str(value)
 
 
+def _self_command() -> list[str]:
+    """argv that re-runs *this* carrel — not whichever one is first on PATH.
+
+    `shutil.which("carrel")` resolved the generated unit against PATH, so a
+    0.4.1 venv could print a unit pinned to an older global install and the
+    service would then run that version forever, guard and all. `sys.argv[0]`
+    is the launcher of the process that is printing the unit; under a test
+    runner it is not a carrel launcher, and the module form is used instead.
+    """
+    me = Path(sys.argv[0]) if sys.argv and sys.argv[0] else None
+    if me is not None and me.stem == "carrel" and me.is_file():
+        return [str(me.resolve())]
+    return [sys.executable, "-m", "carrel.cli"]
+
+
 def _watch_command_line(ctx: click.Context, directory: Path) -> list[str]:
     """This invocation as an argv list, rebuilt from click's parsed options (never sys.argv,
     which is the test runner's under CliRunner), without --print-service."""
-    exe = shutil.which("carrel")
-    argv: list[str] = [exe] if exe else [sys.executable, "-m", "carrel.cli"]
+    argv: list[str] = _self_command()
     parent = ctx.parent
     source = parent.get_parameter_source("root") if parent is not None else None
     if source is not None and source.name != "DEFAULT":
@@ -305,7 +318,10 @@ def render_service(kind: str, directory: Path, ctx: click.Context) -> str:
             "[Install]\n"
             "WantedBy=default.target\n"
         )
-    cmd = subprocess.list2cmdline(argv)
+    # /TR is itself a double-quoted argument, so any quote inside the command
+    # line — every --run action with a space — must be escaped as \" or cmd.exe
+    # ends the value at the first inner quote and truncates the action.
+    cmd = subprocess.list2cmdline(argv).replace('"', '\\"')
     return (
         "REM Run once in an elevated or user PowerShell/cmd to start this watch at logon:\n"
         f'schtasks /Create /SC ONLOGON /TN "carrel watch" /TR "{cmd}" /F\n'
@@ -504,8 +520,17 @@ def cmd(
         # Checked before --print-service returns, so carrel never hands back a
         # systemd unit whose command would refuse with exit 2 at every start —
         # Restart=on-failure would then loop it until the start limit trips.
+        # Only what this watch could move: the files at the level it watches
+        # (the whole tree with --recursive, the top level without) plus the
+        # destinations. `ls-files -- DIR` matches recursively, so passing the
+        # directory made a tracked sub/ refuse a non-recursive watch that never
+        # touches it — the over-reach organize had already fixed. Files that
+        # arrive later are outside any start-time check by nature.
+        present = (
+            p for p in (directory.rglob("*") if recursive else directory.iterdir()) if p.is_file()
+        )
         guard_worktree(
-            [directory, *(d for d in (done_dir, error_dir) if d is not None)],
+            [*present, *(d for d in (done_dir, error_dir) if d is not None)],
             force=force,
             what="watch --done-dir/--error-dir",
         )
