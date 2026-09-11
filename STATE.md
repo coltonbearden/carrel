@@ -5,15 +5,15 @@
 
 ## Now
 
-- **Status:** v0.4.0 "the accounting inbox" released 2026-09-10 (GitHub Release + PyPI via
-  Trusted Publishing, with a PEP 740 attestation). Verified from PyPI in a clean venv:
-  `carrel 0.4.0`, `doctor` 33 commands (31 ok, `mail` degraded without readpst, `desk`
-  unavailable without the `tui` extra — both by design), and an end-to-end `intake` →
-  `meta find` → `mail threads` against a fresh desk. The global `carrel[all]` install is
-  upgraded. 33 commands, 14 MCP tools, 19 adapters, 9 marketplace plugins, desk schema v2.
-  Repo `coltonbearden/carrel`, docs at https://coltonbearden.github.io/carrel/, PyPI
-  package `carrel`.
-- **In flight:** the v0.4.1 release PR (#36) — the four v0.4.1 PRs (#32–#35) are merged.
+- **Status:** v0.4.1 "consolidation and guardrails" released 2026-09-11 (GitHub Release pinned to
+  the release PR's merge commit `5aaed7b`, PyPI via Trusted Publishing). Verified from PyPI in a
+  clean venv: `carrel 0.4.1`, `doctor --json` 33 commands and 19 adapters, and the spec-29 guard
+  refusing (exit 2) to move a tracked file in a real repository. The wheel and the sdist each
+  carry a PEP 740 attestation naming `coltonbearden/carrel`, `publish.yml` and environment
+  `pypi`. The global `carrel[all]` install is upgraded. 33 commands, 14 MCP tools, 19 adapters,
+  9 marketplace plugins, desk schema v2. Repo `coltonbearden/carrel`, docs at
+  https://coltonbearden.github.io/carrel/, PyPI package `carrel`.
+- **In flight:** nothing.
 - **Next:** MCP v3 (spec 30) — the 15 commands with no tool, `rename`/`batch`/`intake`
   first, so the accounting-inbox pipeline stops being CLI-only. See Open issues.
 - **Also pending:** promote `test-minimal (windows)` to required once it has been green on
@@ -25,6 +25,17 @@
 
 ## Done
 
+- 2026-09-11 (v0.4.1): released and verified from PyPI — see Status — in five PRs (#32–#36).
+  The release PR itself took two review rounds. The first found the `watch` guard over-reaching
+  into subdirectories, generated service units pinning whichever `carrel` was first on PATH, an
+  unescaped schtasks line, `publish.yml` free to re-resolve dependencies no PR check saw, and
+  QUICKSTART §7 catalog samples rotted since v0.4.0 (re-run for real). The second found a tracked
+  symlink slipping past the guard, glob characters in file names over-matching, `--glob`
+  ignored, one `git rev-parse` per directory (1,500 directories: 2.52 s, now 0.10 s), and systemd
+  `%`, `$` and backslash quoting wrong in every generated unit — fixed and verified by starting
+  a real systemd unit that re-prints its argv, and against real repositories. Before tagging,
+  `publish.yml` was simulated end to end under `UV_LOCKED=1`, because a pushed tag cannot be
+  moved and a broken publish would have burned the version.
 - 2026-09-11 process + settings: `.claude/settings.json` is committed, so an unattended agent
   run never stalls on a permission prompt for the release loop (`uv`, the git branch verbs,
   `gh pr`/`run`/`release`, `claude plugin`, `mkdocs`, and `gh api` as read-only GETs plus the
