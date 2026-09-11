@@ -97,20 +97,42 @@ generated fixtures **are** committed.
 
 ## Permissions for an unattended agent run
 
-`.claude/settings.json` is committed and grants Claude Code the commands this
-repository's release loop actually uses — `uv run`/`uv sync`, the git
-branch-and-worktree verbs, `gh pr`/`run`/`release`, `claude plugin`, `mkdocs`,
-and `gh api` as read-only GETs on this repo plus the two named write shapes
-(the `main` ruleset and release creation). Everything else still prompts.
+`.claude/settings.json` is committed so an unattended agent run does not stall
+waiting for a human to approve the commands this repository's release loop
+actually uses: `uv run`/`sync`/`build`, `git switch`/`fetch`/`rebase`/`worktree`,
+the read-only and PR-opening halves of `gh`, `claude plugin`, `mkdocs build`,
+and `scripts/github-harden.sh`.
 
-It exists so an unattended run never stalls waiting for a human to approve
-`gh api repos/…`, which is how the v0.4.1 session lost two tool calls.
+**Read the rules as prefixes, because that is what they are.** A rule matches
+any command *beginning* with its text, so `Bash(gh pr:*)` would also permit
+`gh pr merge`, and `Bash(rm -rf /:*)` would deny `rm -rf /tmp/scratch`. Every
+entry here is therefore written as a specific verb, and three consequences
+follow that are easy to get wrong:
 
-The deny list is the other half: `rm -rf` outside `/tmp`, `git push --force`,
-`git reset --hard`, `git clean`, `gh api --method DELETE`, `gh secret`, and
-`carrel rename/organize/intake --apply` (mutating smoke tests belong in a
-`/tmp` scratch directory — see CLAUDE.md).
+- **`gh api` is not allow-listed at all.** No endpoint prefix is safe: `gh api
+  repos/owner/repo` also matches `gh api repos/owner/repo/... -X DELETE`, and
+  `-X` can appear anywhere in the line. The narrow "read-only GET" grant this
+  file originally tried to express cannot be expressed. `scripts/github-harden.sh`
+  is allow-listed instead — it is the audited wrapper that performs the ruleset
+  work, and it has a `--verify-only` mode. Ad-hoc `gh api` still prompts, which
+  is correct.
+- **`gh pr merge` is denied**, not merely absent, because CLAUDE.md's merge gate
+  is the one policy this repository most wants enforced. Same for `gh run delete`
+  and `gh release delete`.
+- **The deny list cannot stop `carrel … --apply`.** The flag comes after the
+  path (`carrel organize DIR --apply`), so no prefix rule reaches it, and
+  `uv run` — this repo's canonical runner — would cover it anyway. What actually
+  guards that is the product itself (spec 29: a bulk move refuses to rename
+  files git tracks) plus CLAUDE.md's rule that mutating smoke tests run in a
+  `/tmp` scratch directory. Do not read an absence here as a guarantee.
 
-Your own `.claude/settings.local.json` is git-ignored and takes precedence, so
-a local `ask` entry still overrides an `allow` here; this file sets the floor
-for a fresh clone, not a ceiling on your own machine.
+Destructive verbs that discard uncommitted work are denied alongside the
+obvious ones: `git checkout .`, `git checkout -f`, `git stash drop`/`clear` and
+`git branch -D` destroy exactly what `git reset --hard` and `git clean` do.
+`git switch` is allowed and covers branch changes safely.
+
+Your own `.claude/settings.local.json` is git-ignored and takes precedence, so a
+local `ask` entry still overrides an `allow` here. This file sets the floor for
+a fresh clone, not a ceiling on your machine — but note that a `deny` cannot be
+overridden locally or at the prompt, which is why the deny list is short and
+specific.

@@ -34,10 +34,16 @@
   this machine's *global* gitignore, so a fresh clone could have committed someone's local
   permissions. CLAUDE.md gains two rules: a PR merges only after its review completes, and
   mutating smoke tests run in `/tmp`. `docs/index.md` said "ten MCP tools" two releases after
-  it became 14; `tests/test_docs_drift.py` now pins the count in README, `docs/index.md` and
-  `docs/FEATURES.md` and every tool name in `docs/AGENTS.md` against `mcp.TOOLS`
-  (`docs/TEST_REPORT.md` and `docs/BUILD_PLAN.md` are dated history and stay unpinned).
-  GitHub: `test-minimal (macos)` is a required check on the `main` ruleset.
+  it became 14; `tests/test_docs_drift.py` now scans **every live doc** (plus the plugin
+  skills, whose frontmatter states it) for a stated tool count and checks it against
+  `mcp.TOOLS`, and pins every tool name in `docs/AGENTS.md` plus the inline lists in README
+  and `docs/FEATURES.md`. The first attempt hand-listed three files and matched the literal
+  "MCP tools", which only ever existed in `docs/index.md` — six live statements of the count
+  sat outside it, including a shipped plugin skill. The name check scanned whole documents,
+  where `search`/`pack`/`diff` appear for unrelated reasons, so it could not fail; it reads
+  only the lines describing MCP now, and a meta-test strips the list out to prove it bites.
+  GitHub: `test-minimal (macos)` is a required check on the `main` ruleset, and
+  `docs/REPO_SETTINGS.md` is pinned against `REQUIRED_CHECKS` so that pair cannot drift.
 - 2026-09-11 (spec 29, D-017): `rename --apply`, `organize --apply`, `intake --apply` and
   `watch --done-dir/--error-dir` refuse (exit 2) when the move would touch a file **git is
   tracking**, naming the repository and the paths; each gains `--force`. Motivated by the
@@ -152,7 +158,7 @@
   the whole v0.4.0 accounting-inbox pipeline is CLI-only, so the `bookkeeper` agent shells out
   for exactly the steps that move files. Most already have `_file()`/`_paths()` entry points
   the tool layer can call, and six headline `pack` flags remain agent-invisible. Its own spec
-  (30), scoped as MCP v3: 14 → 26 tools.
+  (30), scoped as MCP v3: 14 → 25 tools (`batch` is cut — it is the single `shell=True` site).
 
 
 - `--force` now carries two unrelated meanings. On `mail`, `edit`, `sign`, `form`, `catalog`,
