@@ -704,7 +704,16 @@ def test_watcher_settle_waits_for_a_growing_file(tmp_path: Path, monkeypatch):
     from carrel.commands.watch import _Watcher
 
     class _Clock:
-        """`watch.time`, with monotonic() under the test's control."""
+        """`watch.time`, with monotonic() under the test's control.
+
+        `sleep()` advances the fake clock instead of blocking. Without that,
+        code that waits for a monotonic deadline — `_run_watch`'s `--timeout`
+        loop at `watch.py:644` is the live example — would spin forever against
+        a frozen clock, and the suite configures no pytest timeout, so the
+        failure would be a silent 30-minute job kill rather than a test
+        failure. `_run_watch` blocks on `watcher.stop.wait()` rather than
+        `time.sleep()`, so this clock still must not be pointed at it.
+        """
 
         def __init__(self) -> None:
             self.now = 1_000.0
@@ -715,7 +724,10 @@ def test_watcher_settle_waits_for_a_growing_file(tmp_path: Path, monkeypatch):
         def advance(self, seconds: float) -> None:
             self.now += seconds
 
-        def __getattr__(self, name: str):  # sleep(), time(), … stay real
+        def sleep(self, seconds: float) -> None:
+            self.advance(seconds)
+
+        def __getattr__(self, name: str):  # time(), strftime(), … stay real
             return getattr(real_time, name)
 
     clock = _Clock()
