@@ -130,7 +130,7 @@ Three layers, in this order, wherever carrel introduces itself (D-024):
 | Layer | Text | Where it belongs |
 |---|---|---|
 | **Motto** | *A library desk for your files — and your agents.* | `product.json` `tagline`; the banner; the docs-site subtitle |
-| **Functional line** | **Read, index, pack and file your documents — from the terminal, for you and your agents.** | first line of `README.md` and `docs/index.md`; the GitHub description; the start of the PyPI summary |
+| **Functional line** | **Read, index, pack and file your documents — from the terminal, for you and your agents.** | first line of `README.md` and `docs/index.md`; the intended GitHub description (an owner step, see `STATE.md`); and, without its trailing clause, the start of the PyPI summary — the motto precedes it there and already says "and your agents" |
 | **Three use cases** | give Claude the right context · read what the agent can't · turn an inbox into an archive | the README's "Three things to try", in that order |
 
 The motto says what carrel *is* and is the only line allowed to be evocative. The functional

@@ -222,6 +222,18 @@ def test_the_agent_docs_name_every_mcp_tool():
     assert not missing, f"docs/AGENTS.md lacks a row for: {missing}"
 
 
+#: The tool *enumeration* is written as "N tools (a, b, c, …)" and nowhere else.
+#: Deriving the surface from every line mentioning "mcp" swept in ordinary prose —
+#: `search`, `pack`, `index`, `doctor`, `fields` and `refs` are also plain English —
+#: which diluted the guard until whether it bit depended on where a paragraph
+#: happened to hard-wrap.
+_TOOL_LIST_LINE = re.compile(r"\btools\s*\(")
+
+
+def _tool_list_surface(path: Path) -> str:
+    return " ".join(line for line in _read(path).splitlines() if _TOOL_LIST_LINE.search(line))
+
+
 def test_the_prose_tool_lists_name_every_mcp_tool():
     """README and FEATURES list the tools inline, by bare command name.
 
@@ -232,8 +244,8 @@ def test_the_prose_tool_lists_name_every_mcp_tool():
     missing: list[str] = []
     for rel in ("README.md", "docs/FEATURES.md"):
         path = REPO_ROOT / rel
-        surface = " ".join(line for line in _read(path).splitlines() if "mcp" in line.lower())
-        assert surface, f"{rel} says nothing about MCP"
+        surface = _tool_list_surface(path)
+        assert surface, f"{rel} states no MCP tool list"
         missing += [
             f"{rel}: {_display_name(name)}"
             for name in _tool_names()
@@ -250,21 +262,21 @@ def test_the_prose_lists_would_notice_a_deletion():
     check above narrows to the lines describing MCP. This proves that narrowing
     is enough to make a deletion visible.
     """
-    surface = " ".join(
-        line for line in _read(REPO_ROOT / "README.md").splitlines() if "mcp" in line.lower()
-    )
+    surface = _tool_list_surface(REPO_ROOT / "README.md")
     names = [_display_name(n) for n in _tool_names()]
     assert all(re.search(rf"\b{re.escape(n)}\b", surface) for n in names), "fixture assumption"
 
     gutted = re.sub(r"\(([^)]*)\)", "()", surface)  # drop the parenthesised list
+    # ...and the resource templates, which name `search` outside it
+    gutted = re.sub(r"carrel://\S+", "carrel://", gutted)
     absent = [n for n in names if not re.search(rf"\b{re.escape(n)}\b", gutted)]
-    # A majority, not a fixed count: `search`, `pack`, `index`, `fields` and
-    # `refs` are ordinary words that legitimately appear in prose on the same
-    # lines, and a README that says more about what carrel does will name more of
-    # them. What must stay true is that deleting the list is *visible*.
-    assert len(absent) > len(names) // 2, (
-        f"removing the list left only {len(absent)} of {len(names)} names missing — "
-        "the MCP surface has grown broad enough that a deleted tool could hide in it"
+    # Every one of them: the surface *is* the enumeration now, so stripping the
+    # parenthesised list leaves nothing behind. An earlier version scanned every
+    # line mentioning "mcp", where ordinary prose named half the tools by
+    # coincidence and re-wrapping a paragraph changed the result.
+    assert absent == names, (
+        f"removing the list left {sorted(set(names) - set(absent))} still present — "
+        "the surface is wider than the enumeration and a deleted tool could hide in it"
     )
 
 
@@ -410,3 +422,35 @@ def test_the_history_exemption_is_load_bearing():
         if path.is_file() and any(TEST_COUNT_RE.search(line) for line in _read(path).splitlines())
     ]
     assert stated, "no HISTORY file states a test count — is the exemption still needed?"
+
+
+# ------------------------------------------------------- the functional line
+
+
+def test_the_readme_and_docs_index_open_with_the_functional_line():
+    """D-024 makes one sentence canonical; nothing was checking that it stayed so.
+
+    It is hand-copied into seven files. This repo mechanically gates plugin
+    tables, MCP tool counts, version samples and required-check names — the
+    positioning line was the one canonical string on the honour system, which is
+    exactly how "ten MCP tools" survived two releases.
+
+    `product.json` drops the line's trailing clause (the motto precedes it in the
+    composed PyPI summary and already says "and your agents"), so the shared part
+    is the first clause.
+    """
+    from carrel._product import PRODUCT
+
+    stem = PRODUCT["description"].split(" from the terminal")[0]
+    assert stem.startswith("Read, index, pack"), f"product.json no longer leads with it: {stem}"
+    for rel in ("README.md", "docs/index.md"):
+        text = _read(REPO_ROOT / rel)
+        assert stem in text, f"{rel} no longer opens with the functional line ({stem!r})"
+
+
+def test_brand_md_states_the_functional_line_it_declares_canonical():
+    """BRAND.md's message-architecture table is the definition; keep it in step."""
+    from carrel._product import PRODUCT
+
+    stem = PRODUCT["description"].split(" from the terminal")[0]
+    assert stem in _read(DOCS / "BRAND.md")

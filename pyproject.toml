@@ -1,7 +1,7 @@
 [project]
 name = "carrel"
 version = "0.4.1"
-description = "A library desk for your files — and your agents. Read, index, pack and file your documents — from the terminal, for you and your agents. Local file toolkit for pdf, docx/odt/epub/rtf, xlsx, md/html/txt, json/xml/csv and images: convert, OCR, inspect, index, search, pack for LLM context (by query or git history), catalog, watch, and more — with an MCP server and a built-in Claude Code plugin marketplace."
+description = "A library desk for your files — and your agents. Read, index, pack and file your documents from the terminal. Local file toolkit for pdf, docx/odt/epub/rtf, xlsx, md/html/txt, json/xml/csv and images: convert, OCR, inspect, index, search, pack for LLM context, catalog, watch — with an MCP server and a Claude Code plugin marketplace."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }

@@ -186,7 +186,7 @@ The first screen answered "what is this?" with a TUI tour and a paragraph about 
 
 The order is now: the functional line — **Read, index, pack and file your documents — from the terminal, for you and your agents** — then `pack.gif` and `redact-proof.gif`, then one paragraph, then install, then **three things to try**, each with a command block that has actually been run and one honest limitation. `desk-tour.gif` moves to "The desk TUI" and "the flagship" becomes "a companion to the CLI".
 
-Nothing was removed. All 33 command rows, all 9 plugin rows and every link stay — checked as a set diff before and after, not by eye: the only difference is one link *added* (`SECURITY.md`, from the new Status and support section).
+Nothing was removed — but the first attempt at proving that was too narrow, and a reviewer found two things the check could not see. Set-diffing rows, links and command mentions caught neither the `assets/logo.svg` mark dropped from the body nor a link whose *text* had been gutted, because the diff compared targets, not the whole link, and never looked at images at all. Both are restored; the check now covers images (`src="…"`), full link text, and headings. The honest result: images identical, `[Quickstart](#quickstart)` → `[Install](#install)` (the rename, followed), `[SECURITY.md]` added, and the heading set changed as intended. A count that matches is not evidence that content survived.
 
 Three layers, and the next README edit should keep them apart:
 
@@ -196,4 +196,6 @@ Three layers, and the next README edit should keep them apart:
 
 A "Status and support" section states what is stable, what is experimental, which platforms CI actually covers, the security response window, and two things carrel is not. Every claim there is one somebody could hold the project to.
 
-Consequence: `docs/BRAND.md` carries this layering so it survives the next rewrite, and `product.json`'s `description` starts with the functional line, so `sync_product.py` carries it into `pyproject.toml`, `CITATION.cff` and every plugin manifest.
+Consequence: `docs/BRAND.md` carries this layering so it survives the next rewrite, and `product.json`'s `description` starts with the functional line, so `sync_product.py` carries it into `pyproject.toml` — and from there the PyPI summary, as motto + line + description. It does **not** reach `CITATION.cff` or the plugin manifests: `sync_product.py` propagates only the *version* to those, and `CITATION.cff` has no description field at all. The line drops its "for you and your agents" clause in `product.json` alone, because the motto sits immediately before it in the composed summary and already says so.
+
+The GitHub repository description is **not** set by anything in this repo — `scripts/github-harden.sh` does not touch it and no test asserts it. Setting it is an owner-facing step recorded in `STATE.md`; until it is run, the repository still shows the old text.

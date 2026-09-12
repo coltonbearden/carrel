@@ -12,10 +12,13 @@
   what is stable, what is experimental, which platforms CI really covers, and two things carrel
   is not. `desk-tour.gif` moves to "The desk TUI", where "the flagship" becomes "a companion to
   the CLI". Nothing was removed — all 33 command rows, all 9 plugin rows and every link stay,
-  checked as a set diff rather than by eye; the one difference is a link *added* to
-  `SECURITY.md`. `docs/index.md` gets the same first screen, and `product.json`'s description
-  starts with the functional line, so it reaches `pyproject.toml`, `CITATION.cff`, every plugin
-  manifest and the PyPI summary (D-024).
+  checked as a set diff over rows, command mentions, images, full link text and headings. The
+  first version of that check compared link *targets* and no images, and so missed the
+  `assets/logo.svg` mark being dropped from the body and a link whose text had been gutted —
+  both caught in review, both restored. `docs/index.md` gets the
+  same first screen, and `product.json`'s description starts with the functional line, so it
+  reaches `pyproject.toml` and the PyPI summary; it does not reach `CITATION.cff` or the plugin
+  manifests, which `sync_product.py` only version-stamps (D-024).
 
 - **Changed (stderr format):** under `--json`, an error is now itself one line of JSON on
   stderr — `{"error": "...", "exit_code": N}` — instead of `error: ...`. stdout is unchanged

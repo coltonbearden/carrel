@@ -25,7 +25,7 @@
 
 </div>
 
-**carrel** turns the documents on your disk — PDFs, Word and OpenDocument files, ebooks, spreadsheets, email, scans — into text you can search, fields you can query, and context you can hand to an LLM. One CLI; every data command speaks `--json` with stable exit codes; dry-run by default; nothing overwritten without `--force`. It ships an MCP server and a [Claude Code plugin marketplace](#the-marketplace) that drive the same commands, so Claude can read your `.docx`, pack the five relevant files out of five hundred, and file an invoice inbox by what the invoices say. Missing pandoc or tesseract? `carrel doctor` tells you what works today and how to unlock the rest.
+**carrel** turns the documents on your disk — PDFs, Word and OpenDocument files, ebooks, spreadsheets, email, scans — into text you can search, fields you can query, and context you can hand to an LLM. One CLI; every data command speaks `--json` with stable exit codes; the commands that move your files (`organize`, `rename`, `intake`, `dedupe`) dry-run by default; a conversion refuses to overwrite its output without `--force`. It ships an MCP server and a [Claude Code plugin marketplace](#the-marketplace) that drive the same commands, so Claude can read your `.docx`, pack the five relevant files out of five hundred, and file an invoice inbox by what the invoices say. Missing pandoc or tesseract? `carrel doctor` tells you what works today and how to unlock the rest.
 
 A *carrel* is a private study desk in a library: your materials close at hand, organized your way.
 
@@ -49,10 +49,13 @@ Index a folder once, then let the desk's own ranking choose what to send. `--sin
 same job from git history instead of a query.
 
 ```sh
-carrel index ~/papers
-carrel pack ~/papers --query "attention is all you need" --stats
-carrel pack . --since HEAD~5 --stats     # what changed, packed
+carrel --root ~/papers index                                   # the desk lives in ~/papers/.carrel
+carrel --root ~/papers pack ~/papers --query "attention" --stats
+carrel pack . --since HEAD~5 --stats                           # or: what git touched
 ```
+
+`--root` names the desk. Without it the index lands in the directory you happened to run from,
+and the next `--query` cannot find it.
 
 The MCP server (`carrel mcp`, shipped by the `carrel-agent` plugin) exposes the same thing as a
 tool, confined to the directory it starts in.
@@ -63,8 +66,11 @@ you a valid, empty document.
 
 ### Read what the agent can't
 
+Claude's `Read` cannot open a `.docx`, an `.xlsx` or an `.eml` at all. Install the guard plugin
+once and those files arrive as text, without you converting anything by hand.
+
 ```sh
-claude plugin marketplace add coltonbearden/carrel
+claude plugin marketplace add coltonbearden/carrel   # the plugin marketplace, not the CLI
 claude plugin install carrel-guard@carrel
 ```
 
@@ -93,10 +99,16 @@ before `--apply`. Originals are always kept.
 
 A solo-maintainer project, used daily by its author.
 
-**Stable:** `convert`, `inspect`, `index`/`search`, `pack`, the `carrel-guard` hook, and the
-MCP read tools. **Experimental:** the accuracy of `fields`, `refs` and `intake` (heuristics, not
-models — check the confidence column), and the desk TUI. Linux and macOS are covered by
-required CI checks; Windows CI is advisory until it has been green long enough to promote.
+**Settled interfaces** — `convert`, `inspect`, `index`/`search`, `pack`: the flags and the
+`--json` shapes are what they will stay. **Still moving** — `carrel mcp` and the `carrel-guard`
+hook do useful work today, but v0.5.0 changes the behaviour of both (the server is now confined
+to its root; image `Read`s pass through), so pin an exact version if you script against them.
+**Heuristic, and says so** — the *accuracy* of `fields`, `refs` and `intake`: English-label
+matching with a confidence column, not a model. The desk TUI is a companion, not a product.
+
+CI: Linux runs the full suite on Python 3.12–3.14 with every optional binary. The required
+macOS check is the *degradation* job — no extras, no binaries — so it proves carrel fails
+cleanly there, not that pandoc or tesseract paths work. Windows is advisory.
 
 Security reports: see [SECURITY.md](SECURITY.md) — acknowledged within 7 days, fixed or
 explicitly declined within 30.
@@ -179,7 +191,7 @@ claude plugin install carrel-inspect@carrel
 | `carrel-agent` | `/index`, `/doctor`, `/catalog`, `/completion`, a file-librarian agent, the carrel MCP server, and a hook that re-indexes files Claude writes |
 | `carrel-guard` | A `PreToolUse` hook that turns the files `Read` cannot open — Office/ebook/RTF, spreadsheets, email — into text before it sees them, and PDFs into cheap text by default; images are left to Claude's vision. Plus a `SessionStart` hook that reports what carrel can do here |
 
-Install the CLI first (see [Quickstart](#quickstart)) so the plugins can call it. Works headless too:
+Install the CLI first (see [Install](#install)) so the plugins can call it. Works headless too:
 
 ```sh
 claude -p "/carrel-inspect:inspect text+image.pdf" --allowedTools "Bash(carrel:*)"
@@ -197,6 +209,8 @@ carrel desk
 
 *`carrel desk` — browse the tree, inspect a file, run an action, search the index.*
 
+<div align="center"><img src="assets/logo.svg" alt="carrel mark" width="96"></div>
+
 A companion to the CLI: a three-pane [Textual](https://textual.textualize.io/) desk. A file tree on the left, an inspector in the middle (metadata, preview, tags, notes), an action palette on the right (convert, ocr, pack, thumbnail…) — all driving the same core library as the CLI, with full-text search along the bottom. Theme: warm lamplight on dark wood, per [docs/BRAND.md](docs/BRAND.md).
 
 ## Learn more
@@ -208,7 +222,7 @@ A companion to the CLI: a three-pane [Textual](https://textual.textualize.io/) d
 - [docs/TEST_REPORT.md](docs/TEST_REPORT.md) — everything above, executed for real (the v0.1.0 record: cookbook runs, office and `pack --query` proofs)
 - [examples/cookbook/](examples/cookbook/) — end-to-end recipes, from scan→searchable-notes to pack-what-matters
 - [docs/BRAND.md](docs/BRAND.md) — palette, typography, logo usage, voice
-- [docs/HOW_THIS_WAS_BUILT.md](docs/HOW_THIS_WAS_BUILT.md) — how this was built
+- [docs/HOW_THIS_WAS_BUILT.md](docs/HOW_THIS_WAS_BUILT.md) — how this was built: the autonomous single-day build, from the primary sources
 
 ## License
 

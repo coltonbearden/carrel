@@ -4,15 +4,9 @@
 
 **Read, index, pack and file your documents — from the terminal, for you and your agents.**
 
-carrel turns the documents on your disk — PDFs, Word and OpenDocument files, ebooks, spreadsheets, email, scans — into text you can search, fields you can query, and context you can hand to an LLM. One CLI; every data command speaks `--json` with stable exit codes; dry-run by default; nothing overwritten without `--force`. It ships an MCP server and a [Claude Code plugin marketplace](MARKETPLACE.md) that drive the same commands, so Claude can read your `.docx`, pack the five relevant files out of five hundred, and file an invoice inbox by what the invoices say. Missing pandoc or tesseract? `carrel doctor` tells you what works today and how to unlock the rest.
+carrel turns the documents on your disk — PDFs, Word and OpenDocument files, ebooks, spreadsheets, email, scans — into text you can search, fields you can query, and context you can hand to an LLM. One CLI; every data command speaks `--json` with stable exit codes; the commands that move your files dry-run by default; a conversion refuses to overwrite its output without `--force`. It ships an MCP server and a [Claude Code plugin marketplace](MARKETPLACE.md) that drive the same commands, so Claude can read your `.docx`, pack the five relevant files out of five hundred, and file an invoice inbox by what the invoices say. Missing pandoc or tesseract? `carrel doctor` tells you what works today and how to unlock the rest.
 
 A **carrel** is a private study desk in a library: your materials close at hand, organized your way. carrel is that desk for your local files — pdf, docx, odt, epub, rtf, xlsx, md, html, txt, json, xml, csv, eml/mbox email, and png/jpg/ico images — with 33 commands to convert, OCR, inspect, diff, index, search, pack, watch, file an inbox, and more. `carrel mcp` serves the whole desk as fourteen MCP tools.
-
-## Three things to try
-
-- **Give Claude the right context** — `carrel index ~/papers`, then `carrel pack ~/papers --query "…" --stats` packs what the desk's own ranking picks; `--since HEAD~5` does it from git history instead. Query terms must appear in the text (FTS5 AND-s them), and an empty pack exits non-zero under `--json`.
-- **Read what the agent can't** — the `carrel-guard` plugin turns Office, ebook, email and spreadsheet files into text before Claude's `Read` sees them, and PDFs into cheap text; images stay pictures. Layout-heavy PDFs still want the visual `Read`, and the guard's note says so.
-- **Turn an inbox into an archive** — `carrel fields` reads vendor, dates and totals with a confidence column; `carrel intake ~/inbox --to ~/archive` shows every planned move and files nothing until `--apply`. Extraction is English-label heuristics; originals are always kept.
 
 ## Start here
 
@@ -30,7 +24,11 @@ Plain `carrel` (no extras) skips the TUI, xlsx reading, and exact token counts; 
 
 ## Three things worth trying first
 
-**Pack what matters.** Index a docs tree once, then pack only the files the index ranks for a query — in relevance order, with a score per file:
+The same three the [README](https://github.com/coltonbearden/carrel#three-things-to-try) leads
+with — give an agent the right context, read what an agent cannot, turn an inbox into an
+archive — with real output.
+
+**Give Claude the right context.** Index a docs tree once, then pack only the files the index ranks for a query — in relevance order, with a score per file:
 
 ```sh
 carrel --root docs index
@@ -48,6 +46,16 @@ carrel --root docs pack docs --query release --stats
 ```
 
 `--query` only sees what the index knows — and `carrel index` covers source and config files (`.py`, `.toml`, `.yaml`, …) as type `code` alongside documents, honoring `.gitignore`, so this works on source trees too ([Quickstart §6](QUICKSTART.md#6-pack-what-matters-pack-query)).
+
+**Read what the agent can't.** The `carrel-guard` plugin turns Office, ebook, email and
+spreadsheet files into text before Claude's `Read` sees them, and PDFs into cheap text; images
+stay pictures for Claude's own vision. Layout-heavy PDFs still want the visual `Read`, and the
+guard's note says where the original is ([the marketplace](MARKETPLACE.md)).
+
+**Turn an inbox into an archive.** `carrel fields` reads vendor, dates and totals with a
+confidence column; `carrel intake INBOX --to ARCHIVE` prints every planned move and files
+nothing until `--apply`. Extraction is English-label heuristics — read the confidence before
+you apply — and the originals are always kept.
 
 **Carry your tags and notes.** They are the one thing the desk cannot regenerate, so they export as plain JSON and merge back in:
 

@@ -4,7 +4,7 @@ PRODUCT = {
     "name": "carrel",
     "displayName": "Carrel",
     "tagline": "A library desk for your files — and your agents.",
-    "description": "Read, index, pack and file your documents — from the terminal, for you and your agents. Local file toolkit for pdf, docx/odt/epub/rtf, xlsx, md/html/txt, json/xml/csv and images: convert, OCR, inspect, index, search, pack for LLM context (by query or git history), catalog, watch, and more — with an MCP server and a built-in Claude Code plugin marketplace.",
+    "description": "Read, index, pack and file your documents from the terminal. Local file toolkit for pdf, docx/odt/epub/rtf, xlsx, md/html/txt, json/xml/csv and images: convert, OCR, inspect, index, search, pack for LLM context, catalog, watch — with an MCP server and a Claude Code plugin marketplace.",
     "version": "0.4.1",
     "cli": "carrel",
     "package": "carrel",
