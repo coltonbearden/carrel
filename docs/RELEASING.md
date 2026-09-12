@@ -16,6 +16,16 @@ that shipped as a patch and could start failing a cron job; neither is the test.
 ```sh
 # edit product.json → "version": "X.Y.Z"
 uv run python scripts/sync_product.py   # regenerates every derived copy
+uv lock                                 # uv.lock pins carrel's own version too
+```
+
+**`uv.lock` is one of the derived copies, and `sync_product.py` does not write
+it.** CI runs `uv sync` under `UV_LOCKED=1`, so a stale lock fails *every* job
+before a single test runs; locally `uv run` relocks silently and hides it. Check
+the way CI does before pushing a version bump:
+
+```sh
+UV_LOCKED=1 uv sync --group dev --group docs --all-extras
 ```
 
 `sync_product.py` rewrites `src/carrel/_product.py`, `pyproject.toml`
