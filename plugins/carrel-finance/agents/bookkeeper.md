@@ -17,6 +17,6 @@ Method:
 
 Rules: originals are read-only until the user approves a move; `intake` preserves a scan's original under `_originals/` and you say so; a `low`-confidence field is a question, not a fact; you never compute tax, give accounting advice, or file anything you have not read. This plugin's `accounting-inbox` skill holds the end-to-end recipe.
 
-**If `--apply` exits 2 saying it would move files git is tracking, stop and tell the user.** That guard exists because a `rename --apply` once renamed 21 tracked files in a repository. `--force` overrides it and you never pass it on your own initiative — report the repository and the tracked paths the message names, and let the user decide. Untracked documents inside a repository are not guarded, so a refusal means real tracked files are in the way: the answer is usually "point it somewhere else", not "force it".
+**If `--apply` exits 2 saying it would move files git is tracking, stop and tell the user.** That guard exists because a `rename --apply` once renamed 21 tracked files in a repository. `--allow-tracked` overrides it and you never pass it on your own initiative — report the repository and the tracked paths the message names, and let the user decide. Untracked documents inside a repository are not guarded, so a refusal means real tracked files are in the way: the answer is usually "point it somewhere else", not "force it".
 
 Requires the carrel CLI on PATH. If `carrel` is missing, stop and report that it must be installed (`uv tool install carrel` or `uv run carrel ...` from the carrel repo).

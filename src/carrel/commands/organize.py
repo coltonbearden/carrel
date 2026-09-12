@@ -25,7 +25,7 @@ from typing import Any
 import click
 
 from carrel.core.filetypes import FileType, detect
-from carrel.core.fsops import guard_worktree, move_file, uncollide
+from carrel.core.fsops import allow_tracked_from, guard_worktree, move_file, uncollide
 from carrel.core.output import CarrelInputError, emit, handled, root_of
 
 TYPE_DIRS: dict[FileType, str] = {
@@ -154,9 +154,14 @@ def _human_plan(applied: bool) -> Callable[[list[dict[str, Any]]], None]:
     help="Execute the moves. Default is a dry-run that only prints the plan.",
 )
 @click.option(
-    "--force",
+    "--allow-tracked",
     is_flag=True,
     help="Move files even when they are tracked by git (see the description).",
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Deprecated spelling of --allow-tracked; warns and behaves identically.",
 )
 @click.pass_context
 @handled
@@ -166,6 +171,7 @@ def cmd(
     by: str,
     into_: tuple[str, ...],
     apply_: bool,
+    allow_tracked: bool,
     force: bool,
 ) -> None:
     """Plan (default) or perform (--apply) sorting DIRECTORY's files.
@@ -176,9 +182,10 @@ def cmd(
     {src, dest, action} ('move' planned, 'moved' executed, 'skip').
 
     --apply refuses (exit 2) when it would move files git is tracking, where a
-    new path breaks imports, tests and history; --force overrides. Untracked
+    new path breaks imports, tests and history; --allow-tracked overrides. Untracked
     files inside a repository are fine.
     """
+    allow_tracked = allow_tracked_from(allow_tracked=allow_tracked, force=force)
     directory = directory.resolve()
     if not directory.is_dir():
         raise CarrelInputError(f"no such directory: {directory}")
@@ -203,7 +210,7 @@ def cmd(
         # that may climb out of DIRECTORY, so the destinations count too.
         guard_worktree(
             [*_movable(directory), *((directory / sub).resolve() for sub in into.values())],
-            force=force,
+            allow_tracked=allow_tracked,
             what="organize --apply",
         )
 

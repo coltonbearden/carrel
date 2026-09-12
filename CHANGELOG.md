@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+- **Changed (behaviour, `carrel mcp`):** the server is now **confined to the directory it was
+  started in** (`--root`, else the working directory). `SECURITY.md` already listed "the MCP
+  server reading or writing outside its root" among the reports it cares about most, and the
+  server did exactly that: started in `docs/`, it returned `carrel_inspect` metadata for
+  `/etc/hostname` and served `/tmp/…/secret.txt` through `resources/read`. Every path a client
+  can name — each tool's `path`/`paths`/`out`, the per-call `root`, and both `carrel://` URIs —
+  now resolves through one helper that follows symlinks and then refuses anything outside the
+  root: `isError: true` with exit code 2 for tools, resource-not-found for resources. A per-call
+  `root` can therefore narrow the desk but no longer leave it. `carrel mcp --allow-outside-root`
+  restores the old behaviour for a session, and `carrel --root / mcp` is unconfined by
+  construction because `/` is then the desk you named. `plugins/carrel-agent/.mcp.json` is
+  unchanged — Claude Code starts the server in the project directory, which is the desk (D-021).
+- **Changed (behaviour):** the tracked-files guard on `rename`, `organize`, `intake` and `watch`
+  is overridden by **`--allow-tracked`**. `--force` means "overwrite existing output" on seven
+  other commands, and those four never overwrite anything — so reaching for it by reflex
+  disabled the guard that exists because a `rename --apply` once renamed 21 tracked files in
+  this checkout. `--force` still works on all four and is **not** being removed; it prints one
+  stderr line saying it now means `--allow-tracked` and that the spelling is deprecated. No
+  removal date is set (D-022).
+- **Fixed (`carrel mcp`):** `initialize` no longer echoes whatever `protocolVersion` the client
+  sent, which claimed support for any string a client cared to invent — `2099-01-01` came back
+  as `2099-01-01`. The server keeps a tuple of versions it actually speaks
+  (`2025-06-18`, `2025-03-26`, `2024-11-05` — its JSON-RPC surface is identical across them),
+  echoes a requested version in that tuple, and otherwise answers with the newest it supports,
+  which is the MCP spec's rule.
 - **Changed (behaviour, `carrel-guard`):** image `Read`s pass through to Claude by default.
   The guard OCR'd every `.png/.jpg/.jpeg/.ico` unconditionally, replacing a picture Claude can
   already see with a transcription — worse for a screenshot, a chart or a photo, and with no

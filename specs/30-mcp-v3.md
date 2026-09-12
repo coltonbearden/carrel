@@ -1,7 +1,7 @@
 # spec: MCP v3 — the whole desk over MCP, not just the reading half
 
 **Owns:** `src/carrel/commands/mcp.py` (the `TOOLS` table and its dispatch map), whichever command modules still lack a callable entry point, `docs/AGENTS.md`, `docs/FEATURES.md`, `README.md`, `docs/index.md`, `tests/test_mcp_stdio.py`, `tests/test_docs_drift.py` (the pin already exists).
-**Wave:** v0.5.0.
+**Wave:** v0.6.0.
 
 ## Why
 
@@ -62,8 +62,10 @@ CLI keeps it.
    would invert the rule for exactly the command where it matters most.
 2. **The spec-29 guard applies unchanged.** A tool call that would move files
    git is tracking fails with the same message and exit code the CLI gives;
-   `force` is a distinct parameter an agent must set deliberately (see the
-   `--force` naming question in `STATE.md`). MCP is not a way around it.
+   `allow_tracked` is a distinct parameter an agent must set deliberately
+   (the flag was renamed from `--force` in v0.5.0, D-022). MCP is not a way
+   around it — and every path the tool names is confined to the server's root
+   (D-021), so a mutating tool cannot reach outside the desk either.
 3. **Every tool delegates to the command's impl function**, never to the click
    callback — the existing 14 already do, and that is why they are testable.
 
@@ -77,17 +79,21 @@ missing binary surfaces as exit 3's text rather than a traceback.
 `docs/index.md`, `docs/FEATURES.md` and `docs/AGENTS.md`, so those four update
 or the build fails.
 
-## The confinement question, re-opened
+## The confinement question — answered in v0.5.0 (D-021)
 
-`docs/TEST_REPORT.md` records "MCP tools are not confined to the desk root" as
-accepted behaviour. That was decided when every tool read, converted or
-reported. This wave adds tools that **move and rename files**, so the decision
-does not carry over untouched and must be made again before the first mutating
-tool ships. The options, cheapest first: keep it unconfined and rely on the
-spec-29 guard plus dry-run defaults; confine writes to the `root` argument's
-subtree; or require an explicit opt-in per session. Pick one in the PR, state it
-in `docs/DECISIONS.md`, and say so in `docs/AGENTS.md` — an agent author needs
-to know which it is.
+`docs/TEST_REPORT.md` recorded "MCP tools are not confined to the desk root" as
+accepted behaviour, decided when every tool read, converted or reported. It was
+re-opened for this wave, which adds tools that **move and rename files**, and
+answered before it: **v0.5.0 confines the server to the directory it was started
+in** — every tool path, every client-supplied `root` and both `carrel://`
+resource URIs, symlinks resolved first, refused when they land outside;
+`--allow-outside-root` lifts it for the whole session (`docs/DECISIONS.md`
+D-021, `docs/AGENTS.md`, `SECURITY.md`).
+
+What that leaves for this wave: the boundary is already enforced in the one
+helper every tool argument goes through, so a mutating tool inherits it at no
+cost and needs no confinement code of its own. Its remaining safety questions
+are the dry-run default and the spec-29 guard (below), not the root.
 
 ## Not in scope
 

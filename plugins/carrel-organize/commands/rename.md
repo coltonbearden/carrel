@@ -24,7 +24,8 @@ Usage: carrel rename [OPTIONS] PATHS...
   rename|renamed|skip, reason, sources}].
 
   --apply refuses (exit 2) when a PATH would rename a file git is tracking, where a new name breaks
-  imports, tests and history. Untracked files inside a repository are fine; --force overrides.
+  imports, tests and history. Untracked files inside a repository are fine; --allow-tracked
+  overrides.
 
 Options:
   --template TEXT          Name template; see the placeholders in the command description.
@@ -37,7 +38,8 @@ Options:
   --max-len INTEGER RANGE  Cap the stem length.  [default: 120; x>=8]
   --ocr                    OCR images and scanned PDFs to read their fields (needs tesseract /
                            ocrmypdf).
-  --force                  Rename even when a PATH is a file git tracks (see the description).
+  --allow-tracked          Rename even when a PATH is a file git tracks (see the description).
+  --force                  Deprecated spelling of --allow-tracked; warns and behaves identically.
   --json                   Machine-readable JSON output.
   --help                   Show this message and exit.
 ```

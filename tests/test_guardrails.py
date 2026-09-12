@@ -9,7 +9,7 @@ all address files by path.
 The guard asks "would this move files git is tracking?", not "is this inside a
 repository". The distinction matters: `~/Downloads` under a dotfiles repo is a
 mainstream layout, and refusing there would leave the user no way out but
-`--force` — the exact habit this guard exists to stop forming.
+`--allow-tracked` — the exact habit this guard exists to stop forming.
 
 Repositories here are real (`git init` + `git add`) behind `@needs("git")`,
 because the question the guard asks can only be answered by git. The one path
@@ -32,6 +32,10 @@ from carrel.core import adapters, fsops
 from carrel.core.fsops import repo_root, would_move_tracked
 
 # ------------------------------------------------------------------ helpers
+
+
+#: Both spellings of the guard override; `--force` is the deprecated alias (D-022).
+OVERRIDES = ("--allow-tracked", "--force")
 
 
 def run(*args: str, expect: int = 0):
@@ -204,7 +208,7 @@ def test_organize_apply_refuses_tracked_files_and_moves_nothing(tmp_path: Path) 
 
     assert "git is tracking" in result.output
     assert str(repo.resolve()) in result.output
-    assert "--force" in result.output
+    assert "--allow-tracked" in result.output
     assert "notes.txt" in result.output, "the message should name what it found"
     assert listing(tracked) == before, "a refused run must leave the directory untouched"
 
@@ -224,12 +228,13 @@ def test_the_refusal_has_no_usage_banner(tmp_path: Path) -> None:
 
 
 @needs("git")
-def test_organize_apply_proceeds_with_force(tmp_path: Path) -> None:
+@pytest.mark.parametrize("override", OVERRIDES)
+def test_organize_apply_proceeds_with_the_override(tmp_path: Path, override: str) -> None:
     repo = make_repo(tmp_path / "repo")
     tracked = docs(repo / "src")
     commit_all(repo)
 
-    run("organize", str(tracked), "--apply", "--force")
+    run("organize", str(tracked), "--apply", override)
 
     assert (tracked / "docs" / "notes.txt").is_file()
     assert not (tracked / "notes.txt").exists()
@@ -354,16 +359,17 @@ def test_rename_dry_run_still_plans(tmp_path: Path) -> None:
 
 
 @needs("git")
-def test_rename_apply_proceeds_with_force(tmp_path: Path) -> None:
+@pytest.mark.parametrize("override", OVERRIDES)
+def test_rename_apply_proceeds_with_the_override(tmp_path: Path, override: str) -> None:
     repo = make_repo(tmp_path / "repo")
     tracked = docs(repo / "src")
     commit_all(repo)
 
     result = run(
-        "--json", "rename", str(tracked), "--apply", "--force", "--template", "r_{stem}{ext}"
+        "--json", "rename", str(tracked), "--apply", override, "--template", "r_{stem}{ext}"
     )
 
-    assert [e["action"] for e in json.loads(result.output)] == ["renamed"] * 3
+    assert [e["action"] for e in json.loads(result.stdout)] == ["renamed"] * 3
     assert (tracked / "r_notes.txt").is_file()
 
 
@@ -443,7 +449,8 @@ def test_intake_apply_is_unaffected_outside_a_work_tree(tmp_path: Path) -> None:
 
 
 @needs("git")
-def test_intake_apply_proceeds_with_force(tmp_path: Path) -> None:
+@pytest.mark.parametrize("override", OVERRIDES)
+def test_intake_apply_proceeds_with_the_override(tmp_path: Path, override: str) -> None:
     repo = make_repo(tmp_path / "repo")
     inbox = docs(repo / "inbox")
     commit_all(repo)
@@ -456,14 +463,14 @@ def test_intake_apply_proceeds_with_force(tmp_path: Path) -> None:
         "--to",
         str(dest),
         "--apply",
-        "--force",
+        override,
         "--no-refs",
         "--no-index",
         "--fallback",
         "unknown",
     )
 
-    assert any(r["action"] == "filed" for r in json.loads(result.output))
+    assert any(r["action"] == "filed" for r in json.loads(result.stdout))
 
 
 @needs("git")
@@ -544,13 +551,16 @@ def test_without_git_the_guard_asks_for_git_rather_than_guessing(
     assert listing(inside) == before
 
 
-def test_without_git_force_still_proceeds(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """--force skips the question entirely, so a git-less box is never stuck."""
+@pytest.mark.parametrize("override", OVERRIDES)
+def test_without_git_the_override_still_proceeds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, override: str
+) -> None:
+    """The override skips the question entirely, so a git-less box is never stuck."""
     monkeypatch.setenv("CARREL_BIN_GIT", str(tmp_path / "no-such-git"))
     repo = fake_repo(tmp_path / "repo")
     inside = docs(repo / "src")
 
-    run("organize", str(inside), "--apply", "--force")
+    run("organize", str(inside), "--apply", override)
 
     assert (inside / "docs" / "notes.txt").is_file()
 
@@ -954,10 +964,11 @@ def test_the_repository_lookup_runs_once_per_repository(
 
 
 @needs("git")
-def test_watch_with_force_never_walks_or_asks_git(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("override", OVERRIDES)
+def test_watch_with_the_override_never_walks_or_asks_git(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, override: str
 ) -> None:
-    """--force means "do not check", so the recursive walk must not run at all."""
+    """The override means "do not check", so the recursive walk must not run at all."""
     repo = make_repo(tmp_path / "repo")
     watched = docs(repo / "src")
     commit_all(repo)
@@ -972,10 +983,72 @@ def test_watch_with_force_never_walks_or_asks_git(
         "true",
         "--done-dir",
         str(tmp_path / "done"),
-        "--force",
+        override,
         "--print-service",
         "systemd",
     )
 
     assert "ExecStart=" in result.output
     assert calls == []
+
+
+# ------------------------------------------------------- the deprecated alias
+
+
+@needs("git")
+@pytest.mark.parametrize("command", ["rename", "organize", "intake", "watch"])
+def test_force_warns_that_it_now_means_allow_tracked(tmp_path: Path, command: str) -> None:
+    """`--force` means "overwrite" on seven other commands (D-022); say so once."""
+    repo = make_repo(tmp_path / "repo")
+    inside = docs(repo / "src")
+    commit_all(repo)
+
+    result = run(*_override_invocation(command, inside, tmp_path, "--force"))
+
+    assert "--force here means --allow-tracked" in result.stderr, result.stderr
+    assert "deprecated" in result.stderr
+    assert result.stderr.count("--force here means") == 1, "warned once, not per file"
+
+
+@needs("git")
+@pytest.mark.parametrize("command", ["rename", "organize", "intake", "watch"])
+def test_allow_tracked_is_silent(tmp_path: Path, command: str) -> None:
+    repo = make_repo(tmp_path / "repo")
+    inside = docs(repo / "src")
+    commit_all(repo)
+
+    result = run(*_override_invocation(command, inside, tmp_path, "--allow-tracked"))
+
+    assert "deprecated" not in result.stderr, result.stderr
+
+
+def _override_invocation(command: str, inside: Path, tmp_path: Path, flag: str) -> tuple[str, ...]:
+    """The shortest run of each guarded command that reaches the override."""
+    if command == "rename":
+        return ("rename", str(inside), "--apply", flag, "--template", "r_{stem}{ext}")
+    if command == "organize":
+        return ("organize", str(inside), "--apply", flag)
+    if command == "intake":
+        return (
+            "intake",
+            str(inside),
+            "--to",
+            str(tmp_path / "filed"),
+            "--apply",
+            flag,
+            "--no-refs",
+            "--no-index",
+            "--fallback",
+            "unknown",
+        )
+    return (
+        "watch",
+        str(inside),
+        "--run",
+        "true",
+        "--done-dir",
+        str(tmp_path / "done"),
+        flag,
+        "--print-service",
+        "systemd",
+    )

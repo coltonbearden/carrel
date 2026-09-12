@@ -27,7 +27,13 @@ one adapter layer (`src/carrel/core/adapters.py`). Reports we care about most:
 - command injection through file names or user-supplied patterns
   (`watch --run` deliberately runs the user's own shell template — that is
   not a vulnerability, but a substituted value escaping its quoting would be),
-- the MCP server (`carrel mcp`) reading or writing outside its root,
+- the MCP server (`carrel mcp`) reading or writing outside its root. It is
+  confined to the directory it was started in (`--root`, else the working
+  directory): every tool path, every client-supplied `root` and both
+  `carrel://` resource URIs are resolved — symlinks first — and refused when
+  they land outside it. `--allow-outside-root` lifts the confinement for the
+  session, so a report about that flag's own behaviour is not a vulnerability;
+  a path escaping it without the flag is,
 - redaction (`carrel redact`) leaving matched data behind.
 
 ## Supply chain

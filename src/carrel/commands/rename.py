@@ -29,7 +29,7 @@ import click
 from carrel.core import patterns as pat
 from carrel.core.db import DeskDB
 from carrel.core.filetypes import detect
-from carrel.core.fsops import guard_worktree, move_file, uncollide
+from carrel.core.fsops import allow_tracked_from, guard_worktree, move_file, uncollide
 from carrel.core.output import (
     CarrelError,
     CarrelInputError,
@@ -322,9 +322,14 @@ def _human_plan(applied: bool) -> Callable[[list[dict[str, Any]]], None]:
     help="OCR images and scanned PDFs to read their fields (needs tesseract / ocrmypdf).",
 )
 @click.option(
-    "--force",
+    "--allow-tracked",
     is_flag=True,
     help="Rename even when a PATH is a file git tracks (see the description).",
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Deprecated spelling of --allow-tracked; warns and behaves identically.",
 )
 @click.pass_context
 @handled
@@ -338,6 +343,7 @@ def cmd(
     lower: bool,
     max_len: int,
     ocr: bool,
+    allow_tracked: bool,
     force: bool,
 ) -> None:
     """Plan (default) or perform (--apply) renaming PATH... from the documents' own fields.
@@ -354,17 +360,18 @@ def cmd(
 
     --apply refuses (exit 2) when a PATH would rename a file git is tracking,
     where a new name breaks imports, tests and history. Untracked files inside a
-    repository are fine; --force overrides.
+    repository are fine; --allow-tracked overrides.
     """
     if not _PLACEHOLDER.search(template):
         raise click.UsageError(f"--template has no placeholders: {template!r}")
+    allow_tracked = allow_tracked_from(allow_tracked=allow_tracked, force=force)
     if apply_:
         # every PATH, not just directories: a shell glob (`rename src/*.py --apply`)
         # arrives as a list of files and is exactly the 2026-09-10 incident.
         # Renames land next to their source, so guarding the inputs covers the
         # destinations. Guarded after the template check so a bad template
         # reports itself.
-        guard_worktree(paths, force=force, what="rename --apply")
+        guard_worktree(paths, allow_tracked=allow_tracked, what="rename --apply")
     root = root_of(ctx)
     plan = plan_renames(
         list(paths),

@@ -23,8 +23,8 @@ Usage: carrel watch [OPTIONS] DIRECTORY
   away after their actions, --log keeps a JSON trail. Ctrl-C exits cleanly.
 
   --done-dir/--error-dir refuse to start (exit 2) when they would move files git is tracking;
-  --force overrides. Actions themselves are never guarded — what a --run command does is the user's
-  business.
+  --allow-tracked overrides. Actions themselves are never guarded — what a --run command does is the
+  user's business.
 
 Options:
   --on EVENTS                     Comma-separated events to react to: created, modified, deleted,
@@ -45,7 +45,9 @@ Options:
   --done-dir DIRECTORY            Move each source here after its actions all succeed.
   --error-dir DIRECTORY           Move each source here after an action fails.
   --log FILE                      Append one JSON record per action (and per move) to FILE.
-  --force                         With --done-dir/--error-dir: move files even when git tracks them.
+  --allow-tracked                 With --done-dir/--error-dir: move files even when git tracks them.
+  --force                         Deprecated spelling of --allow-tracked; warns and behaves
+                                  identically.
   --print-service [systemd|schtasks]
                                   Print a service definition that runs this exact watch at login,
                                   then exit.

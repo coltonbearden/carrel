@@ -304,7 +304,7 @@ class TestMcpProtocol:
 class TestMcpTools:
     def test_inspect_txt(self, tmp_path):
         make_tree(tmp_path)
-        res = call_tool("carrel_inspect", {"path": str(tmp_path / "notes.txt")})
+        res = call_tool("carrel_inspect", {"path": str(tmp_path / "notes.txt")}, tmp_path)
         assert res["isError"] is False
         p = res["payload"]
         assert p["type"] == "txt"
@@ -316,19 +316,21 @@ class TestMcpTools:
 
     def test_inspect_png(self, tmp_path):
         make_tree(tmp_path)
-        res = call_tool("carrel_inspect", {"path": str(tmp_path / "img.png")})
+        res = call_tool("carrel_inspect", {"path": str(tmp_path / "img.png")}, tmp_path)
         assert res["isError"] is False
         assert res["payload"]["type"] == "png"
         assert res["payload"]["detail"]["width"] == 4
 
     def test_inspect_deep_never_errors(self, tmp_path):
         make_tree(tmp_path)
-        res = call_tool("carrel_inspect", {"path": str(tmp_path / "img.png"), "deep": True})
+        res = call_tool(
+            "carrel_inspect", {"path": str(tmp_path / "img.png"), "deep": True}, tmp_path
+        )
         assert res["isError"] is False
         assert "exiftool" in res["payload"]  # tag table or "not installed"
 
     def test_inspect_missing_file_is_tool_error_not_crash(self, tmp_path):
-        res = call_tool("carrel_inspect", {"path": str(tmp_path / "ghost.txt")})
+        res = call_tool("carrel_inspect", {"path": str(tmp_path / "ghost.txt")}, tmp_path)
         assert res["isError"] is True
         assert "ghost.txt" in res["payload"]["error"]
         assert res["payload"]["exit_code"] == 4
@@ -347,7 +349,7 @@ class TestMcpTools:
 
     def test_pack_directory(self, tmp_path):
         make_tree(tmp_path)
-        res = call_tool("carrel_pack", {"path": str(tmp_path)})
+        res = call_tool("carrel_pack", {"path": str(tmp_path)}, tmp_path)
         assert res["isError"] is False
         p = res["payload"]
         assert p["format"] == "json"
@@ -368,7 +370,7 @@ class TestMcpTools:
 
     def test_pack_tree_only(self, tmp_path):
         make_tree(tmp_path)
-        res = call_tool("carrel_pack", {"path": str(tmp_path), "tree_only": True})
+        res = call_tool("carrel_pack", {"path": str(tmp_path), "tree_only": True}, tmp_path)
         p = res["payload"]
         assert p["files"] == []
         assert p["meta"]["tree_only"] is True
@@ -376,7 +378,7 @@ class TestMcpTools:
 
     def test_pack_max_bytes_budget(self, tmp_path):
         make_tree(tmp_path)
-        res = call_tool("carrel_pack", {"path": str(tmp_path), "max_bytes": 10})
+        res = call_tool("carrel_pack", {"path": str(tmp_path), "max_bytes": 10}, tmp_path)
         p = res["payload"]
         assert p["meta"]["bytes"] <= 10
         assert p["omitted"]  # everything textual was over budget
@@ -384,16 +386,18 @@ class TestMcpTools:
 
     def test_pack_single_file(self, tmp_path):
         make_tree(tmp_path)
-        res = call_tool("carrel_pack", {"path": str(tmp_path / "doc.md")})
+        res = call_tool("carrel_pack", {"path": str(tmp_path / "doc.md")}, tmp_path)
         p = res["payload"]
         assert len(p["files"]) == 1
         assert "markdown body" in p["files"][0]["content"]
 
     def test_pack_include_exclude_globs(self, tmp_path):
         make_tree(tmp_path)
-        res = call_tool("carrel_pack", {"path": str(tmp_path), "include": ["*.txt"]})
+        res = call_tool("carrel_pack", {"path": str(tmp_path), "include": ["*.txt"]}, tmp_path)
         assert {e["path"] for e in res["payload"]["entries"]} == {"notes.txt", "sub/deep.txt"}
-        res = call_tool("carrel_pack", {"path": str(tmp_path), "exclude": ["sub", "*.png"]})
+        res = call_tool(
+            "carrel_pack", {"path": str(tmp_path), "exclude": ["sub", "*.png"]}, tmp_path
+        )
         paths = {e["path"] for e in res["payload"]["entries"]}
         assert "sub/deep.txt" not in paths and "img.png" not in paths
         assert "notes.txt" in paths
@@ -401,7 +405,7 @@ class TestMcpTools:
     @pytest.mark.parametrize("fmt", ["md", "xml"])
     def test_pack_rendered_formats_return_document(self, tmp_path, fmt):
         make_tree(tmp_path)
-        res = call_tool("carrel_pack", {"path": str(tmp_path / "doc.md"), "format": fmt})
+        res = call_tool("carrel_pack", {"path": str(tmp_path / "doc.md"), "format": fmt}, tmp_path)
         assert res["isError"] is False
         p = res["payload"]
         assert p["format"] == fmt
@@ -413,12 +417,12 @@ class TestMcpTools:
             assert p["document"].startswith("# carrel pack")
 
     def test_pack_bad_format_is_tool_error(self, tmp_path):
-        res = call_tool("carrel_pack", {"path": str(tmp_path), "format": "yaml"})
+        res = call_tool("carrel_pack", {"path": str(tmp_path), "format": "yaml"}, tmp_path)
         assert res["isError"] is True
         assert "format" in res["payload"]["error"]
 
     def test_pack_missing_path_is_tool_error(self, tmp_path):
-        res = call_tool("carrel_pack", {"path": str(tmp_path / "nope")})
+        res = call_tool("carrel_pack", {"path": str(tmp_path / "nope")}, tmp_path)
         assert res["isError"] is True
         assert "no such path" in res["payload"]["error"]
 
@@ -439,7 +443,7 @@ class TestMcpTools:
         assert "melodious cartography" in entry["content"]
 
     def test_search_without_index_is_tool_error(self, tmp_path):
-        res = call_tool("carrel_search", {"query": "anything", "root": str(tmp_path)})
+        res = call_tool("carrel_search", {"query": "anything", "root": str(tmp_path)}, tmp_path)
         assert res["isError"] is True
         assert "carrel index" in res["payload"]["error"]
         assert not (tmp_path / ".carrel").exists()  # never creates a db as a side effect
@@ -447,7 +451,7 @@ class TestMcpTools:
     def test_search_finds_indexed_content(self, tmp_path):
         make_tree(tmp_path)
         seed_index(tmp_path, "notes.txt")
-        res = call_tool("carrel_search", {"query": "aardvark", "root": str(tmp_path)})
+        res = call_tool("carrel_search", {"query": "aardvark", "root": str(tmp_path)}, tmp_path)
         assert res["isError"] is False
         p = res["payload"]
         assert p["count"] == 1
@@ -461,7 +465,9 @@ class TestMcpTools:
             for name in ("notes.txt", "doc.md"):
                 fid = db.upsert_file(tmp_path / name, ftype="txt")
                 db.set_content(fid, tmp_path / name, "shared common token here")
-        res = call_tool("carrel_search", {"query": "common", "root": str(tmp_path), "limit": 1})
+        res = call_tool(
+            "carrel_search", {"query": "common", "root": str(tmp_path), "limit": 1}, tmp_path
+        )
         assert res["payload"]["count"] == 1
 
     def test_search_type_and_tag_filters(self, tmp_path):
@@ -472,19 +478,23 @@ class TestMcpTools:
                 db.set_content(fid, tmp_path / name, "shared common token here")
             db.add_tags(tmp_path / "doc.md", ["work"])
         root = str(tmp_path)
-        res = call_tool("carrel_search", {"query": "common", "root": root, "types": ["md"]})
+        res = call_tool("carrel_search", {"query": "common", "root": root, "types": ["md"]}, root)
         assert [h["path"] for h in res["payload"]["results"]] == ["doc.md"]
-        res = call_tool("carrel_search", {"query": "common", "root": root, "tags": ["work"]})
+        res = call_tool("carrel_search", {"query": "common", "root": root, "tags": ["work"]}, root)
         assert [h["path"] for h in res["payload"]["results"]] == ["doc.md"]
-        res = call_tool("carrel_search", {"query": "common", "root": root, "tags": ["absent"]})
+        res = call_tool(
+            "carrel_search", {"query": "common", "root": root, "tags": ["absent"]}, root
+        )
         assert res["payload"]["count"] == 0
 
     def test_search_bad_type_and_bad_query_are_tool_errors(self, tmp_path):
         make_tree(tmp_path)
         seed_index(tmp_path, "notes.txt")
-        res = call_tool("carrel_search", {"query": "x", "root": str(tmp_path), "types": ["wav"]})
+        res = call_tool(
+            "carrel_search", {"query": "x", "root": str(tmp_path), "types": ["wav"]}, tmp_path
+        )
         assert res["isError"] is True and "wav" in res["payload"]["error"]
-        res = call_tool("carrel_search", {"query": 'AND "', "root": str(tmp_path)})
+        res = call_tool("carrel_search", {"query": 'AND "', "root": str(tmp_path)}, tmp_path)
         assert res["isError"] is True and "bad search query" in res["payload"]["error"]
 
 
@@ -983,7 +993,7 @@ class TestMcpResources:
         assert resp["result"]["contents"][0]["text"] == "spaced out\n"
         from urllib.parse import quote
 
-        resp = read_resource("carrel://file/" + quote(str(tmp_path / "with space.txt")))
+        resp = read_resource("carrel://file/" + quote(str(tmp_path / "with space.txt")), tmp_path)
         assert resp["result"]["contents"][0]["text"] == "spaced out\n"
 
     @pytest.mark.parametrize(

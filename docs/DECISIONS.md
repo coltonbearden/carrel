@@ -139,3 +139,25 @@ Three defaults follow from what `Read` actually does:
 Timeouts became visible with it. The budget was 5 s, which measurement showed kills ordinary documents: `carrel convert --to txt` takes 2.4 s on a 33 KB pandoc-written docx, 6.7 s on 68 KB and 13.9 s on 127 KB, against 0.28 s for a 600-page PDF. It is 15 s now, and a timeout reports itself rather than exiting 0 in silence — `additionalContext` with no `updatedInput`, which the [hooks reference](https://code.claude.com/docs/en/hooks) allows, the decision fields being independent. The note differs by format, because "reading the original instead" is only true where `Read` can open it; for a docx it says the following Read will fail and names the manual conversion.
 
 Consequence: a killed conversion's partial output is deleted rather than served — `carrel convert` writes the text in one call, so SIGTERM mid-write truncates it, and the truncated file is newer than its source, so the freshness check would have cached it forever. And `hooks/hooks.json` caps the hook at 60 s, so a budget above that cannot be reached; the note and the tunables table say so.
+
+## D-021 (2026-09-12) — `carrel mcp` is confined to the directory it was started in
+
+`SECURITY.md` listed "the MCP server reading or writing outside its root" among the reports it cares about most, and the server did exactly that: `_resolve` accepted any absolute path, `_root` accepted any client-supplied `root`, and no confinement code existed in the module. A server started in `docs/` returned `carrel_inspect` metadata for `/etc/hostname` and served the contents of `/tmp/…/secret.txt` through `resources/read carrel://file/…`. The documented property was false, which is worse than an undocumented gap: it is what a reader relies on when deciding what to point the server at.
+
+The root is `Path(default_root).resolve()` — `--root` when given, otherwise the working directory the server was started in — recorded once at startup on a frozen `Desk`. Every path a client can name goes through `Desk.resolve()`: the `path`/`paths`/`out` arguments of all fourteen tools, the per-call `root`, and the `carrel://file/` and `carrel://search/` handlers. There is no second way in, which is the point — a rule applied at twenty-seven call sites is a rule that gets forgotten at the twenty-eighth.
+
+Symlinks resolve **before** the test, so a link inside the root pointing out of it is refused rather than followed. Outside → a tool result with `isError: true` and exit code 2 naming the root; for resources, the server's existing resource-not-found shape, because the resource protocol has one failure shape and a distinct refusal there would turn `resources/read` into an existence oracle for the disk.
+
+`--allow-outside-root` lifts it for the session. Two consequences worth stating: a per-call `root` can now only narrow the desk, never leave it (the old override is gone); and `carrel --root / mcp` is unconfined by construction, because `/` is then the desk the user named.
+
+Consequence: `plugins/carrel-agent/.mcp.json` is unchanged — Claude Code starts the server in the project directory, which is the desk. `specs/30-mcp-v3.md`'s re-opened confinement question is answered by this record, so the mutating tools of v0.6.0 inherit the boundary rather than each solving it.
+
+## D-022 (2026-09-12) — The tracked-files guard is overridden by `--allow-tracked`; `--force` stays as a deprecated alias
+
+`--force` means "overwrite existing output" on `mail`, `edit`, `sign`, `form`, `catalog`, `meta` and `audiobook`. On `rename`, `organize`, `intake` and `watch` it meant "bypass the tracked-files guard" (spec 29) — and those four never overwrite anything, so the habitual meaning does not apply to them at all. Someone who learned `--force` from `mail attachments` and adds it to `intake --apply` expecting overwrite semantics silently disables the guard that exists because a `rename --apply` once renamed 21 tracked files in this checkout.
+
+The guard's override is `--allow-tracked` on all four. It cannot be reached by reflex from the other meaning, and it names what it does. `core/fsops.py::guard_worktree` takes `allow_tracked=`, and both refusal messages say "pass `--allow-tracked` to proceed".
+
+`--force` is **not removed**. Scripts and the `bookkeeper` agent's documented flow use it, and breaking them to make a naming point is the wrong trade. It stays as an alias whose help says it is deprecated, and one line on stderr when it is used: `warning: --force here means --allow-tracked (bypass the tracked-files guard); the --force spelling is deprecated`. No removal date is set; removing it is a separate decision, recorded when it is made.
+
+Consequence: `tests/test_guardrails.py` runs every override assertion under both spellings (`OVERRIDES`), and asserts the warning fires exactly once per run on each of the four commands and not at all for `--allow-tracked`.

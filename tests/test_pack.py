@@ -1136,15 +1136,16 @@ def test_an_empty_pack_still_writes_its_output_file(tmp_path: Path, repo: Path):
 
 def test_the_mcp_pack_tool_carries_the_same_reason(tmp_path: Path):
     """An agent has no exit code to read, so the payload must say it."""
-    from carrel.commands.mcp import _tool_pack
+    from carrel.commands.mcp import Desk, _tool_pack
 
     root = tmp_path / "desk"
     root.mkdir()
     (root / "a.md").write_text("The quick brown fox\n", encoding="utf-8", newline="\n")
     assert run("--root", str(root), "index", str(root)).exit_code == 0
 
-    payload = _tool_pack({"path": str(root), "query": "kumquat velocipede"}, root)
+    desk = Desk(root.resolve())
+    payload = _tool_pack({"path": str(root), "query": "kumquat velocipede"}, desk)
     assert "FTS5 requires all of them" in payload["empty_reason"], payload
 
-    payload = _tool_pack({"path": str(root), "query": "quick fox"}, root)
+    payload = _tool_pack({"path": str(root), "query": "quick fox"}, desk)
     assert "empty_reason" not in payload, payload

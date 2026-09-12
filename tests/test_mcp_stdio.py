@@ -27,11 +27,13 @@ def make_tree(root: Path) -> None:
     (sub / "deep.txt").write_text("buried text content\n")
 
 
-def run_server(messages: list[dict | str], root: Path) -> subprocess.CompletedProcess[str]:
-    """Spawn `python -m carrel.cli --root ROOT mcp`, feed messages, close stdin (EOF)."""
+def run_server(
+    messages: list[dict | str], root: Path, *, args: tuple[str, ...] = ()
+) -> subprocess.CompletedProcess[str]:
+    """Spawn `python -m carrel.cli --root ROOT mcp [args]`, feed messages, close stdin (EOF)."""
     raw = "".join((m if isinstance(m, str) else json.dumps(m)) + "\n" for m in messages)
     return subprocess.run(
-        [sys.executable, "-m", "carrel.cli", "--root", str(root), "mcp"],
+        [sys.executable, "-m", "carrel.cli", "--root", str(root), "mcp", *args],
         input=raw,
         capture_output=True,
         text=True,
@@ -197,6 +199,134 @@ class TestMcpStdio:
         assert payload["document"].startswith("# carrel pack")
         assert "buried text content" in payload["document"]
         assert {e["path"] for e in payload["entries"]} == {"notes.txt", "doc.md", "sub/deep.txt"}
+
+
+def tool_call(mid: int, name: str, arguments: dict) -> dict:
+    return {
+        "jsonrpc": "2.0",
+        "id": mid,
+        "method": "tools/call",
+        "params": {"name": name, "arguments": arguments},
+    }
+
+
+def resource_read(mid: int, uri: str) -> dict:
+    return {"jsonrpc": "2.0", "id": mid, "method": "resources/read", "params": {"uri": uri}}
+
+
+class TestMcpRootBoundary:
+    """`carrel mcp` reads and writes only under the directory it was started in.
+
+    SECURITY.md counts a read outside that directory as a vulnerability, so
+    every one of these is a claim the docs make on the server's behalf.
+    """
+
+    @staticmethod
+    def desk_and_secret(tmp_path: Path) -> tuple[Path, Path]:
+        desk = tmp_path / "desk"
+        desk.mkdir()
+        make_tree(desk)
+        secret = tmp_path / "secret.txt"
+        secret.write_text("the passphrase is hunter2\n")
+        return desk, secret
+
+    def test_tool_paths_outside_the_root_are_refused(self, tmp_path):
+        desk, secret = self.desk_and_secret(tmp_path)
+        proc = run_server(
+            [
+                tool_call(1, "carrel_inspect", {"path": str(secret)}),
+                tool_call(2, "carrel_inspect", {"path": "/etc/hostname"}),
+                tool_call(3, "carrel_inspect", {"path": "../secret.txt"}),
+                tool_call(4, "carrel_inspect", {"path": "notes.txt"}),
+            ],
+            desk,
+        )
+        assert proc.returncode == 0, proc.stderr
+        responses = parse_lines(proc.stdout)
+        for resp in responses[:3]:
+            is_error, payload = tool_payload(resp)
+            assert is_error is True, payload
+            assert "outside the server root" in payload["error"], payload
+            assert payload["exit_code"] == 2, payload
+        # nothing was read: the refusal names the path, never its contents
+        assert "hunter2" not in proc.stdout
+        is_error, payload = tool_payload(responses[3])  # inside the root, unaffected
+        assert is_error is False and payload["name"] == "notes.txt"
+
+    def test_a_client_root_outside_the_server_root_is_refused(self, tmp_path):
+        desk, _ = self.desk_and_secret(tmp_path)
+        proc = run_server(
+            [tool_call(1, "carrel_search", {"query": "x", "root": str(tmp_path)})], desk
+        )
+        is_error, payload = tool_payload(parse_lines(proc.stdout)[0])
+        assert is_error is True
+        assert "outside the server root" in payload["error"], payload
+
+    def test_a_symlink_out_of_the_root_is_refused_not_followed(self, tmp_path):
+        desk, secret = self.desk_and_secret(tmp_path)
+        (desk / "escape.txt").symlink_to(secret)
+        proc = run_server([tool_call(1, "carrel_inspect", {"path": "escape.txt"})], desk)
+        is_error, payload = tool_payload(parse_lines(proc.stdout)[0])
+        assert is_error is True, payload
+        assert "outside the server root" in payload["error"], payload
+        assert "hunter2" not in proc.stdout
+
+    def test_resources_outside_the_root_are_not_found(self, tmp_path):
+        desk, secret = self.desk_and_secret(tmp_path)
+        proc = run_server(
+            [
+                resource_read(1, f"carrel://file/{secret}"),
+                resource_read(2, "carrel://file/../secret.txt"),
+                resource_read(3, "carrel://file/sub/deep.txt"),
+            ],
+            desk,
+        )
+        responses = parse_lines(proc.stdout)
+        for resp in responses[:2]:
+            assert resp["error"]["code"] == -32002, resp
+        assert "hunter2" not in proc.stdout
+        (block,) = responses[2]["result"]["contents"]  # inside the root, unaffected
+        assert block["text"] == "buried text content\n"
+
+    def test_allow_outside_root_lifts_the_boundary(self, tmp_path):
+        desk, secret = self.desk_and_secret(tmp_path)
+        proc = run_server(
+            [
+                tool_call(1, "carrel_inspect", {"path": str(secret)}),
+                resource_read(2, f"carrel://file/{secret}"),
+            ],
+            desk,
+            args=("--allow-outside-root",),
+        )
+        assert proc.returncode == 0, proc.stderr
+        responses = parse_lines(proc.stdout)
+        is_error, payload = tool_payload(responses[0])
+        assert is_error is False, payload
+        assert payload["name"] == "secret.txt"
+        (block,) = responses[1]["result"]["contents"]
+        assert block["text"] == "the passphrase is hunter2\n"
+
+
+class TestMcpProtocolVersion:
+    @staticmethod
+    def initialize(tmp_path: Path, requested: object) -> str:
+        params: dict = {"capabilities": {}, "clientInfo": {"name": "pytest", "version": "0"}}
+        if requested is not None:
+            params["protocolVersion"] = requested
+        proc = run_server(
+            [{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": params}], tmp_path
+        )
+        assert proc.returncode == 0, proc.stderr
+        return parse_lines(proc.stdout)[0]["result"]["protocolVersion"]
+
+    @pytest.mark.parametrize("version", ["2025-06-18", "2025-03-26", "2024-11-05"])
+    def test_a_supported_version_is_echoed(self, tmp_path, version):
+        assert self.initialize(tmp_path, version) == version
+
+    @pytest.mark.parametrize("requested", ["2099-01-01", "", "not-a-version", 7, None])
+    def test_anything_else_gets_the_newest_supported_version(self, tmp_path, requested):
+        """Echoing an unknown string would claim a revision never run against."""
+        assert self.initialize(tmp_path, requested) == "2025-06-18"
 
 
 if __name__ == "__main__":

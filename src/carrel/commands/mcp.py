@@ -13,6 +13,10 @@ templates expose file text and desk search as `carrel://` URIs.
 
 Every tool failure is returned as `isError: true` carrying the same message the
 CLI would print (CarrelError text, install hints included) — never a crash.
+
+Every path the client names — tool arguments, a client-supplied `root`, and both
+`carrel://` resource URIs — is confined to the directory the server was started
+in (`Desk`, below). `--allow-outside-root` lifts it for the session.
 """
 
 from __future__ import annotations
@@ -22,6 +26,7 @@ import inspect as pyinspect
 import json
 import sys
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, TextIO
@@ -32,11 +37,17 @@ import click
 from carrel._product import PRODUCT
 from carrel.core.db import DeskDB
 from carrel.core.filetypes import FileType, detect_or_die
-from carrel.core.output import CarrelError, CarrelInputError
+from carrel.core.output import CarrelError, CarrelInputError, CarrelUsageError
 from carrel.core.patterns import PATTERNS
 from carrel.core.textextract import extract_text
 
-DEFAULT_PROTOCOL_VERSION = "2025-06-18"
+#: Newest first. The JSON-RPC surface this server exposes — `initialize`,
+#: `tools/list`, `tools/call` and the two `resources/*` methods — is identical
+#: across all three revisions, so any of them can be spoken verbatim. A version
+#: outside this tuple is answered with the newest we support; the MCP spec has
+#: the server name a version it actually speaks and lets the client decide.
+SUPPORTED_PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
+DEFAULT_PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0]
 CONVERT_CONTENT_CAP = 1024 * 1024  # bytes of converted text returned inline
 _PACK_FORMATS = ("json", "md", "xml")
 _DIFF_MODES = ("auto", "text", "struct", "pdf", "image")
@@ -402,13 +413,45 @@ _SCHEMA_BY_NAME = {t["name"]: t["inputSchema"] for t in TOOLS}
 # ---------------------------------------------------------------------------
 
 
-def _resolve(raw: str | Path, default_root: Path) -> Path:
-    path = Path(raw).expanduser()
-    return path if path.is_absolute() else (default_root / path)
+class OutsideRootError(CarrelUsageError):
+    """A client named a path outside the directory the server was started in."""
 
 
-def _root(args: dict[str, Any], default_root: Path) -> Path:
-    return _resolve(args.get("root") or ".", default_root).resolve()
+@dataclass(frozen=True, slots=True)
+class Desk:
+    """The server's launch root and whether paths are confined to it.
+
+    `root` is `--root` if the user gave one, else the working directory the
+    server was started in — already resolved. Every path a client names reaches
+    the filesystem through `resolve`, so confinement cannot be forgotten at a
+    call site: there is no other way in.
+    """
+
+    root: Path
+    confined: bool = True
+
+    def resolve(self, raw: str | Path, base: Path | None = None) -> Path:
+        """Make `raw` absolute against `base` (default: the launch root), then confine it.
+
+        Symlinks are resolved *before* the check, so a link inside the root that
+        points outside it is refused rather than followed.
+        """
+        path = Path(raw).expanduser()
+        if not path.is_absolute():
+            path = (base if base is not None else self.root) / path
+        real = path.resolve()
+        if self.confined and not real.is_relative_to(self.root):
+            raise OutsideRootError(
+                f"{real} is outside the server root {self.root} — "
+                "carrel mcp only reads and writes under the directory it was "
+                "started in; restart it with --allow-outside-root to lift this"
+            )
+        return real
+
+
+def _root(args: dict[str, Any], desk: Desk) -> Path:
+    """The desk root for one call: the client's `root` argument, confined."""
+    return desk.resolve(args.get("root") or ".")
 
 
 def _str_list(args: dict[str, Any], key: str) -> list[str]:
@@ -452,10 +495,10 @@ def _check_required(name: str, args: dict[str, Any]) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _tool_search(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
+def _tool_search(args: dict[str, Any], desk: Desk) -> dict[str, Any]:
     from carrel.commands.search import search_index
 
-    root = _root(args, default_root)
+    root = _root(args, desk)
     query = str(args["query"])
     types = set(_str_list(args, "types")) or None
     tags = _str_list(args, "tags") or None
@@ -466,11 +509,11 @@ def _tool_search(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
     return {"query": query, "root": str(root), "count": len(hits), "results": hits}
 
 
-def _tool_pack(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
+def _tool_pack(args: dict[str, Any], desk: Desk) -> dict[str, Any]:
     from carrel.commands.pack import pack_paths
 
-    root = _root(args, default_root)
-    path = _resolve(args["path"], root)
+    root = _root(args, desk)
+    path = desk.resolve(args["path"], root)
     fmt = _choice(args, "format", _PACK_FORMATS, "json")
     tree_only = bool(args.get("tree_only") or False)
     max_bytes = args.get("max_bytes")
@@ -525,16 +568,16 @@ def _tool_pack(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
     return payload
 
 
-def _tool_inspect(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
+def _tool_inspect(args: dict[str, Any], desk: Desk) -> dict[str, Any]:
     from carrel.commands.inspect import inspect_path
 
-    path = _resolve(args["path"], _root(args, default_root))
+    path = desk.resolve(args["path"], _root(args, desk))
     return inspect_path(path, deep=bool(args.get("deep") or False))
 
 
-def _tool_tag(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
+def _tool_tag(args: dict[str, Any], desk: Desk) -> dict[str, Any]:
     action = _choice(args, "action", ("add", "rm", "ls", "find"), "")
-    root = _root(args, default_root)
+    root = _root(args, desk)
     tags = _str_list(args, "tags")
 
     if action == "find":
@@ -547,7 +590,7 @@ def _tool_tag(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
 
     if not args.get("path"):
         raise CarrelInputError(f"carrel_tag {action} requires `path`")
-    path = _resolve(args["path"], root)
+    path = desk.resolve(args["path"], root)
     if action in ("add", "rm") and not tags:
         raise CarrelInputError(f"carrel_tag {action} requires a non-empty `tags` array")
 
@@ -567,10 +610,10 @@ def _tool_tag(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
         return {"path": db.rel(path), "tags": db.tags_of(path)}
 
 
-def _tool_note(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
+def _tool_note(args: dict[str, Any], desk: Desk) -> dict[str, Any]:
     action = _choice(args, "action", ("add", "ls"), "")
-    root = _root(args, default_root)
-    path = _resolve(args["path"], root)
+    root = _root(args, desk)
+    path = desk.resolve(args["path"], root)
 
     if action == "add":
         body = str(args.get("body") or "").strip()
@@ -595,11 +638,11 @@ def _tool_note(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
         return {"path": db.rel(path), "notes": notes}
 
 
-def _tool_index(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
+def _tool_index(args: dict[str, Any], desk: Desk) -> dict[str, Any]:
     from carrel.commands.index import index_paths
 
-    root = _root(args, default_root)
-    paths = [_resolve(p, root) for p in _str_list(args, "paths")] or None
+    root = _root(args, desk)
+    paths = [desk.resolve(p, root) for p in _str_list(args, "paths")] or None
     result = index_paths(
         root,
         paths,
@@ -610,17 +653,17 @@ def _tool_index(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
     return {"root": str(root), **result}
 
 
-def _tool_convert(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
+def _tool_convert(args: dict[str, Any], desk: Desk) -> dict[str, Any]:
     from carrel.commands.convert import convert_file, normalize_target
 
-    root = _root(args, default_root)
-    src = _resolve(args["path"], root)
+    root = _root(args, desk)
+    src = desk.resolve(args["path"], root)
     to = str(args["to"])
     dest_type = normalize_target(to)
     if dest_type is None:
         known = sorted(t.value for t in FileType if t is not FileType.UNKNOWN)
         raise CarrelInputError(f"unknown target type '{to}' (choose from: {', '.join(known)})")
-    out_dir = _resolve(args["out_dir"], root) if args.get("out_dir") else src.parent
+    out_dir = desk.resolve(args["out_dir"], root) if args.get("out_dir") else src.parent
     dest = (out_dir / src.name).with_suffix(f".{dest_type.value}")
     info = convert_file(src, dest, force=bool(args.get("force") or False))
 
@@ -639,20 +682,20 @@ def _tool_convert(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
     return payload
 
 
-def _tool_diff(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
+def _tool_diff(args: dict[str, Any], desk: Desk) -> dict[str, Any]:
     from carrel.commands.diff import diff_files
 
-    root = _root(args, default_root)
+    root = _root(args, desk)
     mode = _choice(args, "mode", _DIFF_MODES, "auto")
-    result = diff_files(_resolve(args["a"], root), _resolve(args["b"], root), mode=mode)
+    result = diff_files(desk.resolve(args["a"], root), desk.resolve(args["b"], root), mode=mode)
     return {**result, "differ": not result["identical"]}
 
 
-def _tool_redact(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
+def _tool_redact(args: dict[str, Any], desk: Desk) -> dict[str, Any]:
     from carrel.commands.redact import _check_still_parses, _compile_rules, _redact_text
 
-    root = _root(args, default_root)
-    src = _resolve(args["path"], root)
+    root = _root(args, desk)
+    src = desk.resolve(args["path"], root)
     builtin = _str_list(args, "builtin")
     patterns = tuple(_str_list(args, "pattern"))
     replacement = args.get("replacement")
@@ -685,7 +728,7 @@ def _tool_redact(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
     }
 
 
-def _tool_doctor(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
+def _tool_doctor(args: dict[str, Any], desk: Desk) -> dict[str, Any]:
     from carrel.commands.doctor import CAPABILITIES, build_report
 
     report = build_report()
@@ -701,11 +744,11 @@ def _tool_doctor(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
     return report
 
 
-def _tool_meta(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
+def _tool_meta(args: dict[str, Any], desk: Desk) -> dict[str, Any]:
     from carrel.commands.meta import meta_map
 
     action = _choice(args, "action", ("set", "get", "ls", "rm", "find"), "")
-    root = _root(args, default_root)
+    root = _root(args, desk)
 
     if action == "find":
         from carrel.core.db import parse_meta_condition
@@ -731,7 +774,7 @@ def _tool_meta(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
 
     if not args.get("path"):
         raise CarrelInputError(f"carrel_meta {action} requires `path`")
-    path = _resolve(args["path"], root).resolve()
+    path = desk.resolve(args["path"], root)  # Desk.resolve already resolves symlinks
     key = str(args.get("key") or "")
     keys = _str_list(args, "keys")
     if action == "get" and not key:
@@ -786,11 +829,11 @@ def _tool_meta(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
         return {"path": db.rel(path), "meta": meta_map(db, path), "fields": rows}
 
 
-def _tool_refs(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
+def _tool_refs(args: dict[str, Any], desk: Desk) -> dict[str, Any]:
     from carrel.commands.refs import link_refs, scan_refs
 
-    root = _root(args, default_root)
-    path = _resolve(args["path"], root)
+    root = _root(args, desk)
+    path = desk.resolve(args["path"], root)
     kinds = _str_list(args, "kinds") or None
     records = scan_refs(
         [path],
@@ -805,11 +848,11 @@ def _tool_refs(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
     return {"root": str(root), "path": str(path), "files": records}
 
 
-def _tool_fields(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
+def _tool_fields(args: dict[str, Any], desk: Desk) -> dict[str, Any]:
     from carrel.commands.fields import fields_for
 
-    root = _root(args, default_root)
-    path = _resolve(args["path"], root)
+    root = _root(args, desk)
+    path = desk.resolve(args["path"], root)
     records = fields_for(
         [path],
         profile=_choice(args, "profile", ("auto", "invoice", "receipt", "statement"), "auto"),
@@ -820,22 +863,22 @@ def _tool_fields(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
     return {"root": str(root), "path": str(path), "files": records}
 
 
-def _tool_mail(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
+def _tool_mail(args: dict[str, Any], desk: Desk) -> dict[str, Any]:
     from carrel.commands.mail import attachments_of, threads_of
 
     action = _choice(args, "action", ("attachments", "threads"), "")
-    root = _root(args, default_root)
-    path = _resolve(args["path"], root)
+    root = _root(args, desk)
+    path = desk.resolve(args["path"], root)
     if action == "threads":
         return {"root": str(root), "path": str(path), "threads": threads_of([path], root=root)}
     if not args.get("out_dir"):
         raise CarrelInputError("carrel_mail attachments requires `out_dir`")
-    out_dir = _resolve(args["out_dir"], root)
+    out_dir = desk.resolve(args["out_dir"], root)
     records = attachments_of([path], out_dir, force=bool(args.get("force") or False))
     return {"root": str(root), "path": str(path), "out_dir": str(out_dir), "messages": records}
 
 
-_TOOL_IMPLS: dict[str, Callable[[dict[str, Any], Path], dict[str, Any]]] = {
+_TOOL_IMPLS: dict[str, Callable[[dict[str, Any], Desk], dict[str, Any]]] = {
     "carrel_search": _tool_search,
     "carrel_pack": _tool_pack,
     "carrel_inspect": _tool_inspect,
@@ -878,10 +921,16 @@ class _ResourceNotFoundError(Exception):
     """Unknown scheme/shape or a file URI that does not point at a file."""
 
 
-def _read_resource(uri: str, default_root: Path) -> dict[str, Any]:
+def _read_resource(uri: str, desk: Desk) -> dict[str, Any]:
     if uri.startswith(_URI_FILE):
         rel = unquote(uri[len(_URI_FILE) :])
-        path = _resolve(rel, default_root) if rel else None
+        # A URI outside the root is "not found", not a distinct refusal: the
+        # resource protocol has one failure shape, and naming the boundary here
+        # would turn `resources/read` into an existence oracle for the disk.
+        try:
+            path = desk.resolve(rel) if rel else None
+        except OutsideRootError as e:
+            raise _ResourceNotFoundError(uri) from e
         if path is None or not path.is_file():
             raise _ResourceNotFoundError(uri)
         return {"contents": [{"uri": uri, "mimeType": "text/plain", "text": extract_text(path)}]}
@@ -889,7 +938,7 @@ def _read_resource(uri: str, default_root: Path) -> dict[str, Any]:
         query = unquote(uri[len(_URI_SEARCH) :])
         if not query:
             raise _ResourceNotFoundError(uri)
-        payload = _tool_search({"query": query}, default_root)
+        payload = _tool_search({"query": query}, desk)
         text = json.dumps(payload, ensure_ascii=False, default=str)
         return {"contents": [{"uri": uri, "mimeType": "application/json", "text": text}]}
     raise _ResourceNotFoundError(uri)
@@ -918,7 +967,7 @@ def _tool_error(e: Exception) -> dict[str, Any]:
     return {"content": [{"type": "text", "text": json.dumps(body)}], "isError": True}
 
 
-def _call_tool(params: dict[str, Any], default_root: Path) -> dict[str, Any]:
+def _call_tool(params: dict[str, Any], desk: Desk) -> dict[str, Any]:
     name = str(params.get("name") or "")
     impl = _TOOL_IMPLS[name]
     arguments = params.get("arguments") or {}
@@ -926,12 +975,17 @@ def _call_tool(params: dict[str, Any], default_root: Path) -> dict[str, Any]:
         if not isinstance(arguments, dict):
             raise CarrelInputError("`arguments` must be a JSON object")
         _check_required(name, arguments)
-        return _tool_result(impl(arguments, default_root))
+        return _tool_result(impl(arguments, desk))
     except Exception as e:  # noqa: BLE001 — tool failures are data, not crashes
         return _tool_error(e)
 
 
-def _handle(msg: Any, default_root: Path) -> dict[str, Any] | None:
+def _negotiate(requested: Any) -> str:
+    """Echo a protocol version we speak; otherwise answer with the newest one."""
+    return str(requested) if requested in SUPPORTED_PROTOCOL_VERSIONS else DEFAULT_PROTOCOL_VERSION
+
+
+def _handle(msg: Any, desk: Desk) -> dict[str, Any] | None:
     """Handle one decoded message; None means no response (notification)."""
     if not isinstance(msg, dict):
         return _error(None, -32600, "invalid request: expected a JSON object")
@@ -942,8 +996,10 @@ def _handle(msg: Any, default_root: Path) -> dict[str, Any] | None:
 
     if method == "initialize":
         result: Any = {
-            # echo the client's requested version — we speak plain tools either way
-            "protocolVersion": params.get("protocolVersion") or DEFAULT_PROTOCOL_VERSION,
+            # A version we speak is echoed; anything else is answered with the
+            # newest we support. Echoing an unknown string would claim a
+            # revision this server has never been run against.
+            "protocolVersion": _negotiate(params.get("protocolVersion")),
             "capabilities": {"tools": {}, "resources": {}},
             "serverInfo": {"name": PRODUCT["name"], "version": PRODUCT["version"]},
         }
@@ -957,7 +1013,7 @@ def _handle(msg: Any, default_root: Path) -> dict[str, Any] | None:
         name = str(params.get("name") or "")
         if name not in _TOOL_IMPLS:
             return None if is_notification else _error(mid, -32602, f"unknown tool: {name}")
-        result = _call_tool(params, default_root)
+        result = _call_tool(params, desk)
     elif method == "resources/templates/list":
         result = {"resourceTemplates": RESOURCE_TEMPLATES}
     elif method == "resources/list":
@@ -965,7 +1021,7 @@ def _handle(msg: Any, default_root: Path) -> dict[str, Any] | None:
     elif method == "resources/read":
         uri = str(params.get("uri") or "")
         try:
-            result = _read_resource(uri, default_root)
+            result = _read_resource(uri, desk)
         except _ResourceNotFoundError:
             return (
                 None
@@ -980,9 +1036,19 @@ def _handle(msg: Any, default_root: Path) -> dict[str, Any] | None:
     return None if is_notification else {"jsonrpc": "2.0", "id": mid, "result": result}
 
 
-def serve(stdin: TextIO, stdout: TextIO, default_root: Path | str = ".") -> None:
-    """Serve newline-delimited JSON-RPC until EOF (clean exit)."""
-    root = Path(default_root).resolve()
+def serve(
+    stdin: TextIO,
+    stdout: TextIO,
+    default_root: Path | str = ".",
+    *,
+    allow_outside_root: bool = False,
+) -> None:
+    """Serve newline-delimited JSON-RPC until EOF (clean exit).
+
+    `default_root` is the desk root and, unless `allow_outside_root`, the
+    boundary every client-named path is confined to.
+    """
+    desk = Desk(Path(default_root).resolve(), confined=not allow_outside_root)
     for line in stdin:
         line = line.strip()
         if not line:
@@ -992,7 +1058,7 @@ def serve(stdin: TextIO, stdout: TextIO, default_root: Path | str = ".") -> None
         except json.JSONDecodeError as e:
             response: dict[str, Any] | None = _error(None, -32700, f"parse error: {e}")
         else:
-            response = _handle(msg, root)
+            response = _handle(msg, desk)
         if response is not None:
             stdout.write(json.dumps(response, ensure_ascii=False, default=str) + "\n")
             stdout.flush()
@@ -1004,10 +1070,17 @@ _TOOL_SUMMARY = ", ".join(t["name"].removeprefix("carrel_") for t in TOOLS)
 @click.command(
     name="mcp",
     help=f"Serve the desk as an MCP server on stdio: {len(TOOLS)} tools ({_TOOL_SUMMARY}) "
-    "and carrel:// file/search resources.",
+    "and carrel:// file/search resources. Every path a client names is confined "
+    "to the desk root (--root, default the current directory).",
+)
+@click.option(
+    "--allow-outside-root",
+    is_flag=True,
+    help="Let clients read and write outside the desk root. Off by default: "
+    "the server refuses any path that resolves outside it.",
 )
 @click.pass_context
-def cmd(ctx: click.Context) -> None:
+def cmd(ctx: click.Context, allow_outside_root: bool) -> None:
     ctx.ensure_object(dict)
     # MCP frames are UTF-8 by specification, but Python wires stdio to the
     # locale encoding — cp1252 on a stock Windows box, with errors="strict".
@@ -1018,4 +1091,9 @@ def cmd(ctx: click.Context) -> None:
         if reconfigure is not None:  # not a real TextIOWrapper under some hosts
             with contextlib.suppress(OSError, ValueError):
                 reconfigure(encoding="utf-8")
-    serve(sys.stdin, sys.stdout, default_root=ctx.obj.get("root", "."))
+    serve(
+        sys.stdin,
+        sys.stdout,
+        default_root=ctx.obj.get("root", "."),
+        allow_outside_root=allow_outside_root,
+    )

@@ -11,15 +11,15 @@ The tool behaved correctly and the outcome was still wrong. A file git is tracki
 
 ## Rule
 
-`rename --apply`, `organize --apply`, `intake --apply` and `watch --done-dir/--error-dir` refuse to start when the move would touch a file **git is tracking**, unless `--force` is given. Exit **2** through `CarrelUsageError`, so the message reads `error: …` like every other carrel error.
+`rename --apply`, `organize --apply`, `intake --apply` and `watch --done-dir/--error-dir` refuse to start when the move would touch a file **git is tracking**, unless `--allow-tracked` is given (v0.5.0; `--force` remains as a deprecated alias that warns once — D-022). Exit **2** through `CarrelUsageError`, so the message reads `error: …` like every other carrel error.
 
 ### Tracked, not merely inside
 
-The first draft of this guard asked "is this path inside a git work tree?". That is the wrong question, and the review said so: `~` under a dotfiles repository is a mainstream layout, and `carrel intake ~/Downloads --to ~/Documents/filed` would then refuse forever with no way out but `--force` — the exact reflex the guard exists to prevent. `~/Downloads` is untracked; `src/carrel/commands/` is tracked. Only the second is the incident.
+The first draft of this guard asked "is this path inside a git work tree?". That is the wrong question, and the review said so: `~` under a dotfiles repository is a mainstream layout, and `carrel intake ~/Downloads --to ~/Documents/filed` would then refuse forever with no way out but the override — the exact reflex the guard exists to prevent. `~/Downloads` is untracked; `src/carrel/commands/` is tracked. Only the second is the incident.
 
 So: `git -C <root> ls-files -z -- <paths>`. Non-empty ⇒ refuse and name what it found. Empty ⇒ proceed.
 
-When the `git` binary is absent the question cannot be answered at all. carrel then exits **3** with git's install hint, the same as every other missing-binary path (CLAUDE.md's exit-code convention) — never a guess. `--force` skips the question entirely, so a git-less box is not stuck. The same applies to any git call that fails: "could not ask" and "nothing is tracked" are different answers and must never collapse into the safe-looking one.
+When the `git` binary is absent the question cannot be answered at all. carrel then exits **3** with git's install hint, the same as every other missing-binary path (CLAUDE.md's exit-code convention) — never a guess. `--allow-tracked` skips the question entirely, so a git-less box is not stuck. The same applies to any git call that fails: "could not ask" and "nothing is tracked" are different answers and must never collapse into the safe-looking one.
 
 ### What is guarded
 
@@ -72,15 +72,15 @@ error: organize --apply would move files that git is tracking:
   /home/you/projects/myapp
     tracked: src/a.py, src/b.py, src/c.py, … (21 total)
 Renaming tracked files breaks imports, tests and history. Point this
-somewhere else, or pass --force if it is what you meant.
+somewhere else, or pass --allow-tracked if it is what you meant.
 ```
 
 `CarrelUsageError`, not `click.UsageError`: click prefixes the latter with a `Usage:` / `Try --help` banner, which tells the user their arguments were malformed when in fact they were understood and refused. It also keeps `core/` free of the CLI framework.
 
 ## Tests (`tests/test_guardrails.py`)
 
-Repositories are real (`git init` + `git add`) behind `@needs("git")`, because the question the guard asks can only be answered by git. The no-git fallback is exercised with a stale `CARREL_BIN_GIT`, which counts as missing (D-008). 32 tests, covering: tracked refused and nothing moved; untracked-inside-a-repo allowed (the dotfiles case); an expanded glob of tracked files refused; `--force` through; dry-run unaffected; `--to` not created on refusal; `--into` escaping DIRECTORY; argument validation reported ahead of the guard; no `Usage:` banner; a ceiling directory and a malformed `.git` both trusted as "no"; an inherited `GIT_DIR` ignored; `watch --done-dir` refused and a plain `watch` not.
+Repositories are real (`git init` + `git add`) behind `@needs("git")`, because the question the guard asks can only be answered by git. The no-git fallback is exercised with a stale `CARREL_BIN_GIT`, which counts as missing (D-008). 32 tests, covering: tracked refused and nothing moved; untracked-inside-a-repo allowed (the dotfiles case); an expanded glob of tracked files refused; both override spellings through, with `--force` warning; dry-run unaffected; `--to` not created on refusal; `--into` escaping DIRECTORY; argument validation reported ahead of the guard; no `Usage:` banner; a ceiling directory and a malformed `.git` both trusted as "no"; an inherited `GIT_DIR` ignored; `watch --done-dir` refused and a plain `watch` not.
 
 ## Not in scope
 
-Detecting other kinds of precious directory (`node_modules`, `$HOME` itself, a mounted share). Git tracking is both unambiguous to detect and catastrophic to break. Anything broader is a heuristic that trains users to reach for `--force` by reflex, which would cost more safety than it buys.
+Detecting other kinds of precious directory (`node_modules`, `$HOME` itself, a mounted share). Git tracking is both unambiguous to detect and catastrophic to break. Anything broader is a heuristic that trains users to reach for the override by reflex, which would cost more safety than it buys.

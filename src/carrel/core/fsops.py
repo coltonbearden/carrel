@@ -17,6 +17,8 @@ import subprocess
 from collections.abc import Iterable, Iterator, Sequence
 from pathlib import Path
 
+import click
+
 from carrel.core import adapters
 from carrel.core.ignore import dot_git_ancestor
 from carrel.core.output import CarrelError, CarrelUsageError, ExitCode
@@ -247,7 +249,24 @@ def would_move_tracked(paths: Iterable[Path]) -> dict[Path, list[str]]:
     return {root: names for root, names in hits.items() if names}
 
 
-def guard_worktree(paths: Iterable[Path], *, what: str, force: bool = False) -> None:
+def allow_tracked_from(*, allow_tracked: bool, force: bool) -> bool:
+    """Fold the deprecated `--force` spelling into `--allow-tracked`, warning once.
+
+    `--force` means "overwrite existing output" on seven other commands and
+    "bypass the tracked-files guard" on these four, so someone who learned it
+    from `mail attachments` disables a safety guard by reflex. The alias stays
+    — scripts depend on it — but it says what it now means.
+    """
+    if force:
+        click.echo(
+            "warning: --force here means --allow-tracked (bypass the tracked-files "
+            "guard); the --force spelling is deprecated",
+            err=True,
+        )
+    return allow_tracked or force
+
+
+def guard_worktree(paths: Iterable[Path], *, what: str, allow_tracked: bool = False) -> None:
     """Refuse a bulk move that would rewrite files git is tracking.
 
     `paths` are exactly what the command would move or write into. Raises
@@ -255,13 +274,13 @@ def guard_worktree(paths: Iterable[Path], *, what: str, force: bool = False) -> 
     `TrackedUnknownError` (exit 3, with git's install hint) when the question
     cannot be answered — never silence.
     """
-    if force:
+    if allow_tracked:
         return
     try:
         offenders = would_move_tracked(paths)
     except TrackedUnknownError as e:
         adapters.require("git")  # the usual exit-3 message, binary + install hint
-        raise CarrelUsageError(f"{what}: {e} — pass --force to proceed anyway") from e
+        raise CarrelUsageError(f"{what}: {e} — pass --allow-tracked to proceed anyway") from e
     if not offenders:
         return
     lines = []
@@ -272,5 +291,5 @@ def guard_worktree(paths: Iterable[Path], *, what: str, force: bool = False) -> 
     raise CarrelUsageError(
         f"{what} would move files that git is tracking:\n{listed}\n"
         "Renaming tracked files breaks imports, tests and history. Point this "
-        "somewhere else, or pass --force if it is what you meant."
+        "somewhere else, or pass --allow-tracked if it is what you meant."
     )
