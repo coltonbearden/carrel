@@ -247,7 +247,7 @@ def would_move_tracked(paths: Iterable[Path]) -> dict[Path, list[str]]:
     return {root: names for root, names in hits.items() if names}
 
 
-def guard_worktree(paths: Iterable[Path], *, force: bool, what: str) -> None:
+def guard_worktree(paths: Iterable[Path], *, what: str, force: bool = False) -> None:
     """Refuse a bulk move that would rewrite files git is tracking.
 
     `paths` are exactly what the command would move or write into. Raises

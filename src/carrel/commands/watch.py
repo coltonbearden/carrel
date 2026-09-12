@@ -226,32 +226,49 @@ def _as_text(data: bytes | str | None) -> str:
     return data.decode(errors="replace") if isinstance(data, bytes) else data
 
 
-def _guard_candidates(
-    directory: Path, recursive: bool, skip: Sequence[Path], glob_: str | None
+def _walk_files(
+    directory: Path,
+    *,
+    recursive: bool,
+    skip: Sequence[Path] = (),
+    glob_: str | None = None,
+    hidden: bool = True,
 ) -> list[Path]:
-    """Files this watch could move, for the spec-29 guard.
+    """Files under `directory`, pruning `.git` and the `skip` subtrees as it goes.
 
-    `os.walk` with in-place pruning rather than `rglob`, so `.git` and the
-    `--done-dir`/`--error-dir` subtrees are never descended into. A raw
-    recursive walk of a 200-file repository yielded 425 files, 225 of them
-    `.git/objects` and friends — every one stat'd, resolved and sent through
-    `git ls-files` for an answer git can never give, growing without bound as
-    the archive filled.
+    One walker for both callers, because they had already drifted apart: the
+    guard resolved its destinations and `--existing` did not, so a relative
+    `--done-dir` was pruned by one and descended by the other.
 
-    Hidden files are **kept**, unlike `_existing_files`. `--existing` skips
-    them, but a live event reaches `_Watcher.seed`, which applies only
-    `--glob`, so a committed `.gitkeep` really can be filed into `--done-dir`
-    — and that is exactly the case `tests/test_guardrails.py` pins.
+    `os.walk` with in-place pruning rather than `rglob`: a raw recursive walk
+    of a 200-file repository yielded 425 paths, 225 of them `.git/objects` and
+    friends — every one stat'd, resolved and sent through `git ls-files` for an
+    answer git can never give, and growing without bound as the archive filled.
+
+    `hidden=False` is the `--existing` set, which skips dotted components.
+    The spec-29 guard keeps them (`hidden=True`): `--existing` never queues a
+    `.gitkeep`, but a live event reaches `_Watcher.seed`, which applies only
+    `--glob`, so a committed one really can be filed into `--done-dir`.
+
+    `skip` is resolved here so a relative `--done-dir` prunes like an absolute
+    one; `click.Path` does not resolve it for us.
     """
+    bounds = [s.resolve() for s in skip]
     out: list[Path] = []
     for dirpath, dirnames, filenames in os.walk(directory):
         here = Path(dirpath)
         dirnames[:] = [
             d
             for d in dirnames
-            if d != ".git" and not any((here / d).is_relative_to(s) for s in skip)
+            if d != ".git"
+            and (hidden or not d.startswith("."))
+            and not any((here / d).resolve().is_relative_to(s) for s in bounds)
         ]
-        out.extend(here / name for name in filenames if not glob_ or fnmatch.fnmatch(name, glob_))
+        out.extend(
+            here / name
+            for name in filenames
+            if (hidden or not name.startswith(".")) and (not glob_ or fnmatch.fnmatch(name, glob_))
+        )
         if not recursive:
             break
     return sorted(out)
@@ -263,17 +280,7 @@ def _existing_files(directory: Path, recursive: bool, skip: Sequence[Path] = ())
     `--done-dir` / `--error-dir` are usually inside the watched folder; without
     skipping them a restart would re-run every action over the whole archive.
     """
-    entries = directory.rglob("*") if recursive else directory.iterdir()
-    out: list[Path] = []
-    for p in sorted(entries):
-        if not p.is_file():
-            continue
-        if any(part.startswith(".") for part in p.relative_to(directory).parts):
-            continue
-        if any(p.is_relative_to(s) for s in skip):
-            continue
-        out.append(p)
-    return out
+    return _walk_files(directory, recursive=recursive, skip=skip, hidden=False)
 
 
 def _abs(value: Any) -> str:
@@ -302,9 +309,10 @@ def _launcher_path(argv0: str, *, windows: bool) -> Path | None:
         return None
     me = Path(argv0)
     candidates = [me]
-    # `me.name` is empty for argv[0] of "/", "." or anything ending in a
-    # separator, and `with_name` raises ValueError on those. @handled only
-    # converts CarrelError, so that escaped as a traceback.
+    # `with_name` raises ValueError when there is no final component, which
+    # for pathlib means exactly `/` and `.` — a trailing separator is stripped,
+    # so `bin/` has the name `bin`. @handled only converts CarrelError, so that
+    # ValueError escaped as a traceback.
     if windows and me.name and me.suffix.lower() != ".exe":
         candidates.append(me.with_name(me.name + ".exe"))
     for candidate in candidates:
@@ -383,61 +391,69 @@ def _systemd_word(word: str) -> str:
     """
     if word == ";":
         return r"\;"
-    return _systemd_quoted(word, dollar=True)
-
-
-def _systemd_quoted(text: str, *, dollar: bool) -> str:
-    """One quoted systemd value: C escapes, `%%` for a literal percent.
-
-    `dollar` doubles `$` as well, which is right for `ExecStart=` (systemd
-    expands `$VAR` there) and wrong anywhere no variable expansion happens.
-    """
     escaped = (
-        text.replace("\\", "\\\\")
+        word.replace("\\", "\\\\")
         .replace('"', '\\"')
         .replace("\n", "\\n")
         .replace("\t", "\\t")
         .replace("\r", "\\r")
         .replace("%", "%%")
+        .replace("$", "$$")
     )
-    if dollar:
-        escaped = escaped.replace("$", "$$")
     return f'"{escaped}"'
 
 
 def _systemd_setting(value: str) -> str:
     """A **bare** systemd setting value, for `Description=`/`WorkingDirectory=`.
 
-    Those are not unquoted the way `ExecStart=` is — checked against systemd
+    These are not unquoted the way `ExecStart=` is — checked against systemd
     259, not against a model of it. A quoted `WorkingDirectory="/tmp/x"` is
-    rejected outright ("path is not absolute"), and a quoted `Description=`
-    keeps its quotation marks verbatim in `systemctl show`. Only `%` needs
-    doubling; `$` is not expanded in either setting.
+    rejected outright ("path is not absolute"), a quoted `Description=` keeps
+    its quotation marks verbatim in `systemctl show`, and `\t` is not
+    C-unescaped. Only `%` needs doubling; `$` is not expanded in either.
+
+    Refusing lives here rather than in a separate validator because *this* is
+    the function that makes a value bare, so every bare emission is safe by
+    construction. Three shapes a bare line cannot carry, each confirmed
+    against systemd 259:
+
+    * a newline ends the line, and the rest of the value becomes further unit
+      directives — an attacker-chosen `[Service]` / `ExecStart=` in the file
+      the user is told to `systemctl --user enable`;
+    * a trailing backslash continues the line, swallowing the directive that
+      follows (`After=default.target` vanished, leaving `After=` at defaults);
+    * trailing whitespace is stripped by the config parser, so
+      `WorkingDirectory=/srv/inbox ` silently becomes `/srv/inbox` — a
+      different directory that either fails the unit with 200/CHDIR under
+      `Restart=on-failure`, or exists and quietly becomes the action's cwd.
     """
+    if "\n" in value or "\r" in value:
+        raise CarrelUsageError(
+            "--print-service: the path contains a newline, which a systemd unit "
+            "file cannot represent — rename the directory first"
+        )
+    if value != value.rstrip() or value.endswith("\\"):
+        raise CarrelUsageError(
+            "--print-service: the path ends in whitespace or a backslash, which a "
+            "systemd unit file silently strips or treats as a line continuation — "
+            "rename the directory first"
+        )
     return value.replace("%", "%%")
 
 
-def _unit_representable(directory: Path) -> None:
-    """Refuse a directory a systemd unit file cannot express.
+def _schtasks_representable(text: str) -> None:
+    """Refuse what a pasted `schtasks` line cannot carry.
 
-    A unit file is line-oriented with no escaping outside quoted values, and
-    `Description=`/`WorkingDirectory=` must be emitted bare. So a newline ends
-    the line — the rest of the path became further directives, which is how an
-    attacker-chosen `[Service] ExecStart=…` reached the file the user is told
-    to enable. A trailing backslash is the quieter version, verified the same
-    way: systemd continued the line and absorbed `After=default.target` into
-    the description, leaving `After=` at its defaults.
+    `subprocess.list2cmdline` quotes for MSVCRT's argv splitter and leaves
+    shell metacharacters alone, so a newline in the watched path ends the
+    pasted command and the remainder runs as a second one — the same injection
+    the systemd arm refuses, on the target whose own first line says "Paste
+    into cmd.exe".
     """
-    text = str(directory)
     if "\n" in text or "\r" in text:
         raise CarrelUsageError(
-            "--print-service systemd: the watched path contains a newline, which a "
-            "systemd unit file cannot represent — rename the directory first"
-        )
-    if text.endswith("\\"):
-        raise CarrelUsageError(
-            "--print-service systemd: the watched path ends in a backslash, which "
-            "continues the line in a systemd unit file — rename the directory first"
+            "--print-service schtasks: the path contains a newline, which would end "
+            "the pasted command line — rename the directory first"
         )
 
 
@@ -446,14 +462,21 @@ def render_service(kind: str, directory: Path, ctx: click.Context) -> str:
     argv = _watch_command_line(ctx, directory)
     cli, unit = PRODUCT["cli"], f"{PRODUCT['cli']}-watch"
     if kind == "systemd":
-        _unit_representable(directory)
         cmd = " ".join(_systemd_word(word) for word in argv)
         description = _systemd_setting(f"{cli} watch {directory}")
-        # $HOME is where a systemd *user* unit starts, so a `--run` action with
-        # a relative path in it (`mv {path} archive/`) resolved against the home
-        # directory and filed every document into the wrong tree, silently.
-        # `_abs` only ever covered the option values, never the action template.
-        workdir = _systemd_setting(str(directory.resolve()))
+        # The unit has to reproduce *this* invocation. A systemd user unit
+        # starts in $HOME, so a --run action holding a relative path
+        # (`cp {path} backups/`) resolved against the home directory instead of
+        # wherever the user ran carrel, and filed every document into the wrong
+        # tree, silently. `_abs` covered the option values and left the action
+        # template, the one relative-path surface remaining.
+        #
+        # The cwd, not the watched directory: `_abs` already resolves option
+        # paths against the cwd, so pinning the watch directory here would make
+        # the unit resolve `--done-dir archive` and `cp {path} backups/` against
+        # two different roots — and under --recursive the second one lands
+        # inside the watch, re-triggering it.
+        workdir = _systemd_setting(str(Path.cwd()))
         return (
             f"# Save as ~/.config/systemd/user/{unit}.service, then:\n"
             f"#   systemctl --user daemon-reload && systemctl --user enable --now {unit}\n"
@@ -476,17 +499,22 @@ def render_service(kind: str, directory: Path, ctx: click.Context) -> str:
     # argument. That second pass doubles the backslashes in front of each quote,
     # which a bare quote-to-backslash-quote replace did not, so an action with an
     # embedded quote or a trailing backslash was still corrupted.
-    tr = subprocess.list2cmdline([subprocess.list2cmdline(argv)])
+    inner = subprocess.list2cmdline(argv)
+    tr = subprocess.list2cmdline([inner])
+    _schtasks_representable(tr)
     task = f"{cli} watch"
     # schtasks truncates or rejects a /TR value past roughly 261 characters, and
     # a real Windows launcher path plus a --done-dir and a --log reach that with
     # no exotic arguments at all. Saying so beats a task silently registered
     # against half a command line.
+    # measured on the value schtasks stores, not on the doubly-quoted form we
+    # print: the outer list2cmdline adds quotes and doubles backslashes, which
+    # would fire the warning on a line schtasks would have accepted.
     over = (
-        f"REM WARNING: the /TR value below is {len(tr)} characters; schtasks rejects\n"
-        f"REM or truncates past about {_SCHTASKS_TR_BUDGET}. Shorten the paths, or register\n"
+        f"REM WARNING: the /TR value is {len(inner)} characters; schtasks rejects or\n"
+        f"REM truncates past about {_SCHTASKS_TR_BUDGET}. Shorten the paths, or register\n"
         "REM the task from an XML definition (schtasks /Create /XML FILE) instead.\n"
-        if len(tr) > _SCHTASKS_TR_BUDGET
+        if len(inner) > _SCHTASKS_TR_BUDGET
         else ""
     )
     return (
@@ -701,16 +729,14 @@ def cmd(
         # watch over a plain directory can still reach a nested repository.
         # Skipped entirely under --force, which is what --force is for.
         #
-        # `_guard_candidates` prunes `.git` and the destination subtrees while
+        # `_walk_files` prunes `.git` and the destination subtrees while
         # walking; a raw rglob spent most of its work stat'ing and resolving
         # `.git/objects` for an answer `ls-files` can never give.
         destinations = [d for d in (done_dir, error_dir) if d is not None]
-        present = _guard_candidates(directory, recursive, destinations, glob_)
-        guard_worktree(
-            [*present, *destinations],
-            force=False,  # unreachable when force is set: the whole block is gated above
-            what="watch --done-dir/--error-dir",
-        )
+        present = _walk_files(directory, recursive=recursive, skip=destinations, glob_=glob_)
+        # no force= here: the whole block is gated on `not force` above, and
+        # the default says so without a literal that needs explaining.
+        guard_worktree([*present, *destinations], what="watch --done-dir/--error-dir")
     if print_service:
         click.echo(render_service(print_service, directory, ctx), nl=False)
         return

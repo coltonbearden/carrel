@@ -3,11 +3,12 @@
 ## Unreleased
 
 - **Fixed (`watch --print-service`):** the generated systemd unit now sets
-  `WorkingDirectory=`. A systemd *user* unit starts in `$HOME`, so a `--run` action holding a
-  relative path — `mv {path} "archive/$(date +%Y-%m)"`, the shape the v0.4.1 entry advertises —
-  filed every processed document into `~/archive/` instead of the inbox, silently and forever.
-  `_abs()` only ever absolutised the *option* values; the action template was the one relative
-  path left.
+  `WorkingDirectory=` to the directory carrel was invoked from, so the unit reproduces the
+  invocation. A systemd *user* unit starts in `$HOME`, so a `--run` action holding a relative
+  path — `mv {path} "archive/$(date +%Y-%m)"`, the shape the v0.4.1 entry advertises — filed
+  every processed document into `~/archive/` instead of where an interactive run would put it,
+  silently and forever. `_abs()` only ever absolutised the *option* values; the action template
+  was the one relative path left, and it has to resolve against the same root they do.
 - **Fixed (`watch --print-service systemd`):** a watched directory whose name contains a newline
   can no longer inject directives into the unit. `Description=` was emitted bare, so everything
   after the newline became further unit settings in the file the user is told to save and
@@ -37,8 +38,10 @@
   old set was `.git/objects`, every one of them stat'd, resolved and sent through `git ls-files`
   for an answer git can never give — and it no longer grows without bound as the archive fills.
   Hidden *files* stay in the guarded set: `--existing` skips them, but a live event applies only
-  `--glob`, so a committed `.gitkeep` really can be filed away. `core.fsops` also stopped
-  resolving every path twice (~850 realpath walks for 425 files).
+  `--glob`, so a committed `.gitkeep` really can be filed away. `--existing` shares that walker
+  now, so it gets the same pruning — and a *relative* `--done-dir` prunes like an absolute one,
+  which it did not when the two walkers were separate. `core.fsops` also stopped resolving every
+  path twice (~850 realpath walks for 425 files).
 
 ## v0.4.1 — 2026-09-11
 
