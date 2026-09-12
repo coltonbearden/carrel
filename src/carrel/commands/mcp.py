@@ -39,7 +39,7 @@ from carrel._product import PRODUCT
 from carrel.core.db import DeskDB
 from carrel.core.filetypes import FileType, detect_or_die
 from carrel.core.fsops import OutsideRootError, confined_dest, within
-from carrel.core.output import CarrelError, CarrelInputError
+from carrel.core.output import CarrelError, CarrelInputError, ExitCode
 from carrel.core.patterns import PATTERNS
 from carrel.core.textextract import extract_text
 
@@ -58,6 +58,12 @@ _DIFF_MODES = ("auto", "text", "struct", "pdf", "image")
 _URI_FILE = "carrel://file/"
 _URI_SEARCH = "carrel://search/"
 RESOURCE_NOT_FOUND = -32002
+#: `<root>/.carrel` — derived from the desk root, so confined with it (see `_root`).
+DESK_DIR = ".carrel"
+#: A confined `carrel_search` filters stored rows after ranking, so it asks for
+#: more than `limit` and truncates afterwards.
+_FILTER_OVERFETCH = 5
+_FILTER_FETCH_MIN = 100
 
 
 def _pack_accepts(param: str) -> bool:
@@ -453,7 +459,9 @@ class Desk:
         if not path.is_absolute():
             path = (base if base is not None else self.root) / path
         real = path.resolve()
-        if not within(real, self.walk_boundary):
+        # `real` is resolved already, so the test is direct rather than through
+        # `within`, which would resolve it a second time
+        if self.confined and not real.is_relative_to(self.root):
             # `raw`, not `real`: naming where a symlink points would let a client
             # enumerate link targets across the desk, which is the existence
             # oracle `_read_resource` refuses to become two screens below.
@@ -466,8 +474,18 @@ class Desk:
 
 
 def _root(args: dict[str, Any], desk: Desk) -> Path:
-    """The desk root for one call: the client's `root` argument, confined."""
-    return desk.resolve(args.get("root") or ".")
+    """The desk root for one call: the client's `root` argument, confined.
+
+    The desk *database* is derived from this root, not named by the client:
+    `DeskDB` opens `<root>/.carrel/carrel.db`, so a symlink at `<root>/.carrel`
+    sent the index — the extracted full text of every file in the desk — and
+    every tag, note and field to wherever it pointed, and `carrel_search` read
+    it back. Every tool that opens a `DeskDB` does so under a root established
+    here, once, so the check belongs here too.
+    """
+    root = desk.resolve(args.get("root") or ".")
+    confined_dest(root / DESK_DIR, desk.walk_boundary)
+    return root
 
 
 def _inside(rows: list[Any], desk: Desk, root: Path, key: str | None = None) -> list[Any]:
@@ -541,14 +559,18 @@ def _tool_search(args: dict[str, Any], desk: Desk) -> dict[str, Any]:
     types = set(_str_list(args, "types")) or None
     tags = _str_list(args, "tags") or None
     meta = _str_list(args, "meta") or None
+    limit = int(args.get("limit") or 20)
+    # Fetch beyond `limit` when confined and truncate *after* filtering: rows for
+    # files outside the root often rank higher, so filtering a limit-sized page
+    # returned "no results" for a desk that did match — the one answer an agent
+    # reads as "nothing here".
+    fetch = limit if not desk.confined else max(limit * _FILTER_OVERFETCH, _FILTER_FETCH_MIN)
     hits = _inside(
-        search_index(
-            root, query, limit=int(args.get("limit") or 20), types=types, tags=tags, meta=meta
-        ),
+        search_index(root, query, limit=fetch, types=types, tags=tags, meta=meta),
         desk,
         root,
         "path",
-    )
+    )[:limit]
     return {"query": query, "root": str(root), "count": len(hits), "results": hits}
 
 
@@ -1034,7 +1056,10 @@ def _tool_result(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _tool_error(e: Exception) -> dict[str, Any]:
-    body: dict[str, Any] = {"error": str(e)}
+    # An unexpected exception is exit 1, the CLI's "general error" — without a
+    # code at all a client cannot tell "you asked for something invalid" from
+    # "the server hit a fault", and this module promises the CLI's own answer.
+    body: dict[str, Any] = {"error": str(e), "exit_code": int(ExitCode.ERROR)}
     if isinstance(e, CarrelError):
         body["exit_code"] = int(e.exit_code)
     return {"content": [{"type": "text", "text": json.dumps(body)}], "isError": True}

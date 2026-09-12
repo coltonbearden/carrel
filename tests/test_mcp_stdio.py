@@ -720,6 +720,78 @@ def test_stored_rows_pointing_outside_the_root_are_not_served(tmp_path):
     assert len(payload["results"]) == 2, payload
 
 
+@pytest.mark.skipif(os.name == "nt", reason="symlink creation needs privileges on Windows")
+def test_a_symlinked_desk_dir_does_not_move_the_database_outside(tmp_path):
+    """`<root>/.carrel` is derived from the root, not named by the client.
+
+    So `Desk.resolve` never saw it, and a symlink there sent the index — the
+    extracted full text of every file in the desk — plus every tag, note and
+    field to wherever it pointed, with `carrel_search` reading it back. Eleven
+    tools open a `DeskDB`; the check sits where the root is established.
+    """
+    desk = tmp_path / "desk"
+    desk.mkdir()
+    stash = tmp_path / "outside" / "stash"
+    stash.mkdir(parents=True)
+    (desk / "a.txt").write_text("the passphrase is hunter2\n")
+    (desk / ".carrel").symlink_to(stash)
+
+    proc = run_server(
+        [
+            tool_call(1, "carrel_index", {}),
+            tool_call(2, "carrel_note", {"action": "add", "path": "a.txt", "body": "n"}),
+            tool_call(3, "carrel_tag", {"action": "add", "path": "a.txt", "tags": ["t"]}),
+        ],
+        desk,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    for resp in parse_lines(proc.stdout):
+        is_error, payload = tool_payload(resp)
+        assert is_error is True, payload
+        assert "resolves outside" in payload["error"], payload
+    assert list(stash.iterdir()) == [], "wrote the desk database outside the root"
+
+
+@needs("git")
+@pytest.mark.skipif(os.name == "nt", reason="symlink creation needs privileges on Windows")
+def test_an_in_root_hit_survives_higher_ranked_outside_rows(tmp_path):
+    """Filtering a `limit`-sized page loses in-root hits that ranked below it.
+
+    Outside rows often rank higher — they are what a symlink farm looks like —
+    so a confined search returned "no results" for a desk that did match, the one
+    answer an agent reads as "nothing here".
+    """
+    desk = tmp_path / "desk"
+    desk.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    for i in range(3):
+        (outside / f"o{i}.txt").write_text("aardvark aardvark aardvark\n")
+        (desk / f"l{i}.txt").symlink_to(outside / f"o{i}.txt")
+    (desk / "inside.txt").write_text("aardvark mentioned once\n")
+    subprocess.run(
+        [sys.executable, "-m", "carrel.cli", "--root", str(desk), "index", str(desk)],
+        check=True,
+        capture_output=True,
+        timeout=TIMEOUT,
+    )
+
+    proc = run_server([tool_call(1, "carrel_search", {"query": "aardvark", "limit": 2})], desk)
+    _, payload = tool_payload(parse_lines(proc.stdout)[0])
+
+    assert [h["path"] for h in payload["results"]] == ["inside.txt"], payload
+    assert payload["count"] == 1, payload
+
+
+def test_an_unexpected_failure_still_carries_an_exit_code(tmp_path):
+    """A client cannot tell a bad request from a server fault without one."""
+    proc = run_server([tool_call(1, "carrel_inspect", {"path": 123})], tmp_path)
+    is_error, payload = tool_payload(parse_lines(proc.stdout)[0])
+    assert is_error is True
+    assert payload["exit_code"] >= 1, payload
+
+
 def _write_eml(path: Path) -> None:
     from email.message import EmailMessage
 

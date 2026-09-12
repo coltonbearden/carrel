@@ -336,7 +336,6 @@ def cmd(
     max_len: int,
     ocr: bool,
     allow_tracked: bool,
-    force: bool,
 ) -> None:
     """Plan (default) or perform (--apply) renaming PATH... from the documents' own fields.
 

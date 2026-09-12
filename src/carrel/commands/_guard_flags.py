@@ -23,68 +23,68 @@ import click
 
 F = TypeVar("F", bound=Callable[..., Any])
 
+#: `ctx.meta` key recording that the user typed the deprecated spelling. The
+#: alias exposes no value of its own, and the warning fires later than the fold,
+#: so the fact has to outlive both.
+_TYPED_FORCE = "carrel.guard_flags.typed_force"
+
 _DEPRECATION = (
     "warning: --force here means --allow-tracked (bypass the tracked-files guard); "
     "the --force spelling is deprecated"
 )
 
 
+def _remember_force(ctx: click.Context, _param: click.Parameter, value: bool) -> None:
+    """Record `--force` without exposing a parameter for it.
+
+    `expose_value=False` rather than a `force: bool` the fold overwrites: a dead
+    parameter in four signatures that can only ever be `False` is a trap for
+    whoever later gives one of these four the *overwrite* meaning `--force`
+    carries on the other seven commands. The flag would parse, `--help` would
+    document it, and the callback would receive `False`.
+    """
+    if value:
+        ctx.meta[_TYPED_FORCE] = True
+
+
 def allow_tracked_options(help_text: str) -> Callable[[F], F]:
-    """Declare `--allow-tracked` and the deprecated `--force` alias on a guarded command.
+    """Declare `--allow-tracked` and the deprecated `--force` alias, and fold them.
 
     One decorator so a fifth guarded command cannot drift: the pair, the help
-    text convention and the fold all live here.
+    text convention *and* the fold live here. The fold is structural rather than
+    a line each command remembers — forgetting it made `--force` parse fine, set
+    nothing, and let the guard refuse the very run the user had overridden.
     """
 
     def decorate(func: F) -> F:
         @functools.wraps(func)
-        def fold(*args: Any, **kwargs: Any) -> Any:
-            # the fold is structural, not a line each command has to remember:
-            # forgetting it made `--force` parse fine, set nothing, and let the
-            # guard refuse the very run the user had overridden
+        def folded(*args: Any, **kwargs: Any) -> Any:
             ctx = click.get_current_context()
             kwargs["allow_tracked"] = normalise_guard_flags(ctx)
-            kwargs["force"] = False
             return func(*args, **kwargs)
 
         wrapped = click.option(
             "--force",
             is_flag=True,
+            expose_value=False,
+            callback=_remember_force,
             help="Deprecated spelling of --allow-tracked; warns when it bypasses the guard.",
-        )(fold)
+        )(folded)
         return cast("F", click.option("--allow-tracked", is_flag=True, help=help_text)(wrapped))
 
     return decorate
 
 
-#: `ctx.meta` key remembering that the user typed the deprecated spelling, so the
-#: fold can happen early (every command, unconditionally) and the warning late
-#: (only where the guard is actually consulted).
-_TYPED_FORCE = "carrel.guard_flags.typed_force"
-
-
 def normalise_guard_flags(ctx: click.Context) -> bool:
-    """Rewrite `--force` to `--allow-tracked` **in `ctx.params`** and return the value.
+    """Resolve the override, rewriting `ctx.params["allow_tracked"]` when the alias was used.
 
-    The name says "normalise" because this mutates: after it runs, a user who
-    typed only `--force` has `ctx.params["allow_tracked"] is True` and
-    `ctx.params["force"] is False`. That is deliberate, and it is why the two
-    obvious alternatives were not taken. Declaring one option with both
-    spellings would make `_watch_command_line` emit the right flag for free but
-    leaves no way to tell which spelling was typed, so the deprecation warning
-    disappears. Skipping `force` in `_watch_command_line` instead would emit a
-    unit carrying *neither* flag, which refuses at every start. Normalising once,
-    here, keeps the warning and writes a unit that runs.
-
-    Call it unconditionally, at the top of every guarded command: `ctx.params`
-    must not be left in two different shapes depending on which branch a run
-    takes. The warning is a separate step — see `warn_if_deprecated_spelling`.
+    `ctx.params` is written, not just read, because `watch --print-service`
+    rebuilds its argv from it: a unit is installed once and started forever, so
+    it must not carry a spelling that warns on every start — or break outright
+    the day the alias is removed.
     """
-    force = bool(ctx.params.get("force"))
-    if force:
-        ctx.params["force"] = False
+    if ctx.meta.get(_TYPED_FORCE):
         ctx.params["allow_tracked"] = True
-        ctx.meta[_TYPED_FORCE] = True
     return bool(ctx.params.get("allow_tracked"))
 
 

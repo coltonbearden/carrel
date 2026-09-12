@@ -29,7 +29,9 @@
   symlink and its destination is *derived*, never named by the client, so a link planted where
   `carrel_convert` or `carrel_mail attachments` lands carried the write outside the root — and
   a *dangling* link created the outside file with no existing file to force past. Every derived
-  destination is now checked where it is computed.
+  destination is now checked where it is computed — including `<root>/.carrel`, where the desk
+  database lives: a symlink there sent the index (the extracted full text of every file in the
+  desk) and every tag, note and field outside the root, and `carrel_search` read it back.
 - **Fixed (`carrel mcp`):** a JSON-RPC message whose `params` is an array — legal per JSON-RPC
   2.0 — took the whole server down mid-session with an `AttributeError`, because every handler
   reads `params` with `.get()`. It is now a `-32602` error like any other bad request and the

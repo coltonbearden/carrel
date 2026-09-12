@@ -62,7 +62,9 @@ def _walk(
     passes None and keeps following links, because a desk that symlinks documents
     in from elsewhere is a legitimate layout."""
     if top.is_file():
-        if within(top, confine_to):
+        # every caller checks its own top (they say so); this is free when
+        # unconfined and keeps the walker honest on its own terms
+        if confine_to is None or within(top, confine_to):
             yield top
         return
     if use_gitignore:
@@ -76,10 +78,13 @@ def _walk(
     for child in children:
         if child.name.startswith("."):
             continue
-        # only a symlink can leave a tree we descended from a resolved top, and
-        # `is_symlink` is answered by the scandir cache — `within` is a realpath
-        # walk, so it is not worth paying on every ordinary entry
-        if child.is_symlink() and not within(child, confine_to):
+        # `confine_to is None` first: `Path.iterdir` yields plain paths, so
+        # `is_symlink()` is a real lstat per entry — pure waste on every
+        # unconfined CLI walk, and this walker is shared by index, refs, fields,
+        # mail, catalog, batch and the TUI. Only a symlink can leave a tree
+        # descended from a resolved top, so that is the one entry worth a
+        # realpath.
+        if confine_to is not None and child.is_symlink() and not within(child, confine_to):
             continue
         if child.is_dir():
             if not child.is_symlink() and not ignored(child, True, ignores):

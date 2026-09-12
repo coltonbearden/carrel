@@ -812,11 +812,12 @@ def pack_paths(
                 continue
             _walk_dir(sub, ignores)
         for f in (c for c in children if c.is_file()):
-            # a symlinked *file* is followed even though symlinked dirs are not,
+            # A symlinked *file* is followed even though symlinked dirs are not,
             # so a link inside a confined tree is a way out of it (D-021). Only a
-            # symlink can escape a tree descended from a resolved top, so the
-            # realpath walk is paid for those and not for every entry.
-            if f.is_symlink() and not within(f, confine_to):
+            # symlink can escape a tree descended from a resolved top — and
+            # `is_symlink()` is a real lstat here, so the unconfined CLI walk
+            # must not pay for it at all.
+            if confine_to is not None and f.is_symlink() and not within(f, confine_to):
                 continue
             if _excluded(f):
                 continue

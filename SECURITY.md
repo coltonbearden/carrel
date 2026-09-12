@@ -33,7 +33,8 @@ one adapter layer (`src/carrel/core/adapters.py`). Reports we care about most:
   `carrel://` resource URIs are resolved — symlinks first — and refused when
   they land outside it, as is every destination a tool *derives* (a symlink
   planted where a conversion or an attachment lands would otherwise carry the
-  write out of the root, and a dangling one would create the outside file). A
+  write out of the root, and a dangling one would create the outside file),
+  including `<root>/.carrel`, where the desk database lives. A
   desk indexed from the CLI can still hold rows pointing outside — the CLI
   follows links by design — so the tools that return stored paths filter them.
   `--allow-outside-root` lifts the confinement for the session, so a report

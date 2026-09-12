@@ -543,7 +543,6 @@ def cmd(
     fallback: str | None,
     fail_empty: bool,
     allow_tracked: bool,
-    force: bool,
 ) -> None:
     """File everything waiting in INBOX into --to, named after what the documents say.
 

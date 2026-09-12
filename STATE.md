@@ -271,16 +271,20 @@
   `mail._mail_files`, `fields.fields_for`) plus `confined_dest` at two writers,
   rather than fixed once in a confined filesystem accessor. Four review rounds
   each found "one more caller also does this" — four walkers, then `mail`, then
-  the write side, then the stored index rows — which is the argument for one
+  the write side and the stored index rows, then `<root>/.carrel` itself — which
+  is the argument for one
   `iter_files(top, confine_to=...)` every walker uses. Not done here: it is a
   cross-module refactor of five walkers with different ignore-stack shapes, in a
   PR that is already 37 files, and the regression risk lands on `pack` and
   `index`, the two most-used commands. The registry-driven tests
   (`test_no_tool_reads_through_a_symlink_planted_in_the_desk`,
   `test_every_tool_refuses_a_root_outside_the_server_root`, and their write-side
-  twin) drive every (tool, action) pair from `mcp.TOOLS`, so a sixth caller fails
-  rather than ships while the flag remains. Do the unification in the MCP v3 wave
-  (v0.6.0), which adds mutating tools to the same surface.
+  twin) drive every (tool, action) pair from `mcp.TOOLS` — but they only see
+  surfaces that walk or write a *named* path, which is exactly why the `.carrel`
+  hole survived them. The shape to aim at is `Desk` owning the primitives
+  (`desk.open`, `desk.db`, `desk.walk`) so a new surface is confined by
+  construction. **Do this first in the MCP v3 wave (v0.6.0)**, before its
+  mutating tools land on the same surface.
 
 - **Considered and declined in PR #43:** a per-call MCP `root` bounds the ancestor
   `.gitignore` walk at that root, not at the server's launch root, so

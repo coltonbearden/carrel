@@ -682,7 +682,6 @@ def cmd(
     error_dir: Path | None,
     log_path: Path | None,
     allow_tracked: bool,
-    force: bool,
     print_service: str | None,
 ) -> None:
     """Watch DIRECTORY and run shell actions on file events.
@@ -716,8 +715,6 @@ def cmd(
     # only place the deprecated spelling is worth a warning.
     moves_files = done_dir is not None or error_dir is not None
     if moves_files:
-        # the guard is only consulted when something would be moved, so that is
-        # the only place the deprecated spelling is worth a warning
         warn_if_deprecated_spelling(ctx)
     if not allow_tracked and moves_files:
         # the fourth bulk mover (spec 29), and the only one with no dry-run to

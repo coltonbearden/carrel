@@ -164,7 +164,6 @@ def cmd(
     into_: tuple[str, ...],
     apply_: bool,
     allow_tracked: bool,
-    force: bool,
 ) -> None:
     """Plan (default) or perform (--apply) sorting DIRECTORY's files.
 
