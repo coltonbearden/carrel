@@ -728,6 +728,8 @@ def test_claude_plugin_validate():
 # ------------------------------------- the guard's defaults (v0.5.0, D-020)
 
 
+@needs_bash
+@needs_carrel
 def test_read_guard_leaves_images_to_claudes_vision_by_default(tmp_path: Path):
     """`Read` returns a PNG as a picture Claude can see (tools reference).
 
@@ -739,6 +741,8 @@ def test_read_guard_leaves_images_to_claudes_vision_by_default(tmp_path: Path):
     assert proc.stdout == "", proc.stdout
 
 
+@needs_bash
+@needs_carrel
 @needs("tesseract")
 def test_read_guard_ocrs_an_image_when_asked(tmp_path: Path):
     proc = run_guard(
@@ -753,6 +757,8 @@ def test_read_guard_ocrs_an_image_when_asked(tmp_path: Path):
     assert Path(hso["updatedInput"]["file_path"]).suffix == ".txt"
 
 
+@needs_bash
+@needs_carrel
 def test_read_guard_leaves_pdfs_to_the_visual_read_when_asked(tmp_path: Path):
     """`Read` reads PDFs natively; the text conversion is a token saving, not a
     capability, so it has to be switchable off when layout matters."""
@@ -765,11 +771,15 @@ def test_read_guard_leaves_pdfs_to_the_visual_read_when_asked(tmp_path: Path):
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout == "", proc.stdout
 
-    # ...and still converts by default
-    proc = run_guard(READ_GUARD, read_payload(FIXTURES / "b.pdf"), tmp_path)
-    assert json.loads(proc.stdout)["hookSpecificOutput"]["permissionDecision"] == "allow"
+    # ...and still converts by default, where pdftotext exists to do it
+    if shutil.which("pdftotext"):
+        proc = run_guard(READ_GUARD, read_payload(FIXTURES / "b.pdf"), tmp_path)
+        assert json.loads(proc.stdout)["hookSpecificOutput"]["permissionDecision"] == "allow"
 
 
+@needs_bash
+@needs_carrel
+@needs("pandoc")
 def test_read_guard_names_the_original_in_its_context_line(tmp_path: Path):
     """Claude has to know the original is still there, and when to prefer it."""
     src = FIXTURES / "sample.docx"
@@ -780,6 +790,7 @@ def test_read_guard_names_the_original_in_its_context_line(tmp_path: Path):
     assert "Read it directly" in ctx, ctx
 
 
+@needs_bash
 @pytest.mark.skipif(shutil.which("timeout") is None, reason="needs coreutils timeout")
 @pytest.mark.skipif(os.name == "nt", reason="the stub is a POSIX shell script")
 def test_read_guard_says_so_when_a_conversion_times_out(tmp_path: Path):
