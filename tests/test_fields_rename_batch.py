@@ -688,8 +688,50 @@ def test_watch_print_service_writes_absolute_paths(tmp_path: Path, monkeypatch):
     assert "{stem}" in run("watch", "--help").output and "existing" in run("watch", "--help").output
 
 
-def test_watcher_settle_waits_for_a_growing_file(tmp_path: Path):
+def test_watcher_settle_waits_for_a_growing_file(tmp_path: Path, monkeypatch):
+    """The settle window is driven by an injected clock, not by `time.sleep`.
+
+    Asserting "not settled yet" after a real `sleep` shorter than `--stable`
+    means asserting that the runner got back within the window. It does not
+    always: this failed on `test-minimal (macos)` with the file already
+    settled, because more than 0.2 s of wall clock had passed between the
+    write and the check. Driving `watch`'s own clock makes the assertions say
+    what they mean — and drops ~0.25 s of sleeping from the suite.
+    """
+    import time as real_time
+
+    from carrel.commands import watch as watch_mod
     from carrel.commands.watch import _Watcher
+
+    class _Clock:
+        """`watch.time`, with monotonic() under the test's control.
+
+        `sleep()` advances the fake clock instead of blocking. Without that,
+        code that waits for a monotonic deadline — `_run_watch`'s `--timeout`
+        loop at `watch.py:644` is the live example — would spin forever against
+        a frozen clock, and the suite configures no pytest timeout, so the
+        failure would be a silent 30-minute job kill rather than a test
+        failure. `_run_watch` blocks on `watcher.stop.wait()` rather than
+        `time.sleep()`, so this clock still must not be pointed at it.
+        """
+
+        def __init__(self) -> None:
+            self.now = 1_000.0
+
+        def monotonic(self) -> float:
+            return self.now
+
+        def advance(self, seconds: float) -> None:
+            self.now += seconds
+
+        def sleep(self, seconds: float) -> None:
+            self.advance(seconds)
+
+        def __getattr__(self, name: str):  # time(), strftime(), … stay real
+            return getattr(real_time, name)
+
+    clock = _Clock()
+    monkeypatch.setattr(watch_mod, "time", clock)
 
     f = tmp_path / "grow.bin"
     f.write_bytes(b"a")
@@ -700,11 +742,9 @@ def test_watcher_settle_waits_for_a_growing_file(tmp_path: Path):
     assert w.drain() == []  # first look: baseline recorded
     f.write_bytes(b"ab")  # changed → not settled, the clock restarts
     assert w.drain() == []
-    import time
-
-    time.sleep(0.1)
+    clock.advance(0.1)
     assert w.drain() == []  # unchanged, but not yet for 0.2 s
-    time.sleep(0.15)
+    clock.advance(0.15)
     assert w.drain() == [("created", f)]
     w2 = _Watcher(
         on={"created"},
@@ -717,7 +757,7 @@ def test_watcher_settle_waits_for_a_growing_file(tmp_path: Path):
     )
     w2.record("created", f)
     w2.drain()
-    time.sleep(0.15)
+    clock.advance(0.15)
     assert w2.drain() == [("created", f)]  # --stable-timeout gives up waiting
 
 

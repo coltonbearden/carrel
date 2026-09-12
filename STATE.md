@@ -9,7 +9,8 @@
   verification record is the v0.4.1 entry under Done. 33 commands, 14 MCP tools, 19 adapters,
   9 marketplace plugins, desk schema v2. Repo `coltonbearden/carrel`, docs at
   https://coltonbearden.github.io/carrel/, PyPI package `carrel`.
-- **In flight:** nothing.
+- **In flight:** v0.5.0 "the first five minutes" — the defect/boundary/positioning wave.
+  Landed so far: #38 (permissions for autonomous sessions), #39 (the gate itself).
 - **Next:** MCP v3 (`specs/30-mcp-v3.md`): 11 new tools, 14 → 25, with `rename` and `intake`
   first so the accounting-inbox pipeline stops being CLI-only. `batch` is cut from that wave —
   it is the single `shell=True` site (D-013) — and `audiobook`, `color` and `proof` are
@@ -30,6 +31,25 @@
 
 ## Done
 
+- 2026-09-11 the gate could not be run (#39). `pre-commit run --all-files` is a step in
+  CLAUDE.md's gate and had never been executed: `pre-commit` is not a project dependency and
+  no git hook was installed. It rewrote five tracked files. `ruff-format` reformats Python
+  fences **inside Markdown** (its upstream `types_or` has included `markdown` since
+  ruff-pre-commit v0.14), which turned `docs/COOKBOOK.md`'s `--8<-- "snippets/…"` directive
+  into `--8 < --"…"` and silently dropped a 40-line example from the published page — while
+  `mkdocs build --strict` still exited 0, because the mangled text is no longer a directive
+  for `pymdownx.snippets` to check. The root-cause guard is `extend-exclude = ["**/*.md"]`
+  in `pyproject.toml`, so it holds for an editor's format-on-save and a bare `ruff format .`
+  too, not only for the hook; `tests/test_precommit_config.py` asserts the outcome
+  (`ruff format --check .` clean, the directive still intact) rather than the config shape.
+  Also: `end-of-file-fixer` was rewriting the generated fixture `tests/fixtures/thread.mbox`
+  in a loop with `generate.py` (1058 → 1057 → 1058 bytes), and `check-yaml` could not read
+  `mkdocs.yml`'s `!relative` tag at all — `--unsafe` is now scoped to that one file, since
+  repo-wide it would stop catching the duplicate keys a bad merge leaves in a workflow.
+  Separately, `test_watcher_settle_waits_for_a_growing_file` slept 0.1 s inside a 0.2 s
+  settle window and asserted the file had *not* settled — an assertion about how fast the
+  runner gets back. It failed `test-minimal (macos)` (a required check) on #38 and passed on
+  re-run; it now drives `watch`'s own clock through an injected `time`.
 - 2026-09-11 (v0.4.1): released in five PRs (#32–#36). The GitHub Release is pinned to the
   release PR's merge commit `5aaed7b`, whose tree is byte-identical to the one CI tested; PyPI via
   Trusted Publishing. Verified from PyPI in a clean venv with no extras: `carrel 0.4.1`,
