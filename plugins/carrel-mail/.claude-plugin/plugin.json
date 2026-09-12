@@ -1,7 +1,7 @@
 {
   "name": "carrel-mail",
   "description": "Email archives with the carrel CLI: /mail saves attachments, splits an mbox into messages, groups eml/mbox files into threads and converts Outlook .pst exports; eml/mbox are first-class desk files for index, search, pack, refs and the Read guard; plus a mail-archive skill.",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "author": { "name": "Colton Bearden" },
   "license": "MIT",
   "keywords": ["email", "eml", "mbox", "pst", "attachments", "threads", "archive"]

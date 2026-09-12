@@ -127,7 +127,7 @@ meta  (file_id INT, key TEXT, value TEXT, kind TEXT, source TEXT, updated REAL, 
 **Catalog export/import.** Tags, notes and meta fields are the data the desk cannot regenerate, so `carrel catalog export` writes them as one deterministic JSON document (sorted by path, byte-identical apart from `exported`; `schema` is the DB schema version):
 
 ```json
-{"schema": 2, "product": "carrel", "version": "0.4.1", "exported": "…", "root": "/abs/root",
+{"schema": 2, "product": "carrel", "version": "0.5.0", "exported": "…", "root": "/abs/root",
  "files": [{"path": "guides/release-checklist.md", "tags": ["process", "release"],
             "notes": [{"created": 1788522679.0094275, "body": "Step 4 needs …"}],
             "meta": [{"key": "owner", "value": "release", "kind": "str", "source": "user"}]}]}

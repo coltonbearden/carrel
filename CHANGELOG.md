@@ -1,69 +1,12 @@
 # Changelog
 
-## Unreleased
+## v0.5.0 — 2026-09-12
 
-- **Changed (docs):** the README leads with what carrel does, not with a tour of the TUI. The
-  first screen was a `desk-tour.gif` and a paragraph about study carrels; the people arriving are
-  Claude Code users with a folder of PDFs. It now opens with the functional line — **Read, index,
-  pack and file your documents — from the terminal, for you and your agents** — then `pack.gif`
-  and `redact-proof.gif`, one paragraph, install, and **three things to try**: give Claude the
-  right context, read what the agent can't, turn an inbox into an archive. Each has a command
-  block that was actually run and one honest limitation. A **Status and support** section says
-  what is stable, what is experimental, which platforms CI really covers, and two things carrel
-  is not. `desk-tour.gif` moves to "The desk TUI", where "the flagship" becomes "a companion to
-  the CLI". Nothing was removed — all 33 command rows, all 9 plugin rows and every link stay,
-  checked as a set diff over rows, command mentions, images, full link text and headings. The
-  first version of that check compared link *targets* and no images, and so missed the
-  `assets/logo.svg` mark being dropped from the body and a link whose text had been gutted —
-  both caught in review, both restored. `docs/index.md` gets the
-  same first screen, and `product.json`'s description starts with the functional line, so it
-  reaches `pyproject.toml` and the PyPI summary; it does not reach `CITATION.cff` or the plugin
-  manifests, which `sync_product.py` only version-stamps (D-024).
-
-- **Changed (stderr format):** under `--json`, an error is now itself one line of JSON on
-  stderr — `{"error": "...", "exit_code": N}` — instead of `error: ...`. stdout is unchanged
-  and still the data channel. A caller that pipes `--json` had to parse English out of stderr
-  to learn anything beyond the exit code, and the exit code is what a *shell* sees, not what an
-  MCP client or a `subprocess` reading stderr does. Every error carrel itself prints goes
-  through one formatter — `fail`, the top-level handler in `cli.py`, and the per-file loops in
-  `convert` and `thumb` that report an error per source and keep going. The one exception is
-  `click.UsageError` (a malformed command line, exit 2), which click renders itself with the
-  `Usage:` banner that is the answer to it. Scripts that grep stderr for `error:` under `--json`
-  need updating; without `--json` nothing changed.
 - **Changed (behaviour, `redact`):** `--builtin` is repeatable, like `--pattern`. It took one
   comma list, so a second `--builtin` silently *replaced* the first —
   `--builtin email --builtin iban` redacted IBANs and left every address in place, reporting
   success. `--builtin a,b --builtin c` and `--builtin a,b,c` are now the same thing, and a
   repeat is deduplicated rather than applied twice.
-- **Fixed:** install hints name the package manager you actually have. All nineteen adapters
-  carried a Debian `apt` line, so `carrel doctor` on a Mac told you to
-  `sudo apt install tesseract-ocr` — advice that cannot work — and `test-minimal (macos)` is a
-  required check, so that platform is supported and was being mis-served. Each adapter now
-  carries an `apt`, `brew` and `winget` package name and the hint is chosen at render time:
-  a manager on `PATH` first, else this platform's own. Where no manager packages the binary
-  the hint says so and gives the vendor page (`icotool`, `readpst` on Windows); where the tool
-  is a Python package it falls back to `pipx` only on the platform with no native package.
-  Every package name was resolved against the real registry — `formulae.brew.sh` and
-  `winget search` — because a confidently wrong package name is worse than no hint. A Linux
-  with no manager we recognise is **not** told to use `apt`: `sys.platform` is `linux` for
-  Debian and Fedora alike, so a box without `apt` on `PATH` gets the package's name under each
-  manager instead. `docs/INSTALL.md` gains the same data as a table, and the six plugin docs
-  that told an agent to relay `sudo apt install …` now tell it to relay the hint carrel
-  printed. A test fails on any `apt|brew|winget|dnf|yum|pacman|…` install command in shipped
-  code or a plugin doc.
-- **Fixed:** `README.md` claimed 855 tests and ten cookbook recipes, `docs/CONTRIBUTING.md`
-  claimed 501 tests; the live numbers are 1062 and 12. Counts nobody regenerates are wrong
-  within a week, so the live docs no longer state them, and
-  `tests/test_docs_drift.py` fails on any `N tests` or `N recipes` claim outside the dated
-  records in `HISTORY`.
-- **Fixed:** `docs/index.md` listed the supported types without eml/mbox while `README.md`
-  included them.
-- **Added:** PyPI `classifiers` and `keywords`. The package had neither, so it was
-  unfindable by topic and its metadata page said nothing about what it runs on.
-  `Operating System :: Microsoft :: Windows` is deliberately absent until
-  `test-minimal (windows)` is a required check — a trove classifier is a support claim.
-- **Fixed:** `.gitignore` had no `.idea/`.
-
 - **Changed (behaviour, `carrel mcp`):** the server is now **confined to the directory it was
   started in** (`--root`, else the working directory). `SECURITY.md` already listed "the MCP
   server reading or writing outside its root" among the reports it cares about most, and the
@@ -94,10 +37,6 @@
   destination is now checked where it is computed — including `<root>/.carrel`, where the desk
   database lives: a symlink there sent the index (the extracted full text of every file in the
   desk) and every tag, note and field outside the root, and `carrel_search` read it back.
-- **Fixed (`carrel mcp`):** a JSON-RPC message whose `params` is an array — legal per JSON-RPC
-  2.0 — took the whole server down mid-session with an `AttributeError`, because every handler
-  reads `params` with `.get()`. It is now a `-32602` error like any other bad request and the
-  session continues, which is what the module has always promised.
 - **Changed (behaviour):** the tracked-files guard on `rename`, `organize`, `intake` and `watch`
   is overridden by **`--allow-tracked`**. `--force` means "overwrite existing output" on seven
   other commands, and those four never overwrite anything — so reaching for it by reflex
@@ -107,18 +46,89 @@
   removal date is set. The warning fires when the guard is actually consulted — a
   dry run is never guarded, so `--force` stays silent there rather than claiming a
   bypass that did not happen (D-022).
-- **Fixed (`carrel mcp`):** `initialize` no longer echoes whatever `protocolVersion` the client
-  sent, which claimed support for any string a client cared to invent — `2099-01-01` came back
-  as `2099-01-01`. The server keeps a tuple of versions it actually speaks
-  (`2025-06-18`, `2025-03-26`, `2024-11-05` — its JSON-RPC surface is identical across them),
-  echoes a requested version in that tuple, and otherwise answers with the newest it supports,
-  which is the MCP spec's rule.
 - **Changed (behaviour, `carrel-guard`):** image `Read`s pass through to Claude by default.
   The guard OCR'd every `.png/.jpg/.jpeg/.ico` unconditionally, replacing a picture Claude can
   already see with a transcription — worse for a screenshot, a chart or a photo, and with no
   way to turn it off. `CARREL_GUARD_OCR_IMAGES=1` restores it. PDFs are still converted to text
   by default, because page images cost far more tokens, but `CARREL_GUARD_PDF_TEXT=0` now hands
   them back to the visual `Read` when layout or diagrams matter.
+- **Changed (behaviour):** a `carrel pack` that found **no files** now prints one line on stderr
+  naming the reason, and **under `--json` it exits 5** instead of writing a valid, empty
+  document. FTS5 AND-s the terms of a `--query`, so a natural-language question usually matches
+  nothing — the failure a caller is least likely to notice, because an empty pack is
+  indistinguishable from a successful one. "No files" means none reached the pack: a directory
+  of images, a `--tree-only` run and a `--max-file-bytes` that skipped everything all still
+  produce a useful listing and still exit 0, and a `--since` whose only change was a deletion
+  reports the deletion rather than failing. The message names the filter that actually emptied
+  the result. `--no-fail-empty` restores exit 0; human mode still exits 0 by default and
+  `--fail-empty` opts in. Scripts that pipe `pack --json --query` should either fix the query or
+  pass `--no-fail-empty`. `PackResult.empty_reason` carries the same sentence, so the MCP
+  `carrel_pack` tool reports it too — an agent has no exit code to read (D-018).
+- **Changed (docs):** the README leads with what carrel does, not with a tour of the TUI. The
+  first screen was a `desk-tour.gif` and a paragraph about study carrels; the people arriving are
+  Claude Code users with a folder of PDFs. It now opens with the functional line — **Read, index,
+  pack and file your documents — from the terminal, for you and your agents** — then `pack.gif`
+  and `redact-proof.gif`, one paragraph, install, and **three things to try**: give Claude the
+  right context, read what the agent can't, turn an inbox into an archive. Each has a command
+  block that was actually run and one honest limitation. A **Status and support** section says
+  what is stable, what is experimental, which platforms CI really covers, and two things carrel
+  is not. `desk-tour.gif` moves to "The desk TUI", where "the flagship" becomes "a companion to
+  the CLI". Nothing was removed — all 33 command rows, all 9 plugin rows and every link stay,
+  checked as a set diff over rows, command mentions, images, full link text and headings. The
+  first version of that check compared link *targets* and no images, and so missed the
+  `assets/logo.svg` mark being dropped from the body and a link whose text had been gutted —
+  both caught in review, both restored. `docs/index.md` gets the
+  same first screen, and `product.json`'s description starts with the functional line, so it
+  reaches `pyproject.toml` and the PyPI summary; it does not reach `CITATION.cff` or the plugin
+  manifests, which `sync_product.py` only version-stamps (D-024).
+- **Changed (stderr format):** under `--json`, an error is now itself one line of JSON on
+  stderr — `{"error": "...", "exit_code": N}` — instead of `error: ...`. stdout is unchanged
+  and still the data channel. A caller that pipes `--json` had to parse English out of stderr
+  to learn anything beyond the exit code, and the exit code is what a *shell* sees, not what an
+  MCP client or a `subprocess` reading stderr does. Every error carrel itself prints goes
+  through one formatter — `fail`, the top-level handler in `cli.py`, and the per-file loops in
+  `convert` and `thumb` that report an error per source and keep going. The one exception is
+  `click.UsageError` (a malformed command line, exit 2), which click renders itself with the
+  `Usage:` banner that is the answer to it. Scripts that grep stderr for `error:` under `--json`
+  need updating; without `--json` nothing changed.
+- **Added:** PyPI `classifiers` and `keywords`. The package had neither, so it was
+  unfindable by topic and its metadata page said nothing about what it runs on.
+  `Operating System :: Microsoft :: Windows` is deliberately absent until
+  `test-minimal (windows)` is a required check — a trove classifier is a support claim.
+- **Fixed:** install hints name the package manager you actually have. All nineteen adapters
+  carried a Debian `apt` line, so `carrel doctor` on a Mac told you to
+  `sudo apt install tesseract-ocr` — advice that cannot work — and `test-minimal (macos)` is a
+  required check, so that platform is supported and was being mis-served. Each adapter now
+  carries an `apt`, `brew` and `winget` package name and the hint is chosen at render time:
+  a manager on `PATH` first, else this platform's own. Where no manager packages the binary
+  the hint says so and gives the vendor page (`icotool`, `readpst` on Windows); where the tool
+  is a Python package it falls back to `pipx` only on the platform with no native package.
+  Every package name was resolved against the real registry — `formulae.brew.sh` and
+  `winget search` — because a confidently wrong package name is worse than no hint. A Linux
+  with no manager we recognise is **not** told to use `apt`: `sys.platform` is `linux` for
+  Debian and Fedora alike, so a box without `apt` on `PATH` gets the package's name under each
+  manager instead. `docs/INSTALL.md` gains the same data as a table, and the six plugin docs
+  that told an agent to relay `sudo apt install …` now tell it to relay the hint carrel
+  printed. A test fails on any `apt|brew|winget|dnf|yum|pacman|…` install command in shipped
+  code or a plugin doc.
+- **Fixed:** `README.md` claimed 855 tests and ten cookbook recipes, `docs/CONTRIBUTING.md`
+  claimed 501 tests; the live numbers are 1062 and 12. Counts nobody regenerates are wrong
+  within a week, so the live docs no longer state them, and
+  `tests/test_docs_drift.py` fails on any `N tests` or `N recipes` claim outside the dated
+  records in `HISTORY`.
+- **Fixed:** `docs/index.md` listed the supported types without eml/mbox while `README.md`
+  included them.
+- **Fixed:** `.gitignore` had no `.idea/`.
+- **Fixed (`carrel mcp`):** a JSON-RPC message whose `params` is an array — legal per JSON-RPC
+  2.0 — took the whole server down mid-session with an `AttributeError`, because every handler
+  reads `params` with `.get()`. It is now a `-32602` error like any other bad request and the
+  session continues, which is what the module has always promised.
+- **Fixed (`carrel mcp`):** `initialize` no longer echoes whatever `protocolVersion` the client
+  sent, which claimed support for any string a client cared to invent — `2099-01-01` came back
+  as `2099-01-01`. The server keeps a tuple of versions it actually speaks
+  (`2025-06-18`, `2025-03-26`, `2024-11-05` — its JSON-RPC surface is identical across them),
+  echoes a requested version in that tuple, and otherwise answers with the newest it supports,
+  which is the MCP spec's rule.
 - **Fixed (`carrel-guard`):** the README claimed Claude's `Read` "cannot parse PDFs, Word/
   OpenDocument/EPUB/RTF files, spreadsheets, email files or images". Per the
   [tools reference](https://code.claude.com/docs/en/tools-reference) it reads images as pictures
@@ -132,18 +142,6 @@
   which the [hooks reference](https://code.claude.com/docs/en/hooks) allows, the decision fields
   being independent. Every conversion note also says where the original still is, and when to
   prefer it.
-- **Changed (behaviour):** a `carrel pack` that found **no files** now prints one line on stderr
-  naming the reason, and **under `--json` it exits 5** instead of writing a valid, empty
-  document. FTS5 AND-s the terms of a `--query`, so a natural-language question usually matches
-  nothing — the failure a caller is least likely to notice, because an empty pack is
-  indistinguishable from a successful one. "No files" means none reached the pack: a directory
-  of images, a `--tree-only` run and a `--max-file-bytes` that skipped everything all still
-  produce a useful listing and still exit 0, and a `--since` whose only change was a deletion
-  reports the deletion rather than failing. The message names the filter that actually emptied
-  the result. `--no-fail-empty` restores exit 0; human mode still exits 0 by default and
-  `--fail-empty` opts in. Scripts that pipe `pack --json --query` should either fix the query or
-  pass `--no-fail-empty`. `PackResult.empty_reason` carries the same sentence, so the MCP
-  `carrel_pack` tool reports it too — an agent has no exit code to read (D-018).
 - **Fixed:** `pack` now honours the worktree root's `.gitignore` when packing a subdirectory.
   `ancestor_ignores` returns nothing when its `top` equals its `stop_at`, and `pack` passed the
   packed arguments' *common path* as `stop_at` — which for a single directory argument *is* that
@@ -194,6 +192,32 @@
   now, so it gets the same pruning — and a *relative* `--done-dir` prunes like an absolute one,
   which it did not when the two walkers were separate. `core.fsops` also stopped resolving every
   path twice (~850 realpath walks for 425 files).
+
+**The problem.** A new user's first five minutes with 0.4.1 hit four real defects and one
+false security claim: `carrel pack src` packed 45 `__pycache__` entries because the worktree's
+own `.gitignore` was ignored; a `--query` that matched nothing exited 0 with an empty document;
+the guard OCR'd screenshots Claude could already see; install hints said `apt` on every
+platform; and `SECURITY.md` promised the MCP server was confined to its root when nothing
+confined it at all.
+
+**Proof.** `carrel pack src --stats --tree-only | grep -c __pycache__` — 45 before, 0 after.
+A confined `carrel mcp` started in a scratch `docs/` answers
+`resources/read carrel://file//tmp/…/secret.txt` with `resource not found` and
+`carrel_inspect` on the same path with `isError: true`, and the file's contents appear
+nowhere in the output. A `.png` `Read` payload through `read-guard.sh` produces nothing and
+exits 0. Five review rounds on the boundary alone found five distinct ways a path reached
+the filesystem — named by the client, found by a walk, derived by a writer, read back from
+the index, and the index's own location — each now closed and each with a test that fails
+when the fix is reverted.
+
+**What remains imperfect.** `fields` accuracy is unmeasured — English-label heuristics with a
+confidence column, no corpus behind it. The boundary is enforced by threading a flag to ten
+call sites rather than by one confined filesystem accessor; that refactor is the first item of
+v0.6.0 and is why five rounds each found "one more caller also does this". Windows CI is
+advisory, and the required macOS check is the no-extras degradation job, so the macOS
+conversion paths are exercised by nobody.
+
+**Try it.** `uv tool install 'carrel[all]' && carrel doctor`
 
 ## v0.4.1 — 2026-09-11
 
