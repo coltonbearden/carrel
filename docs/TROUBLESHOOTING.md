@@ -214,7 +214,7 @@ error: organize --apply would move files that git is tracking:
   /home/you/projects/myapp
     tracked: src/a.py, src/b.py, src/c.py, … (21 total)
 Renaming tracked files breaks imports, tests and history. Point this
-somewhere else, or pass --force if it is what you meant.
+somewhere else, or pass --allow-tracked if it is what you meant.
 ```
 
 This is a guard, not a bug. A tracked file's *name is content*: imports, test
@@ -229,8 +229,11 @@ Your options, best first:
    document directories, not source trees.
 2. **Preview first.** Drop `--apply`; the dry-run default prints the whole plan
    and is never guarded.
-3. **`--force`**, when rewriting those files is genuinely what you want. Commit
-   first, so `git status` can show you what happened.
+3. **`--allow-tracked`**, when rewriting those files is genuinely what you
+   want. Commit first, so `git status` can show you what happened. (`--force`
+   still works on these four commands and warns that it is the old spelling;
+   everywhere else in carrel `--force` means "overwrite existing output", which
+   is why the guard got a name of its own — D-022.)
 
 **Untracked files inside a repository are fine.** If `~` is a dotfiles
 repository, `carrel intake ~/Downloads --to ~/Documents/filed --apply` still
@@ -254,7 +257,7 @@ error: 'git' is required for this operation but was not found.
   install: sudo apt install git
 ```
 
-Install git, or pass `--force` to skip the question. carrel never treats "could
+Install git, or pass `--allow-tracked` to skip the question. carrel never treats "could
 not ask" as "nothing is tracked" — that would fail open on exactly the case the
 guard exists for.
 

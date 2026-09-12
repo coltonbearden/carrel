@@ -730,9 +730,9 @@ Usage: carrel intake [OPTIONS] INBOX
   some files errored during --apply, 5 with --fail-empty when there was nothing to file.
 
   --apply refuses (exit 2) when INBOX or --to holds files git is tracking, where a new path breaks
-  imports, tests and history; --force overrides. The refusal happens before anything is created or
-  moved, and an untracked inbox inside a repository (the usual ~/Downloads-under-dotfiles case) is
-  fine.
+  imports, tests and history; --allow-tracked overrides. The refusal happens before anything is
+  created or moved, and an untracked inbox inside a repository (the usual ~/Downloads-under-dotfiles
+  case) is fine.
 
 Options:
   --to DIRECTORY          Where filed documents land (created if missing).  [required]
@@ -760,7 +760,8 @@ Options:
   --fallback TEXT         Use TEXT for a name placeholder that has no value instead of skipping the
                           file.
   --fail-empty            Exit 5 when no file was filed (or planned).
-  --force                 File even when INBOX or --to holds files git tracks (see the description).
+  --allow-tracked         File even when INBOX or --to holds files git tracks (see the description).
+  --force                 Deprecated spelling of --allow-tracked; warns when it bypasses the guard.
   --json                  Machine-readable JSON output.
   --help                  Show this message and exit.
 ```
@@ -864,10 +865,13 @@ Usage: carrel mcp [OPTIONS]
 
   Serve the desk as an MCP server on stdio: 14 tools (search, pack, inspect, tag, note, index,
   convert, diff, redact, doctor, meta, fields, mail, refs) and carrel:// file/search resources.
+  Every path a client names is confined to the desk root (--root, default the current directory).
 
 Options:
-  --json  Machine-readable JSON output.
-  --help  Show this message and exit.
+  --allow-outside-root  Let clients read and write outside the desk root. Off by default: the server
+                        refuses any path that resolves outside it.
+  --json                Machine-readable JSON output.
+  --help                Show this message and exit.
 ```
 
 ## carrel meta
@@ -1087,7 +1091,8 @@ Usage: carrel organize [OPTIONS] DIRECTORY
   list of {src, dest, action} ('move' planned, 'moved' executed, 'skip').
 
   --apply refuses (exit 2) when it would move files git is tracking, where a new path breaks
-  imports, tests and history; --force overrides. Untracked files inside a repository are fine.
+  imports, tests and history; --allow-tracked overrides. Untracked files inside a repository are
+  fine.
 
 Options:
   --by [type|date|exif-date]  Grouping: 'type' -> pdf/, images/ (jpg, png, ico), data/ (json, xml,
@@ -1097,7 +1102,9 @@ Options:
   --into CATEGORY=DIR         Override a type category's destination subdir, e.g. --into images=pics
                               (only with --by type; repeatable).
   --apply / --dry-run         Execute the moves. Default is a dry-run that only prints the plan.
-  --force                     Move files even when they are tracked by git (see the description).
+  --allow-tracked             Move files even when they are tracked by git (see the description).
+  --force                     Deprecated spelling of --allow-tracked; warns when it bypasses the
+                              guard.
   --json                      Machine-readable JSON output.
   --help                      Show this message and exit.
 ```
@@ -1257,7 +1264,8 @@ Usage: carrel rename [OPTIONS] PATHS...
   rename|renamed|skip, reason, sources}].
 
   --apply refuses (exit 2) when a PATH would rename a file git is tracking, where a new name breaks
-  imports, tests and history. Untracked files inside a repository are fine; --force overrides.
+  imports, tests and history. Untracked files inside a repository are fine; --allow-tracked
+  overrides.
 
 Options:
   --template TEXT          Name template; see the placeholders in the command description.
@@ -1270,7 +1278,8 @@ Options:
   --max-len INTEGER RANGE  Cap the stem length.  [default: 120; x>=8]
   --ocr                    OCR images and scanned PDFs to read their fields (needs tesseract /
                            ocrmypdf).
-  --force                  Rename even when a PATH is a file git tracks (see the description).
+  --allow-tracked          Rename even when a PATH is a file git tracks (see the description).
+  --force                  Deprecated spelling of --allow-tracked; warns when it bypasses the guard.
   --json                   Machine-readable JSON output.
   --help                   Show this message and exit.
 ```
@@ -1461,8 +1470,8 @@ Usage: carrel watch [OPTIONS] DIRECTORY
   away after their actions, --log keeps a JSON trail. Ctrl-C exits cleanly.
 
   --done-dir/--error-dir refuse to start (exit 2) when they would move files git is tracking;
-  --force overrides. Actions themselves are never guarded — what a --run command does is the user's
-  business.
+  --allow-tracked overrides. Actions themselves are never guarded — what a --run command does is the
+  user's business.
 
 Options:
   --on EVENTS                     Comma-separated events to react to: created, modified, deleted,
@@ -1483,7 +1492,9 @@ Options:
   --done-dir DIRECTORY            Move each source here after its actions all succeed.
   --error-dir DIRECTORY           Move each source here after an action fails.
   --log FILE                      Append one JSON record per action (and per move) to FILE.
-  --force                         With --done-dir/--error-dir: move files even when git tracks them.
+  --allow-tracked                 With --done-dir/--error-dir: move files even when git tracks them.
+  --force                         Deprecated spelling of --allow-tracked; warns when it bypasses the
+                                  guard.
   --print-service [systemd|schtasks]
                                   Print a service definition that runs this exact watch at login,
                                   then exit.

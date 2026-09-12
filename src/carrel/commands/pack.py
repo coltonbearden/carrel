@@ -35,7 +35,7 @@ from carrel.core import adapters
 from carrel.core.adapters import Adapter, MissingDependencyError
 from carrel.core.db import DeskDB, file_hash
 from carrel.core.filetypes import FileType, detect
-from carrel.core.fsops import GIT_ENV_OVERRIDES, repo_root
+from carrel.core.fsops import GIT_ENV_OVERRIDES, repo_root, within
 from carrel.core.ignore import IgnoreFile as _IgnoreFile
 from carrel.core.ignore import ancestor_ignores as _ancestor_ignores
 from carrel.core.ignore import ignored as _ignored
@@ -733,6 +733,7 @@ def pack_paths(
     dedupe_content: bool = False,
     tokenizer: str = "heuristic",
     outline: bool = False,
+    confine_to: Path | None = None,
 ) -> PackResult:
     """Walk `paths` and render a context pack; see the `pack` command --help.
 
@@ -811,6 +812,13 @@ def pack_paths(
                 continue
             _walk_dir(sub, ignores)
         for f in (c for c in children if c.is_file()):
+            # A symlinked *file* is followed even though symlinked dirs are not,
+            # so a link inside a confined tree is a way out of it (D-021). Only a
+            # symlink can escape a tree descended from a resolved top — and
+            # `is_symlink()` is a real lstat here, so the unconfined CLI walk
+            # must not pay for it at all.
+            if confine_to is not None and f.is_symlink() and not within(f, confine_to):
+                continue
             if _excluded(f):
                 continue
             if not no_gitignore and _ignored(f, False, ignores):
@@ -820,6 +828,8 @@ def pack_paths(
             _add(f)
 
     for t in tops:
+        if not within(t, confine_to):
+            continue  # `_walk_dir`'s symlink fast path assumes an inside top
         if t.is_file():
             _add(t)  # explicitly named files are always packed
         else:

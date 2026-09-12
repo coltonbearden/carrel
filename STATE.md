@@ -222,9 +222,12 @@
   **patch** bump. The release review argued for 0.5.0: a `carrel~=0.4.0` pin or a routine
   `uv tool upgrade` pulls it in, and a cron `intake --apply` whose `--to` sits under a
   dotfiles repo could start exiting 2. Kept at 0.4.1 because the session brief named that
-  version; the guard only bites on *tracked* files, and `--force` is the documented way
-  through. Owner call whether the next behaviour change bumps minor, and whether
-  `publish.yml` should refuse a patch tag when the CHANGELOG entry says "Changed (behaviour)".
+  version; the guard only bites on *tracked* files, and `--allow-tracked` is the documented
+  way through (spelled `--force` before v0.5.0 — D-022; the alias is kept, with no
+  removal date). **Decided in v0.5.0 (D-023):** a previously-successful invocation
+  that can newly exit non-zero is a minor bump, so this wave is 0.5.0. Still open:
+  whether `publish.yml` should refuse a patch tag when the CHANGELOG entry says
+  "Changed (behaviour)".
 
 - `watch --print-service schtasks` prints a one-line `schtasks /Create … /TR …` for pasting.
   The `/TR` value is now quoted correctly for both of Windows' own parsing passes (a parser
@@ -243,8 +246,8 @@
   `_Watcher.seed`, which applies only `--glob`. So a `--recursive` watch with `--done-dir`
   queues `.git/` internals (or any dotfile) the moment something writes them, and files them
   away after the actions run. The spec-29 guard covers the usual case at start — a tree with
-  tracked files refuses unless `--force` — leaving a repository with nothing tracked yet, or
-  an explicit `--force`, as the exposure. Found probing the v0.4.1 guard; pre-existing since
+  tracked files refuses unless `--allow-tracked` — leaving a repository with nothing tracked
+  yet, or an explicit override, as the exposure. Found probing the v0.4.1 guard; pre-existing since
   watch v2 (v0.4.0). Fix: apply the same hidden-component and skip-subtree test in `seed`,
   with a regression test that writes into `.git/` under a recursive watch.
 
@@ -256,15 +259,43 @@
   constraints — `uv build --build-constraint`), keep it bumped by Dependabot, and let CI's build
   job prove each bump.
 
-- `--force` now carries two unrelated meanings. On `mail`, `edit`, `sign`, `form`, `catalog`,
-  `meta` and `audiobook` it means "overwrite existing output"; on `rename`, `organize`,
-  `intake` and `watch` it means "bypass the tracked-files guard" (spec 29) — and those four
-  never overwrite anything, so the habitual meaning does not apply. Someone who learned
-  `--force` from `mail attachments` and adds it to `intake --apply` expecting overwrite
-  semantics silently disables a safety guard instead. Raised by the spec-29 review; kept as
-  `--force` because the session brief specified that flag by name. A distinct spelling
-  (`--allow-tracked`) would not be reachable by reflex — an owner call, since it is a
-  user-facing rename.
+- ~~`--force` carries two unrelated meanings.~~ **Decided in v0.5.0 (D-022):** the
+  tracked-files guard on `rename`, `organize`, `intake` and `watch` is overridden by
+  `--allow-tracked`, which is not reachable by reflex from the "overwrite existing output"
+  meaning `--force` keeps on `mail`, `edit`, `sign`, `form`, `catalog`, `meta` and
+  `audiobook`. `--force` stays on all four as a deprecated alias that warns once when the
+  guard is actually consulted; it is not removed and no removal date is set.
+
+- **Deferred from PR #43:** the MCP boundary is threaded as a `confine_to` flag into
+  five separate walkers (`index._walk`, `pack._walk_dir`, `refs._candidates`,
+  `mail._mail_files`, `fields.fields_for`) plus `confined_dest` at two writers,
+  rather than fixed once in a confined filesystem accessor. Four review rounds
+  each found "one more caller also does this" — four walkers, then `mail`, then
+  the write side and the stored index rows, then `<root>/.carrel` itself — which
+  is the argument for one
+  `iter_files(top, confine_to=...)` every walker uses. Not done here: it is a
+  cross-module refactor of five walkers with different ignore-stack shapes, in a
+  PR that is already 37 files, and the regression risk lands on `pack` and
+  `index`, the two most-used commands. The registry-driven tests
+  (`test_no_tool_reads_through_a_symlink_planted_in_the_desk`,
+  `test_every_tool_refuses_a_root_outside_the_server_root`, and their write-side
+  twin) drive every (tool, action) pair from `mcp.TOOLS` — but they only see
+  surfaces that walk or write a *named* path, which is exactly why the `.carrel`
+  hole survived them. The shape to aim at is `Desk` owning the primitives
+  (`desk.open`, `desk.db`, `desk.walk`) so a new surface is confined by
+  construction. **Do this first in the MCP v3 wave (v0.6.0)**, before its
+  mutating tools land on the same surface.
+
+- **Considered and declined in PR #43:** a per-call MCP `root` bounds the ancestor
+  `.gitignore` walk at that root, not at the server's launch root, so
+  `carrel_refs {"path": ".", "root": "sub"}` does not apply `<desk>/.gitignore`.
+  A review argued the same file should give the same answer whichever way the
+  client addresses it. Left as is because the tool schema documents `root` as
+  "Desk root (default: server --root / cwd)" — a client naming `sub` is naming a
+  desk, and D-019 fixes the bound at the desk root, so this is the documented
+  semantics rather than a defect. The CLI behaves identically
+  (`carrel --root sub refs .` versus `carrel --root desk refs sub`). Revisit if
+  MCP v3 makes the per-call `root` mean "subtree of the desk" instead.
 
 - The suite cannot run under a non-UTF-8 locale: `LC_ALL=C PYTHONUTF8=0 uv run pytest -q`
   fails 45 tests across 9 files with `UnicodeDecodeError`. Every one is *test-side* —

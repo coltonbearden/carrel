@@ -23,7 +23,7 @@ import click
 
 from carrel.core import adapters, mail
 from carrel.core.filetypes import FileType, detect, detect_or_die
-from carrel.core.fsops import uncollide
+from carrel.core.fsops import confined_dest, uncollide, within
 from carrel.core.output import (
     CarrelError,
     CarrelInputError,
@@ -57,7 +57,9 @@ def _messages(path: Path) -> Iterator[tuple[str, Any]]:
         raise CarrelInputError(f"not an email file (eml/mbox): {path} ({ftype.value})")
 
 
-def _mail_files(paths: Sequence[Path], root: Path | None = None) -> list[Path]:
+def _mail_files(
+    paths: Sequence[Path], root: Path | None = None, *, confine_to: Path | None = None
+) -> list[Path]:
     """Explicit files as given; directories walked like `index` for eml/mbox files."""
     from carrel.commands.index import _walk
     from carrel.core.ignore import ancestor_ignores
@@ -67,10 +69,12 @@ def _mail_files(paths: Sequence[Path], root: Path | None = None) -> list[Path]:
         if not p.exists():
             raise CarrelInputError(f"no such path: {p}")
         if p.is_file():
-            out.append(p)
-        else:
+            if within(p, confine_to):  # mirrors index._walk's own file branch
+                out.append(p)
+        elif within(p, confine_to):
+            # `_walk` checks what it finds; the top it is handed is ours to check
             seed = ancestor_ignores(p.resolve(), root)
-            out.extend(f for f in _walk(p, seed) if detect(f).is_mail)
+            out.extend(f for f in _walk(p, seed, confine_to=confine_to) if detect(f).is_mail)
     return out
 
 
@@ -78,7 +82,11 @@ def _mail_files(paths: Sequence[Path], root: Path | None = None) -> list[Path]:
 
 
 def attachments_of(
-    paths: Sequence[Path | str], out_dir: Path | str, *, force: bool = False
+    paths: Sequence[Path | str],
+    out_dir: Path | str,
+    *,
+    force: bool = False,
+    confine_to: Path | None = None,
 ) -> list[dict[str, Any]]:
     """Save every attachment of the given eml/mbox files into `out_dir`.
 
@@ -101,6 +109,9 @@ def attachments_of(
                 # `taken` alone when forcing: pre-existing files may be replaced,
                 # but this run's own outputs must never collide with each other
                 dest = uncollide(dest, taken) if not force else _unplanned(dest, taken)
+                # `safe_filename` strips separators out of the name; it cannot see
+                # that the path it lands on is a symlink out of the desk
+                dest = confined_dest(dest, confine_to)
                 taken.add(dest)
                 dest.write_bytes(data)
                 saved.append(
@@ -192,10 +203,15 @@ def split_mbox(
 # -------------------------------------------------------------------- threads
 
 
-def threads_of(paths: Sequence[Path | str], *, root: Path | None = None) -> list[dict[str, Any]]:
+def threads_of(
+    paths: Sequence[Path | str],
+    *,
+    root: Path | None = None,
+    confine_to: Path | None = None,
+) -> list[dict[str, Any]]:
     """Thread groups over every message in the given eml/mbox files or directories."""
     summaries: list[dict[str, Any]] = []
-    for path in _mail_files([Path(p) for p in paths], root):
+    for path in _mail_files([Path(p) for p in paths], root, confine_to=confine_to):
         for where, msg in _messages(path):
             summaries.append({**mail.summary(msg), "where": where})
     return mail.thread_groups(summaries)

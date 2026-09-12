@@ -26,6 +26,7 @@ from typing import Any
 
 import click
 
+from carrel.commands._guard_flags import allow_tracked_options, warn_if_deprecated_spelling
 from carrel.core import patterns as pat
 from carrel.core.db import DeskDB
 from carrel.core.filetypes import detect
@@ -321,11 +322,7 @@ def _human_plan(applied: bool) -> Callable[[list[dict[str, Any]]], None]:
     is_flag=True,
     help="OCR images and scanned PDFs to read their fields (needs tesseract / ocrmypdf).",
 )
-@click.option(
-    "--force",
-    is_flag=True,
-    help="Rename even when a PATH is a file git tracks (see the description).",
-)
+@allow_tracked_options("Rename even when a PATH is a file git tracks (see the description).")
 @click.pass_context
 @handled
 def cmd(
@@ -338,7 +335,7 @@ def cmd(
     lower: bool,
     max_len: int,
     ocr: bool,
-    force: bool,
+    allow_tracked: bool,
 ) -> None:
     """Plan (default) or perform (--apply) renaming PATH... from the documents' own fields.
 
@@ -354,17 +351,18 @@ def cmd(
 
     --apply refuses (exit 2) when a PATH would rename a file git is tracking,
     where a new name breaks imports, tests and history. Untracked files inside a
-    repository are fine; --force overrides.
+    repository are fine; --allow-tracked overrides.
     """
     if not _PLACEHOLDER.search(template):
         raise click.UsageError(f"--template has no placeholders: {template!r}")
     if apply_:
+        warn_if_deprecated_spelling(ctx)  # after the template check, at the guard
         # every PATH, not just directories: a shell glob (`rename src/*.py --apply`)
         # arrives as a list of files and is exactly the 2026-09-10 incident.
         # Renames land next to their source, so guarding the inputs covers the
         # destinations. Guarded after the template check so a bad template
         # reports itself.
-        guard_worktree(paths, force=force, what="rename --apply")
+        guard_worktree(paths, allow_tracked=allow_tracked, what="rename --apply")
     root = root_of(ctx)
     plan = plan_renames(
         list(paths),

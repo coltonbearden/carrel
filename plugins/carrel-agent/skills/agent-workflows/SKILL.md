@@ -32,7 +32,9 @@ Feed the hit paths to Claude (or the `file-librarian` agent in this plugin) rath
 
 ## Pattern: desk over MCP
 
-This plugin ships a `carrel` MCP server (`carrel mcp`, stdio, pure stdlib) via `.mcp.json`. When it is connected, prefer its structured tools over shelling out for the same operations. The server works on the desk under the session's working directory (the `root` argument overrides); run `carrel index` there first for search-backed tools.
+This plugin ships a `carrel` MCP server (`carrel mcp`, stdio, pure stdlib) via `.mcp.json`. When it is connected, prefer its structured tools over shelling out for the same operations. The server works on the desk under the session's working directory (the `root` argument narrows it to a subdirectory); run `carrel index` there first for search-backed tools.
+
+The server is **confined to that directory**: a `path`, a per-call `root` or a `carrel://` URI that resolves outside it — symlinks included — comes back as a tool error (exit code 2) or resource-not-found, never as a read. Use the CLI through Bash for a file elsewhere, or start the server with `carrel mcp --allow-outside-root` when the whole filesystem is genuinely in scope.
 
 Tools (14):
 

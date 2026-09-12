@@ -35,6 +35,7 @@ from typing import Any
 import click
 
 from carrel._product import PRODUCT
+from carrel.commands._guard_flags import allow_tracked_options, warn_if_deprecated_spelling
 from carrel.core.actions import PLACEHOLDERS, kill_tree, quote, render, run_action
 from carrel.core.fsops import guard_worktree, move_file, uncollide
 from carrel.core.output import CarrelInputError, CarrelUsageError, handled, root_of
@@ -621,11 +622,7 @@ def _make_handler(watcher: _Watcher) -> Any:
     type=click.Path(dir_okay=False, path_type=Path),
     help="Append one JSON record per action (and per move) to FILE.",
 )
-@click.option(
-    "--force",
-    is_flag=True,
-    help="With --done-dir/--error-dir: move files even when git tracks them.",
-)
+@allow_tracked_options("With --done-dir/--error-dir: move files even when git tracks them.")
 @click.option(
     "--print-service",
     type=click.Choice(["systemd", "schtasks"]),
@@ -684,7 +681,7 @@ def cmd(
     done_dir: Path | None,
     error_dir: Path | None,
     log_path: Path | None,
-    force: bool,
+    allow_tracked: bool,
     print_service: str | None,
 ) -> None:
     """Watch DIRECTORY and run shell actions on file events.
@@ -699,7 +696,7 @@ def cmd(
     after their actions, --log keeps a JSON trail. Ctrl-C exits cleanly.
 
     --done-dir/--error-dir refuse to start (exit 2) when they would move files
-    git is tracking; --force overrides. Actions themselves are never guarded —
+    git is tracking; --allow-tracked overrides. Actions themselves are never guarded —
     what a --run command does is the user's business.
     """
     json_lines = json_lines or bool(ctx.obj and ctx.obj.get("json"))
@@ -714,7 +711,12 @@ def cmd(
         )
     if stable_timeout is not None and stable is None:
         raise click.UsageError("--stable-timeout needs --stable")
-    if not force and (done_dir is not None or error_dir is not None):
+    # The guard is only consulted when something would be moved, so that is the
+    # only place the deprecated spelling is worth a warning.
+    moves_files = done_dir is not None or error_dir is not None
+    if moves_files:
+        warn_if_deprecated_spelling(ctx)
+    if not allow_tracked and moves_files:
         # the fourth bulk mover (spec 29), and the only one with no dry-run to
         # fall back on: --done-dir empties the watched directory as it goes.
         # Checked before --print-service returns, so carrel never hands back a
@@ -727,15 +729,15 @@ def cmd(
         # because `ls-files -- DIR` matches recursively (a tracked sub/ would
         # refuse a watch that never descends into it) and because a recursive
         # watch over a plain directory can still reach a nested repository.
-        # Skipped entirely under --force, which is what --force is for.
+        # Skipped entirely under --allow-tracked, which is what the flag is for.
         #
         # `_walk_files` prunes `.git` and the destination subtrees while
         # walking; a raw rglob spent most of its work stat'ing and resolving
         # `.git/objects` for an answer `ls-files` can never give.
         destinations = [d for d in (done_dir, error_dir) if d is not None]
         present = _walk_files(directory, recursive=recursive, skip=destinations, glob_=glob_)
-        # no force= here: the whole block is gated on `not force` above, and
-        # the default says so without a literal that needs explaining.
+        # no allow_tracked= here: the whole block is gated on `not allow_tracked`
+        # above, and the default says so without a literal that needs explaining.
         guard_worktree([*present, *destinations], what="watch --done-dir/--error-dir")
     if print_service:
         click.echo(render_service(print_service, directory, ctx), nl=False)

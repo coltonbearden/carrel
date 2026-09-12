@@ -349,13 +349,26 @@ def fields_for(
     ocr: bool = False,
     overrides: Sequence[str] = (),
     save_root: Path | str | None = None,
+    walk_root: Path | str | None = None,
+    confine_to: Path | None = None,
 ) -> list[dict[str, Any]]:
-    """One record per file (directories walked like `refs`); failures are per-file records."""
+    """One record per file (directories walked like `refs`); failures are per-file records.
+
+    `save_root` is the desk to write fields into; `walk_root` bounds the ancestor
+    `.gitignore` walk (D-019) and defaults to it. They were one parameter, so
+    whether the walk was bounded depended on whether the caller happened to be
+    saving — and an unbounded seed climbing to a `*` rule above the tree returns
+    no files at all, silently.
+    """
     from carrel.commands.refs import candidate_files
 
     parse_overrides(overrides)  # a bad --set fails before any file is read
+    bound = walk_root if walk_root is not None else save_root
     targets = candidate_files(
-        [Path(p) for p in paths], ocr=ocr, root=Path(save_root).resolve() if save_root else None
+        [Path(p) for p in paths],
+        ocr=ocr,
+        root=Path(bound).resolve() if bound else None,
+        confine_to=confine_to,
     )
     ctx = click.get_current_context(silent=True)
     records: list[dict[str, Any]] = []
@@ -474,6 +487,10 @@ def cmd(
             ocr=ocr,
             overrides=overrides,
             save_root=root_of(ctx) if save else None,
+            # the desk root bounds the ancestor-.gitignore walk whether or not we
+            # are saving (D-019); tying the two together made `fields DIR` return
+            # nothing whenever a rule above DIR excluded it, and `--save` fix it
+            walk_root=root_of(ctx),
         )
     except CarrelInputError as e:
         if "--set" in str(e):

@@ -247,7 +247,67 @@ def would_move_tracked(paths: Iterable[Path]) -> dict[Path, list[str]]:
     return {root: names for root, names in hits.items() if names}
 
 
-def guard_worktree(paths: Iterable[Path], *, what: str, force: bool = False) -> None:
+class OutsideRootError(CarrelUsageError):
+    """A path landed outside the boundary its caller declared.
+
+    Lives here rather than in `commands/mcp.py` because both halves of the rule
+    raise it: `Desk.resolve` for a path the client named, `confined_dest` for one
+    a writer derived.
+    """
+
+
+def confined_dest(dest: Path, confine_to: Path | None) -> Path:
+    """`dest`, refused when it resolves outside `confine_to`. `None` confines nothing.
+
+    A write **follows a symlink**. A link planted at the destination — inside the
+    boundary, pointing out of it — makes an ordinary write a write outside the
+    boundary, and a *dangling* link creates the outside file with no existing
+    file to force past. Neither is reachable through the path the client named,
+    so the read-side check cannot see it: a caller that derives a destination
+    checks it here, after deriving it.
+
+    Returns `dest` unchanged rather than its resolved form, so the caller writes
+    to the path it computed and its output records say what the user asked for.
+    """
+    if within(dest, confine_to):
+        return dest
+    raise OutsideRootError(
+        f"{dest} resolves outside {confine_to} — carrel refuses to write there; "
+        "a symlink at the destination is the usual cause"
+    )
+
+
+def within(path: Path, root: Path | None) -> bool:
+    """True when `path`, symlinks resolved, is inside `root`. `root=None` confines nothing.
+
+    A directory walk that skips symlinked *directories* still reads symlinked
+    *files*, so a link inside a confined tree is a way out of it. Callers that
+    declare a boundary — `carrel mcp`, which is confined to the directory it was
+    started in (D-021) — pass it here; the CLI passes `None` and keeps following
+    links, because a desk that symlinks documents in from elsewhere is a
+    legitimate layout.
+
+    **`root` must already be resolved** — `Desk.root` and `Desk.walk_boundary`
+    are, and every caller takes its boundary from one of them. Comparing against
+    a raw `root` is false for every entry when it is relative or reached through
+    a symlinked parent (`/tmp` on macOS, `/home` under some WSL layouts), and the
+    walk would then yield nothing with no error at all; resolving it *here*
+    instead would pay a realpath per walked entry for a value that never changes.
+    """
+    if root is None:
+        return True
+    try:
+        return path.resolve().is_relative_to(root)
+    except OSError:
+        # Not symlink loops — `resolve()` is non-strict and returns those
+        # unchanged. `os.getcwd()` behind a relative path when the cwd has been
+        # removed, and Windows' `_getfinalpathname` on a reserved name or an
+        # over-long path, both raise here. Outside a boundary we cannot evaluate
+        # is the safe answer, and a walk must not die on one bad entry.
+        return False
+
+
+def guard_worktree(paths: Iterable[Path], *, what: str, allow_tracked: bool = False) -> None:
     """Refuse a bulk move that would rewrite files git is tracking.
 
     `paths` are exactly what the command would move or write into. Raises
@@ -255,13 +315,13 @@ def guard_worktree(paths: Iterable[Path], *, what: str, force: bool = False) -> 
     `TrackedUnknownError` (exit 3, with git's install hint) when the question
     cannot be answered — never silence.
     """
-    if force:
+    if allow_tracked:
         return
     try:
         offenders = would_move_tracked(paths)
     except TrackedUnknownError as e:
         adapters.require("git")  # the usual exit-3 message, binary + install hint
-        raise CarrelUsageError(f"{what}: {e} — pass --force to proceed anyway") from e
+        raise CarrelUsageError(f"{what}: {e} — pass --allow-tracked to proceed anyway") from e
     if not offenders:
         return
     lines = []
@@ -272,5 +332,5 @@ def guard_worktree(paths: Iterable[Path], *, what: str, force: bool = False) -> 
     raise CarrelUsageError(
         f"{what} would move files that git is tracking:\n{listed}\n"
         "Renaming tracked files breaks imports, tests and history. Point this "
-        "somewhere else, or pass --force if it is what you meant."
+        "somewhere else, or pass --allow-tracked if it is what you meant."
     )

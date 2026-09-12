@@ -6,6 +6,13 @@ token exists anywhere. A release is four steps; only the last one touches PyPI.
 
 ## 1. Bump the version (one file)
 
+**Which number moves (D-023):** if an invocation that succeeded before can now
+exit non-zero, it is a **minor** bump — a refusal, a new exit code on an existing
+path, a default that flips from permissive to strict. Everything else is a patch,
+including new flags, new output fields and fixed crashes. "The new behaviour is
+better" and "the escape hatch is documented" were both true of the v0.4.1 guard
+that shipped as a patch and could start failing a cron job; neither is the test.
+
 ```sh
 # edit product.json → "version": "X.Y.Z"
 uv run python scripts/sync_product.py   # regenerates every derived copy

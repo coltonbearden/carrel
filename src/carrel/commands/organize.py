@@ -24,6 +24,7 @@ from typing import Any
 
 import click
 
+from carrel.commands._guard_flags import allow_tracked_options, warn_if_deprecated_spelling
 from carrel.core.filetypes import FileType, detect
 from carrel.core.fsops import guard_worktree, move_file, uncollide
 from carrel.core.output import CarrelInputError, emit, handled, root_of
@@ -153,11 +154,7 @@ def _human_plan(applied: bool) -> Callable[[list[dict[str, Any]]], None]:
     default=False,
     help="Execute the moves. Default is a dry-run that only prints the plan.",
 )
-@click.option(
-    "--force",
-    is_flag=True,
-    help="Move files even when they are tracked by git (see the description).",
-)
+@allow_tracked_options("Move files even when they are tracked by git (see the description).")
 @click.pass_context
 @handled
 def cmd(
@@ -166,7 +163,7 @@ def cmd(
     by: str,
     into_: tuple[str, ...],
     apply_: bool,
-    force: bool,
+    allow_tracked: bool,
 ) -> None:
     """Plan (default) or perform (--apply) sorting DIRECTORY's files.
 
@@ -176,7 +173,7 @@ def cmd(
     {src, dest, action} ('move' planned, 'moved' executed, 'skip').
 
     --apply refuses (exit 2) when it would move files git is tracking, where a
-    new path breaks imports, tests and history; --force overrides. Untracked
+    new path breaks imports, tests and history; --allow-tracked overrides. Untracked
     files inside a repository are fine.
     """
     directory = directory.resolve()
@@ -196,14 +193,16 @@ def cmd(
         raise click.UsageError("--into only applies to --by type")
 
     if apply_:
-        # after validation, so a bad --into reports itself rather than the guard.
+        # after validation, so a bad --into reports itself rather than the guard
+        # (and rather than the deprecation warning).
+        warn_if_deprecated_spelling(ctx)  # after --into validation, at the guard
         # Only the top-level files organize actually moves: `ls-files -- DIR`
         # matches recursively, and a tracked subdirectory would otherwise refuse
         # a run that leaves it alone by definition. --into takes a relative path
         # that may climb out of DIRECTORY, so the destinations count too.
         guard_worktree(
             [*_movable(directory), *((directory / sub).resolve() for sub in into.values())],
-            force=force,
+            allow_tracked=allow_tracked,
             what="organize --apply",
         )
 

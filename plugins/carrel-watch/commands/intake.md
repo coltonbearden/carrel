@@ -27,9 +27,9 @@ Usage: carrel intake [OPTIONS] INBOX
   some files errored during --apply, 5 with --fail-empty when there was nothing to file.
 
   --apply refuses (exit 2) when INBOX or --to holds files git is tracking, where a new path breaks
-  imports, tests and history; --force overrides. The refusal happens before anything is created or
-  moved, and an untracked inbox inside a repository (the usual ~/Downloads-under-dotfiles case) is
-  fine.
+  imports, tests and history; --allow-tracked overrides. The refusal happens before anything is
+  created or moved, and an untracked inbox inside a repository (the usual ~/Downloads-under-dotfiles
+  case) is fine.
 
 Options:
   --to DIRECTORY          Where filed documents land (created if missing).  [required]
@@ -57,7 +57,8 @@ Options:
   --fallback TEXT         Use TEXT for a name placeholder that has no value instead of skipping the
                           file.
   --fail-empty            Exit 5 when no file was filed (or planned).
-  --force                 File even when INBOX or --to holds files git tracks (see the description).
+  --allow-tracked         File even when INBOX or --to holds files git tracks (see the description).
+  --force                 Deprecated spelling of --allow-tracked; warns when it bypasses the guard.
   --json                  Machine-readable JSON output.
   --help                  Show this message and exit.
 ```
