@@ -26,10 +26,12 @@ from carrel.cli import cli
 from carrel.core.output import CarrelError, CarrelInputError, ExitCode, handled, root_of
 
 COMMANDS_DIR = Path(__file__).resolve().parent.parent / "src" / "carrel" / "commands"
-#: the command modules — one click command each. Underscore-prefixed files are
-#: shared private helpers (`_guard_flags.py`), not commands, so the conventions
-#: below (a `@handled` callback, `root_of`) do not apply to them.
-MODULES = sorted(p for p in COMMANDS_DIR.glob("*.py") if not p.name.startswith("_"))
+#: files under commands/ that are not command modules — shared private helpers,
+#: so the conventions below (a `@handled` callback, `root_of`) do not apply. Named
+#: exactly, not matched by pattern: a `startswith("_")` rule would silently exempt
+#: every future helper from this gate, which is the floor the docstring warns about.
+NOT_COMMANDS = {"__init__.py", "_guard_flags.py"}
+MODULES = sorted(p for p in COMMANDS_DIR.glob("*.py") if p.name not in NOT_COMMANDS)
 
 #: the private names D-016 retired, mapped to their shared replacement
 RETIRED = {"_handled": "carrel.core.output.handled", "_root_of": "carrel.core.output.root_of"}

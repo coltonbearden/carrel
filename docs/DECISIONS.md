@@ -158,6 +158,18 @@ Consequence: `plugins/carrel-agent/.mcp.json` is unchanged — Claude Code start
 
 The guard's override is `--allow-tracked` on all four. It cannot be reached by reflex from the other meaning, and it names what it does. `core/fsops.py::guard_worktree` takes `allow_tracked=`, and both refusal messages say "pass `--allow-tracked` to proceed".
 
-`--force` is **not removed**. Scripts and the `bookkeeper` agent's documented flow use it, and breaking them to make a naming point is the wrong trade. It stays as an alias whose help says it is deprecated, and one line on stderr when it is used: `warning: --force here means --allow-tracked (bypass the tracked-files guard); the --force spelling is deprecated`. No removal date is set; removing it is a separate decision, recorded when it is made.
+`--force` is **not removed**. Scripts and the `bookkeeper` agent's documented flow use it, and breaking them to make a naming point is the wrong trade. It stays as an alias whose help says it is deprecated, and one line on stderr **when it actually bypasses the guard**: `warning: --force here means --allow-tracked (bypass the tracked-files guard); the --force spelling is deprecated`. A dry run is never guarded, and a `watch` without `--done-dir`/`--error-dir` never asks the question, so the warning stays silent there — claiming a bypass that did not happen would be false, and it would add stderr noise to scripted dry runs that were quiet before. No removal date is set; removing it is a separate decision, recorded when it is made.
 
-Consequence: `tests/test_guardrails.py` runs every override assertion under both spellings (`OVERRIDES`), and asserts the warning fires exactly once per run on each of the four commands and not at all for `--allow-tracked`.
+Consequence: `tests/test_guardrails.py` runs every override assertion under both spellings (`OVERRIDES`), asserts the warning fires exactly once on each of the four commands when the guard is consulted, and asserts silence both for `--allow-tracked` and for a `--force` run that reaches no guard.
+
+Consequence: `watch --print-service` writes `--allow-tracked` into the unit whichever spelling was typed. The unit is installed once and started forever; a deprecated alias baked into it would warn into `journalctl` on every boot and break outright the day the alias goes. `commands/_guard_flags.py::normalise_guard_flags` rewrites `ctx.params`, which `_watch_command_line` re-serialises, and its name says so.
+
+## D-023 (2026-09-12) — A previously-successful invocation that can newly exit non-zero is a minor bump
+
+v0.4.1 shipped a documented behaviour change — `--apply` refuses tracked files, exit 2 — as a **patch**. Its release review argued that was wrong and `STATE.md` has carried the question as an open owner call ever since: a `carrel~=0.4.0` pin or a routine `uv tool upgrade` pulls a patch in without anyone reading a changelog, and a cron `intake --apply` whose `--to` sits under a dotfiles repo starts exiting 2 at 3 a.m. The v0.4.1 session kept the patch number only because its brief named that version.
+
+The rule from here: **if an invocation that succeeded before can now exit non-zero, it is a minor bump.** Not "is the new behaviour better", not "is the escape hatch documented" — both were true of v0.4.1 — but "can an unchanged command line that worked yesterday fail today". A new flag, a new output field, a faster path, a fixed crash: patch. A refusal, a new exit code on an existing path, a default that flips from permissive to strict: minor.
+
+This wave has four such changes — MCP confinement, the `--json` empty-pack exit, image `Read`s passing through, and the JSON error shape on stderr — so it is **0.5.0**, and MCP v3 (`specs/30-mcp-v3.md`) moves from that number to v0.6.0.
+
+Consequence: `docs/RELEASING.md` states the rule where the version is bumped. Still undecided, and left in `STATE.md`: whether `publish.yml` should *refuse* a patch tag whose CHANGELOG entry contains a "Changed (behaviour)" bullet. The rule is worth having before the enforcement, and enforcing it needs a CHANGELOG convention stricter than the one in use.

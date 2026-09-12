@@ -31,7 +31,9 @@
   disabled the guard that exists because a `rename --apply` once renamed 21 tracked files in
   this checkout. `--force` still works on all four and is **not** being removed; it prints one
   stderr line saying it now means `--allow-tracked` and that the spelling is deprecated. No
-  removal date is set (D-022).
+  removal date is set. The warning fires when the guard is actually consulted — a
+  dry run is never guarded, so `--force` stays silent there rather than claiming a
+  bypass that did not happen (D-022).
 - **Fixed (`carrel mcp`):** `initialize` no longer echoes whatever `protocolVersion` the client
   sent, which claimed support for any string a client cared to invent — `2099-01-01` came back
   as `2099-01-01`. The server keeps a tuple of versions it actually speaks

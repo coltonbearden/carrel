@@ -31,7 +31,7 @@ from typing import Any
 
 import click
 
-from carrel.commands._guard_flags import allow_tracked_options, resolve_allow_tracked
+from carrel.commands._guard_flags import allow_tracked_options, normalise_guard_flags
 from carrel.commands.fields import extract_fields, save_fields
 from carrel.commands.refs import tag_for
 from carrel.commands.rename import (
@@ -583,9 +583,9 @@ def cmd(
         raise click.UsageError(
             "INBOX and --to must be separate directories, neither inside the other"
         )
+    allow_tracked = normalise_guard_flags(ctx, consulted=apply_)
     if apply_:
         # before the mkdir below: a refused run must leave the disk untouched.
-        allow_tracked = resolve_allow_tracked(ctx, consulted=True)
         # Both sides count — INBOX is emptied, --to is written into.
         guard_worktree([inbox, dest_root], allow_tracked=allow_tracked, what="intake --apply")
         dest_root.mkdir(parents=True, exist_ok=True)

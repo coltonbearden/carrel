@@ -32,7 +32,8 @@ Options:
                               (only with --by type; repeatable).
   --apply / --dry-run         Execute the moves. Default is a dry-run that only prints the plan.
   --allow-tracked             Move files even when they are tracked by git (see the description).
-  --force                     Deprecated spelling of --allow-tracked; warns and behaves identically.
+  --force                     Deprecated spelling of --allow-tracked; warns when it bypasses the
+                              guard.
   --json                      Machine-readable JSON output.
   --help                      Show this message and exit.
 ```

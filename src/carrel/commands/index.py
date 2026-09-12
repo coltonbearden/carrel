@@ -62,7 +62,8 @@ def _walk(
     passes None and keeps following links, because a desk that symlinks documents
     in from elsewhere is a legitimate layout."""
     if top.is_file():
-        yield top
+        if within(top, confine_to):
+            yield top
         return
     if use_gitignore:
         ig = load_ignore(top)
@@ -75,7 +76,10 @@ def _walk(
     for child in children:
         if child.name.startswith("."):
             continue
-        if not within(child, confine_to):
+        # only a symlink can leave a tree we descended from a resolved top, and
+        # `is_symlink` is answered by the scandir cache — `within` is a realpath
+        # walk, so it is not worth paying on every ordinary entry
+        if child.is_symlink() and not within(child, confine_to):
             continue
         if child.is_dir():
             if not child.is_symlink() and not ignored(child, True, ignores):

@@ -256,13 +256,16 @@ def within(path: Path, root: Path | None) -> bool:
     started in (D-021) — pass it here; the CLI passes `None` and keeps following
     links, because a desk that symlinks documents in from elsewhere is a
     legitimate layout.
+
+    **Both sides are resolved.** Comparing a resolved path against a raw `root`
+    is false for every entry when the root is relative, or reached through a
+    symlinked parent — `/tmp` on macOS, `/home` under some WSL layouts — and the
+    walk would then yield nothing with no error at all. `ancestor_ignores`
+    resolves its own `stop_at` for the same reason.
     """
     if root is None:
         return True
-    try:
-        return path.resolve().is_relative_to(root)
-    except OSError:  # a broken or looping link is not inside anything
-        return False
+    return path.resolve().is_relative_to(root.resolve())
 
 
 def guard_worktree(paths: Iterable[Path], *, what: str, allow_tracked: bool = False) -> None:

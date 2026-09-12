@@ -39,7 +39,7 @@ Options:
   --ocr                    OCR images and scanned PDFs to read their fields (needs tesseract /
                            ocrmypdf).
   --allow-tracked          Rename even when a PATH is a file git tracks (see the description).
-  --force                  Deprecated spelling of --allow-tracked; warns and behaves identically.
+  --force                  Deprecated spelling of --allow-tracked; warns when it bypasses the guard.
   --json                   Machine-readable JSON output.
   --help                   Show this message and exit.
 ```

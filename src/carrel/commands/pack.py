@@ -806,8 +806,6 @@ def pack_paths(
         for sub in (c for c in children if c.is_dir()):
             if sub.name in _ALWAYS_SKIP_DIRS or sub.is_symlink():
                 continue
-            if not within(sub, confine_to):
-                continue
             if _excluded(sub):
                 continue
             if not no_gitignore and _ignored(sub, True, ignores):
@@ -815,8 +813,10 @@ def pack_paths(
             _walk_dir(sub, ignores)
         for f in (c for c in children if c.is_file()):
             # a symlinked *file* is followed even though symlinked dirs are not,
-            # so a link inside a confined tree is a way out of it (D-021)
-            if not within(f, confine_to):
+            # so a link inside a confined tree is a way out of it (D-021). Only a
+            # symlink can escape a tree descended from a resolved top, so the
+            # realpath walk is paid for those and not for every entry.
+            if f.is_symlink() and not within(f, confine_to):
                 continue
             if _excluded(f):
                 continue

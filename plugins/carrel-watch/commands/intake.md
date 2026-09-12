@@ -58,7 +58,7 @@ Options:
                           file.
   --fail-empty            Exit 5 when no file was filed (or planned).
   --allow-tracked         File even when INBOX or --to holds files git tracks (see the description).
-  --force                 Deprecated spelling of --allow-tracked; warns and behaves identically.
+  --force                 Deprecated spelling of --allow-tracked; warns when it bypasses the guard.
   --json                  Machine-readable JSON output.
   --help                  Show this message and exit.
 ```

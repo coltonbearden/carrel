@@ -57,7 +57,9 @@ def _messages(path: Path) -> Iterator[tuple[str, Any]]:
         raise CarrelInputError(f"not an email file (eml/mbox): {path} ({ftype.value})")
 
 
-def _mail_files(paths: Sequence[Path], root: Path | None = None) -> list[Path]:
+def _mail_files(
+    paths: Sequence[Path], root: Path | None = None, *, confine_to: Path | None = None
+) -> list[Path]:
     """Explicit files as given; directories walked like `index` for eml/mbox files."""
     from carrel.commands.index import _walk
     from carrel.core.ignore import ancestor_ignores
@@ -70,7 +72,7 @@ def _mail_files(paths: Sequence[Path], root: Path | None = None) -> list[Path]:
             out.append(p)
         else:
             seed = ancestor_ignores(p.resolve(), root)
-            out.extend(f for f in _walk(p, seed) if detect(f).is_mail)
+            out.extend(f for f in _walk(p, seed, confine_to=confine_to) if detect(f).is_mail)
     return out
 
 
@@ -192,10 +194,15 @@ def split_mbox(
 # -------------------------------------------------------------------- threads
 
 
-def threads_of(paths: Sequence[Path | str], *, root: Path | None = None) -> list[dict[str, Any]]:
+def threads_of(
+    paths: Sequence[Path | str],
+    *,
+    root: Path | None = None,
+    confine_to: Path | None = None,
+) -> list[dict[str, Any]]:
     """Thread groups over every message in the given eml/mbox files or directories."""
     summaries: list[dict[str, Any]] = []
-    for path in _mail_files([Path(p) for p in paths], root):
+    for path in _mail_files([Path(p) for p in paths], root, confine_to=confine_to):
         for where, msg in _messages(path):
             summaries.append({**mail.summary(msg), "where": where})
     return mail.thread_groups(summaries)

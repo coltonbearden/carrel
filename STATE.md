@@ -223,9 +223,11 @@
   `uv tool upgrade` pulls it in, and a cron `intake --apply` whose `--to` sits under a
   dotfiles repo could start exiting 2. Kept at 0.4.1 because the session brief named that
   version; the guard only bites on *tracked* files, and `--allow-tracked` is the documented
-  way through (`--force` until v0.5.0 — D-022). Owner call whether the next behaviour
-  change bumps minor, and whether `publish.yml` should refuse a patch tag when the
-  CHANGELOG entry says "Changed (behaviour)".
+  way through (spelled `--force` before v0.5.0 — D-022; the alias is kept, with no
+  removal date). **Decided in v0.5.0 (D-023):** a previously-successful invocation
+  that can newly exit non-zero is a minor bump, so this wave is 0.5.0. Still open:
+  whether `publish.yml` should refuse a patch tag when the CHANGELOG entry says
+  "Changed (behaviour)".
 
 - `watch --print-service schtasks` prints a one-line `schtasks /Create … /TR …` for pasting.
   The `/TR` value is now quoted correctly for both of Windows' own parsing passes (a parser

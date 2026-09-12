@@ -309,7 +309,11 @@ class TestMcpRootBoundary:
         assert search["count"] == 0, search
         for resp in (responses[3], responses[4]):
             _, payload = tool_payload(resp)
-            assert not any("leak.txt" in f["path"] for f in payload["files"]), payload
+            names = {Path(f["path"]).name for f in payload["files"]}
+            assert "leak.txt" not in names, payload
+            # both directions: `not any(...)` over an empty list passes, and an
+            # unbounded ancestor-.gitignore walk really does empty these two
+            assert "deep.txt" in names, payload
 
     @pytest.mark.skipif(os.name == "nt", reason="symlink creation needs privileges on Windows")
     def test_allow_outside_root_also_lifts_the_walk_boundary(self, tmp_path):
@@ -344,12 +348,66 @@ class TestMcpRootBoundary:
             assert "outside the server root" in payload["error"], payload
         assert not outside.exists(), "a refused write must create nothing"
 
-    def test_a_non_object_params_is_an_error_not_a_crash(self, tmp_path):
-        """JSON-RPC 2.0 allows an array here; every handler reads it with .get()."""
+    @pytest.mark.skipif(os.name == "nt", reason="symlink creation needs privileges on Windows")
+    def test_mail_threads_does_not_walk_out_of_the_root(self, tmp_path):
+        """`carrel_mail action=threads` is the fifth tree-walking tool.
+
+        It was missed when the other four were bounded, and it reports a
+        message's subject, sender and Message-ID — so the escape leaked header
+        content, not just a path.
+        """
+        desk, _ = self.desk_and_secret(tmp_path)
+        (tmp_path / "outside.eml").write_text(
+            "From: leaker@example.com\nSubject: TOPSECRET-SUBJECT\nMessage-ID: <x@y>\n\nbody\n"
+        )
+        (desk / "sub" / "leak.eml").symlink_to(tmp_path / "outside.eml")
+
+        proc = run_server([tool_call(1, "carrel_mail", {"action": "threads", "path": "."})], desk)
+
+        assert proc.returncode == 0, proc.stderr
+        assert "TOPSECRET-SUBJECT" not in proc.stdout
+        assert "leaker@example.com" not in proc.stdout
+
+    def test_the_walk_is_not_emptied_by_a_gitignore_above_the_root(self, tmp_path):
+        """A confined server must not read `.gitignore` files above its own root.
+
+        `refs` and `fields` left the ancestor walk unbounded, so a `*` rule one
+        directory up — the v0.3.1 desk-blanking shape (D-019), reached through
+        MCP — silently returned zero files. Whether `fields` was bounded at all
+        depended on the unrelated `save` flag.
+        """
+        (tmp_path / ".gitignore").write_text("*\n")
+        desk, _ = self.desk_and_secret(tmp_path)
+
         proc = run_server(
             [
-                {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": [1, 2]},
-                {"jsonrpc": "2.0", "id": 2, "method": "resources/read", "params": "nope"},
+                tool_call(1, "carrel_refs", {"path": "."}),
+                tool_call(2, "carrel_fields", {"path": "."}),
+                tool_call(3, "carrel_pack", {"path": "."}),
+            ],
+            desk,
+        )
+        assert proc.returncode == 0, proc.stderr
+        for resp in parse_lines(proc.stdout)[:2]:
+            is_error, payload = tool_payload(resp)
+            assert is_error is False, payload
+            assert payload["files"], "an ignore rule above the confined root emptied the walk"
+        _, pack = tool_payload(parse_lines(proc.stdout)[2])
+        assert pack["entries"], pack
+
+    @pytest.mark.parametrize("params", [[1, 2], [], "nope", "", 0, False])
+    def test_a_non_object_params_is_an_error_not_a_crash(self, tmp_path, params):
+        """JSON-RPC 2.0 allows an array here; every handler reads it with .get().
+
+        The falsy values matter as much as the truthy ones: `params or {}`
+        coerced `[]`, `""`, `0` and `false` to an empty dict, so a malformed
+        request came back as "unknown tool" — or, for `resources/read`, with the
+        not-found shape reserved for real lookups.
+        """
+        proc = run_server(
+            [
+                {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": params},
+                {"jsonrpc": "2.0", "id": 2, "method": "resources/read", "params": params},
                 {"jsonrpc": "2.0", "id": 3, "method": "ping"},
             ],
             tmp_path,
@@ -360,6 +418,18 @@ class TestMcpRootBoundary:
         for resp in responses[:2]:
             assert resp["error"]["code"] == -32602, resp
         assert responses[2]["result"] == {}, "the server kept serving"
+
+    def test_an_absent_or_null_params_is_still_fine(self, tmp_path):
+        """`params` is optional in JSON-RPC 2.0; only a present non-object is an error."""
+        proc = run_server(
+            [
+                {"jsonrpc": "2.0", "id": 1, "method": "initialize"},
+                {"jsonrpc": "2.0", "id": 2, "method": "initialize", "params": None},
+            ],
+            tmp_path,
+        )
+        for resp in parse_lines(proc.stdout):
+            assert resp["result"]["protocolVersion"] == "2025-06-18", resp
 
     def test_resources_outside_the_root_are_not_found(self, tmp_path):
         desk, secret = self.desk_and_secret(tmp_path)

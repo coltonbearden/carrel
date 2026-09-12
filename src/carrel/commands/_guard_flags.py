@@ -39,26 +39,33 @@ def allow_tracked_options(help_text: str) -> Callable[[F], F]:
         func = click.option(
             "--force",
             is_flag=True,
-            help="Deprecated spelling of --allow-tracked; warns and behaves identically.",
+            help="Deprecated spelling of --allow-tracked; warns when it bypasses the guard.",
         )(func)
         return click.option("--allow-tracked", is_flag=True, help=help_text)(func)
 
     return decorate
 
 
-def resolve_allow_tracked(ctx: click.Context, *, consulted: bool) -> bool:
-    """Fold `--force` into `--allow-tracked`; warn only when the guard is really consulted.
+def normalise_guard_flags(ctx: click.Context, *, consulted: bool) -> bool:
+    """Rewrite `--force` to `--allow-tracked` **in `ctx.params`** and return the value.
+
+    The name says "normalise" because this mutates: after it runs, a user who
+    typed only `--force` has `ctx.params["allow_tracked"] is True` and
+    `ctx.params["force"] is False`. That is deliberate, and it is why the two
+    obvious alternatives were not taken. Declaring one option with both
+    spellings would make `_watch_command_line` emit the right flag for free but
+    leaves no way to tell which spelling was typed, so the deprecation warning
+    disappears. Skipping `force` in `_watch_command_line` instead would emit a
+    unit carrying *neither* flag, which refuses at every start. Normalising once,
+    here, keeps the warning and writes a unit that runs.
 
     `consulted` is whether *this* invocation reaches the guard at all. A dry run
     is never guarded, and a `watch` without `--done-dir`/`--error-dir` never asks
     the question, so warning there would tell the user a guard was bypassed when
     none was asked about — and would put stderr noise into scripted dry runs that
-    were silent before.
-
-    `ctx.params` is normalised, not just read: `watch --print-service` rebuilds
-    its argv from `ctx.params`, and the unit it writes must not carry a spelling
-    that prints a deprecation warning on every start — or break outright on the
-    day the alias is removed.
+    were silent before. Call it at the point the guard is reached, after the
+    command's own argument validation, so a usage error still reports itself
+    rather than the deprecation.
     """
     allow_tracked = bool(ctx.params.get("allow_tracked"))
     force = bool(ctx.params.get("force"))

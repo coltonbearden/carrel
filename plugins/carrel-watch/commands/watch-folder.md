@@ -46,8 +46,8 @@ Options:
   --error-dir DIRECTORY           Move each source here after an action fails.
   --log FILE                      Append one JSON record per action (and per move) to FILE.
   --allow-tracked                 With --done-dir/--error-dir: move files even when git tracks them.
-  --force                         Deprecated spelling of --allow-tracked; warns and behaves
-                                  identically.
+  --force                         Deprecated spelling of --allow-tracked; warns when it bypasses the
+                                  guard.
   --print-service [systemd|schtasks]
                                   Print a service definition that runs this exact watch at login,
                                   then exit.

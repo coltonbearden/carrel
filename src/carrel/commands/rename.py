@@ -26,7 +26,7 @@ from typing import Any
 
 import click
 
-from carrel.commands._guard_flags import allow_tracked_options, resolve_allow_tracked
+from carrel.commands._guard_flags import allow_tracked_options, normalise_guard_flags
 from carrel.core import patterns as pat
 from carrel.core.db import DeskDB
 from carrel.core.filetypes import detect
@@ -356,7 +356,7 @@ def cmd(
     """
     if not _PLACEHOLDER.search(template):
         raise click.UsageError(f"--template has no placeholders: {template!r}")
-    allow_tracked = resolve_allow_tracked(ctx, consulted=apply_)
+    allow_tracked = normalise_guard_flags(ctx, consulted=apply_)
     if apply_:
         # every PATH, not just directories: a shell glob (`rename src/*.py --apply`)
         # arrives as a list of files and is exactly the 2026-09-10 incident.

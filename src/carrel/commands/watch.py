@@ -35,7 +35,7 @@ from typing import Any
 import click
 
 from carrel._product import PRODUCT
-from carrel.commands._guard_flags import allow_tracked_options, resolve_allow_tracked
+from carrel.commands._guard_flags import allow_tracked_options, normalise_guard_flags
 from carrel.core.actions import PLACEHOLDERS, kill_tree, quote, render, run_action
 from carrel.core.fsops import guard_worktree, move_file, uncollide
 from carrel.core.output import CarrelInputError, CarrelUsageError, handled, root_of
@@ -714,7 +714,7 @@ def cmd(
         raise click.UsageError("--stable-timeout needs --stable")
     # The guard is only consulted when something would be moved, so that is the
     # only place the deprecated spelling is worth a warning.
-    allow_tracked = resolve_allow_tracked(
+    allow_tracked = normalise_guard_flags(
         ctx, consulted=done_dir is not None or error_dir is not None
     )
     if not allow_tracked and (done_dir is not None or error_dir is not None):

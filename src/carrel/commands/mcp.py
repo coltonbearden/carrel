@@ -37,6 +37,7 @@ import click
 from carrel._product import PRODUCT
 from carrel.core.db import DeskDB
 from carrel.core.filetypes import FileType, detect_or_die
+from carrel.core.fsops import within
 from carrel.core.output import CarrelError, CarrelInputError, CarrelUsageError
 from carrel.core.patterns import PATTERNS
 from carrel.core.textextract import extract_text
@@ -450,7 +451,7 @@ class Desk:
         if not path.is_absolute():
             path = (base if base is not None else self.root) / path
         real = path.resolve()
-        if self.confined and not real.is_relative_to(self.root):
+        if not within(real, self.walk_boundary):
             raise OutsideRootError(
                 f"{real} is outside the server root {self.root} — "
                 "carrel mcp only reads and writes under the directory it was "
@@ -855,6 +856,11 @@ def _tool_refs(args: dict[str, Any], desk: Desk) -> dict[str, Any]:
         extra=_str_list(args, "patterns"),
         ocr=bool(args.get("ocr") or False),
         tag_root=root if args.get("tag") else None,
+        # `root` bounds the ancestor-.gitignore walk (the CLI passes it too). Without
+        # it the seed climbed to the git worktree root, so a `*` rule *above* a
+        # confined desk silently emptied the result — the v0.3.1 incident, reached
+        # through MCP — and the confined server read a file above its own boundary.
+        root=root,
         confine_to=desk.walk_boundary,
     )
     if args.get("link"):
@@ -874,6 +880,9 @@ def _tool_fields(args: dict[str, Any], desk: Desk) -> dict[str, Any]:
         date_order=_choice(args, "date_order", ("mdy", "dmy"), "mdy"),
         ocr=bool(args.get("ocr") or False),
         save_root=root if args.get("save") else None,
+        # not `save_root`: whether the ancestor-.gitignore walk is bounded must not
+        # depend on the unrelated `save` flag (see carrel_refs above)
+        walk_root=root,
         confine_to=desk.walk_boundary,
     )
     return {"root": str(root), "path": str(path), "files": records}
@@ -886,7 +895,8 @@ def _tool_mail(args: dict[str, Any], desk: Desk) -> dict[str, Any]:
     root = _root(args, desk)
     path = desk.resolve(args["path"], root)
     if action == "threads":
-        return {"root": str(root), "path": str(path), "threads": threads_of([path], root=root)}
+        threads = threads_of([path], root=root, confine_to=desk.walk_boundary)
+        return {"root": str(root), "path": str(path), "threads": threads}
     if not args.get("out_dir"):
         raise CarrelInputError("carrel_mail attachments requires `out_dir`")
     out_dir = desk.resolve(args["out_dir"], root)
@@ -1007,7 +1017,13 @@ def _handle(msg: Any, desk: Desk) -> dict[str, Any] | None:
         return _error(None, -32600, "invalid request: expected a JSON object")
     method = msg.get("method")
     mid = msg.get("id")
-    params = msg.get("params") or {}
+    # The raw value, not `... or {}`: that coerced every *falsy* non-object —
+    # `[]`, `0`, `""`, `false` — to an empty dict, so the type check below saw a
+    # dict and a malformed request was answered as "unknown tool" or, worse, with
+    # the resource-not-found shape reserved for real lookups.
+    params = msg.get("params", {})
+    if params is None:
+        params = {}
     if not isinstance(params, dict):
         # JSON-RPC 2.0 allows an array here. Every handler below reads `params`
         # with .get(), so an array took the whole server down mid-session with

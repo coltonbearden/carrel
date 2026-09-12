@@ -761,7 +761,7 @@ Options:
                           file.
   --fail-empty            Exit 5 when no file was filed (or planned).
   --allow-tracked         File even when INBOX or --to holds files git tracks (see the description).
-  --force                 Deprecated spelling of --allow-tracked; warns and behaves identically.
+  --force                 Deprecated spelling of --allow-tracked; warns when it bypasses the guard.
   --json                  Machine-readable JSON output.
   --help                  Show this message and exit.
 ```
@@ -1103,7 +1103,8 @@ Options:
                               (only with --by type; repeatable).
   --apply / --dry-run         Execute the moves. Default is a dry-run that only prints the plan.
   --allow-tracked             Move files even when they are tracked by git (see the description).
-  --force                     Deprecated spelling of --allow-tracked; warns and behaves identically.
+  --force                     Deprecated spelling of --allow-tracked; warns when it bypasses the
+                              guard.
   --json                      Machine-readable JSON output.
   --help                      Show this message and exit.
 ```
@@ -1278,7 +1279,7 @@ Options:
   --ocr                    OCR images and scanned PDFs to read their fields (needs tesseract /
                            ocrmypdf).
   --allow-tracked          Rename even when a PATH is a file git tracks (see the description).
-  --force                  Deprecated spelling of --allow-tracked; warns and behaves identically.
+  --force                  Deprecated spelling of --allow-tracked; warns when it bypasses the guard.
   --json                   Machine-readable JSON output.
   --help                   Show this message and exit.
 ```
@@ -1492,8 +1493,8 @@ Options:
   --error-dir DIRECTORY           Move each source here after an action fails.
   --log FILE                      Append one JSON record per action (and per move) to FILE.
   --allow-tracked                 With --done-dir/--error-dir: move files even when git tracks them.
-  --force                         Deprecated spelling of --allow-tracked; warns and behaves
-                                  identically.
+  --force                         Deprecated spelling of --allow-tracked; warns when it bypasses the
+                                  guard.
   --print-service [systemd|schtasks]
                                   Print a service definition that runs this exact watch at login,
                                   then exit.
