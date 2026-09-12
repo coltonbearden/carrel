@@ -386,7 +386,7 @@ def pst(ctx: click.Context, src: Path, out_dir: Path, fmt: str) -> None:
     writes one `mbox` file per mail folder (readpst -r), which `carrel mail
     split` can then take apart.
 
-    Needs readpst (sudo apt install pst-utils); exit 3 with that hint
+    Needs readpst; exit 3 with this platform's install hint
     otherwise. JSON: {src, out_dir, format, files, via}.
     """
     emit(

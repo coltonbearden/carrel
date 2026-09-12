@@ -371,7 +371,7 @@ def test_pst_missing_readpst_exits_3(tmp_path: Path, monkeypatch):
     src.write_bytes(b"!BDN" + b"\x00" * 64)
     monkeypatch.setenv("CARREL_BIN_READPST", str(tmp_path / "nowhere"))
     res = run("mail", "pst", str(src), "--out-dir", str(tmp_path / "out"), expect=3)
-    assert "readpst" in res.stderr and "pst-utils" in res.stderr
+    assert "readpst" in res.stderr and "install:" in res.stderr
     run("mail", "pst", str(tmp_path / "ghost.pst"), "--out-dir", str(tmp_path / "out"), expect=4)
     not_pst = tmp_path / "x.txt"
     not_pst.write_text("x", encoding="utf-8")

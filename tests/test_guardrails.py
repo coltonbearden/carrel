@@ -547,7 +547,7 @@ def test_without_git_the_guard_asks_for_git_rather_than_guessing(
     result = run("organize", str(inside), "--apply", expect=3)
 
     assert "'git' is required" in result.output
-    assert "apt install git" in result.output
+    assert "install:" in result.output and "git" in result.output.lower()
     assert listing(inside) == before
 
 

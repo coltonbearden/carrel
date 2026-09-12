@@ -50,8 +50,8 @@ Usage: carrel mail pst [OPTIONS] SRC
   `--format eml` writes one .eml per message (readpst -e); `--format mbox` writes one `mbox` file
   per mail folder (readpst -r), which `carrel mail split` can then take apart.
 
-  Needs readpst (sudo apt install pst-utils); exit 3 with that hint otherwise. JSON: {src, out_dir,
-  format, files, via}.
+  Needs readpst; exit 3 with this platform's install hint otherwise. JSON: {src, out_dir, format,
+  files, via}.
 
 Options:
   --out-dir DIRECTORY  Directory readpst writes into (one subfolder per mail folder).  [required]

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -51,7 +52,9 @@ def test_registry_has_git_and_no_dead_entries():
     assert "git" in ADAPTERS
     assert ADAPTERS["git"].version_args == ("--version",)
     assert "pack" in ADAPTERS["git"].purpose
-    assert "apt install git" in ADAPTERS["git"].install_hint
+    # the hint's wording is this platform's (see the render_hint tests); what every
+    # platform must have is a hint that names the thing to install
+    assert "git" in ADAPTERS["git"].install_hint.lower()
     still_there = REMOVED_ADAPTERS & set(ADAPTERS)
     assert not still_there, f"unwired adapters should be gone: {sorted(still_there)}"
 
@@ -98,7 +101,7 @@ def test_require_missing_binary_raises_with_hint(monkeypatch):
         adapters.require("frobnicator")
     msg = str(exc.value)
     assert "frobnicator" in msg
-    assert "sudo apt install frobnicator" in msg  # actionable install hint
+    assert "frobnicator" in msg.lower()  # actionable install hint, in this platform's words
     assert exc.value.exit_code == ExitCode.MISSING_DEP == 3
     assert adapters.version_of("frobnicator") is None
 
@@ -188,7 +191,7 @@ def test_override_nonexistent_path_counts_as_missing(monkeypatch):
         adapters.require("pandoc")
     msg = str(exc.value)
     assert "override CARREL_BIN_PANDOC=/nonexistent/dir/pandoc not found" in msg
-    assert "sudo apt install pandoc" in msg  # install hint still present
+    assert "pandoc" in msg.lower()  # install hint still present
     assert exc.value.exit_code == 3
 
 
@@ -253,7 +256,7 @@ def test_doctor_json_marks_stale_override_missing(monkeypatch):
     assert row["found"] is False and row["path"] is None
     assert row["override"] == {"var": "CARREL_BIN_PANDOC", "path": "/nonexistent"}
     assert "CARREL_BIN_PANDOC=/nonexistent not found" in row["install_hint"]
-    assert "sudo apt install pandoc" in row["install_hint"]
+    assert "pandoc" in row["install_hint"].lower()
     # human table names the override too
     human = CliRunner().invoke(cli, ["doctor"])
     assert human.exit_code == 0
@@ -349,3 +352,32 @@ def test_every_adapter_has_a_hint_on_every_platform():
         for platform, manager in (("linux", "apt"), ("darwin", "brew"), ("win32", "winget")):
             hint = _hint(name, platform, manager)
             assert hint and not hint.endswith("ensure it is on PATH"), (name, platform, hint)
+
+
+def test_no_shipped_code_hardcodes_one_platforms_install_command():
+    """A Debian-only hint is how this started, and it hid in `ocr` too.
+
+    `carrel doctor`'s table was the obvious place; the tesseract *language pack*
+    error had its own `sudo apt install tesseract-ocr-<code>` line, found only
+    because `test-minimal (macos)` failed. Every install line goes through
+    `render_hint` now, so the manager names belong in this module alone.
+    """
+    src = Path(__file__).resolve().parent.parent / "src"
+    offenders = [
+        f"{p.relative_to(src.parent).as_posix()}:{n}: {line.strip()}"
+        for p in src.rglob("*.py")
+        if p.name != "adapters.py"
+        for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
+        if re.search(r"\b(?:apt|brew|winget)\s+install\b", line)
+    ]
+    assert not offenders, "\n".join(
+        ["install commands belong in adapters.Hints, rendered per platform:", *offenders]
+    )
+
+
+def test_that_scanner_is_not_vacuous():
+    assert re.search(
+        r"\b(?:apt|brew|winget)\s+install\b", "  hint: sudo apt install tesseract-ocr-deu"
+    )
+    assert re.search(r"\b(?:apt|brew|winget)\s+install\b", 'return "brew install pandoc"')
+    assert not re.search(r"\b(?:apt|brew|winget)\s+install\b", "uv tool install 'carrel[office]'")

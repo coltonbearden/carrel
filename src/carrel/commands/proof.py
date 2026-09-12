@@ -21,6 +21,7 @@ from typing import Any
 
 import click
 
+from carrel.core import adapters
 from carrel.core.filetypes import detect_or_die
 from carrel.core.output import CarrelError, CarrelInputError, ExitCode, emit, handled
 
@@ -73,6 +74,24 @@ def installed_profiles() -> dict[str, Path]:
     return found
 
 
+def _profile_pack_hint() -> str:
+    """Where a stock set of ICC profiles comes from, on this platform.
+
+    Debian splits ghostscript's profiles into `icc-profiles-free`; macOS ships a
+    full set under `/System/Library/ColorSync/Profiles` and Windows under
+    `spool/drivers/color`, both of which the message above already lists as
+    searched — so on those two the useful answer is where to get more.
+    """
+    return adapters.render_hint(
+        adapters.Hints(
+            apt="ghostscript icc-profiles-free",
+            brew="ghostscript",
+            url="https://www.color.org/profiles.xalter",
+        ),
+        "icc-profiles",
+    )
+
+
 def resolve_profile(spec: str) -> Path:
     """PROFILE argument → concrete .icc path.
 
@@ -101,7 +120,7 @@ def resolve_profile(spec: str) -> Path:
         f"(looked for: {', '.join(candidates)}).\n"
         f"  searched: {', '.join(str(d) for d in _profile_dirs()) or 'no profile dirs exist'}\n"
         f"  profiles found: {listing}\n"
-        "  install: sudo apt install ghostscript icc-profiles-free"
+        f"  install: {_profile_pack_hint()}"
     )
 
 
