@@ -341,11 +341,32 @@ class TestMcpTools:
         assert res["isError"] is False
         assert res["payload"]["name"] == "notes.txt"
 
-    def test_inspect_root_argument_overrides_server_root(self, tmp_path):
+    def test_the_root_argument_narrows_the_server_root(self, tmp_path):
+        """Since D-021 a per-call `root` can narrow the desk; it cannot leave it.
+
+        This was `..._overrides_server_root`, run with the server at `/` — which
+        passed on POSIX only because `/` is every path's ancestor. On Windows
+        `Path("/")` is the *current drive's* root, so a `tmp_path` on another
+        drive was already outside. The override it asserted is the thing D-021
+        removed; what survives is narrowing.
+        """
         make_tree(tmp_path)
-        res = call_tool("carrel_inspect", {"path": "notes.txt", "root": str(tmp_path)}, root="/")
-        assert res["isError"] is False
-        assert res["payload"]["name"] == "notes.txt"
+        res = call_tool(
+            "carrel_inspect", {"path": "deep.txt", "root": str(tmp_path / "sub")}, tmp_path
+        )
+        assert res["isError"] is False, res["payload"]
+        assert res["payload"]["name"] == "deep.txt"
+
+    def test_the_root_argument_cannot_leave_the_server_root(self, tmp_path):
+        desk = tmp_path / "desk"
+        desk.mkdir()
+        make_tree(desk)
+        (tmp_path / "outside.txt").write_text("not yours\n")
+
+        res = call_tool("carrel_inspect", {"path": "outside.txt", "root": str(tmp_path)}, desk)
+
+        assert res["isError"] is True, res["payload"]
+        assert "outside the server root" in res["payload"]["error"]
 
     def test_pack_directory(self, tmp_path):
         make_tree(tmp_path)
