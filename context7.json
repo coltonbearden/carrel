@@ -1,0 +1,37 @@
+{
+  "$schema": "https://context7.com/schema/context7.json",
+  "projectTitle": "Carrel",
+  "description": "Read, index, pack and file your documents from the terminal. Local file toolkit for pdf, docx/odt/epub/rtf, xlsx, md/html/txt, json/xml/csv and images: convert, OCR, inspect, index, search, pack for LLM context, catalog, watch — with an MCP server and a Claude Code plugin marketplace.",
+  "folders": [
+    "docs",
+    "plugins"
+  ],
+  "excludeFolders": [
+    "docs/assets",
+    "docs/stylesheets"
+  ],
+  "excludeFiles": [
+    "CHANGELOG.md",
+    "changelog.md",
+    "CHANGELOG.mdx",
+    "changelog.mdx",
+    "LICENSE.md",
+    "license.md",
+    "CODE_OF_CONDUCT.md",
+    "code_of_conduct.md",
+    "STATE.md",
+    "CLAUDE.md",
+    "BUILD_PLAN.md",
+    "TEST_REPORT.md",
+    "REPO_SETTINGS.md",
+    "HOW_THIS_WAS_BUILT.md",
+    "BRAND.md"
+  ],
+  "rules": [
+    "Every data-producing command accepts --json; exit codes are stable (0 ok, 1 error, 2 usage, 3 missing optional binary, 4 bad input, 5 empty result) — branch on the code, not on the message.",
+    "Run `carrel doctor` (or `carrel doctor --json`) before relying on a capability: optional binaries are detected at runtime and a missing one exits 3 with an install hint for that platform.",
+    "Use `carrel pack --query` for bounded LLM context rather than packing a whole tree; FTS5 AND-s the query terms, and under --json a pack that matched nothing exits 5 instead of returning an empty document.",
+    "`carrel mcp` is confined to the directory it was started in — every tool path, client-supplied root and carrel:// URI outside it is refused — unless it was started with --allow-outside-root.",
+    "`rename`, `organize`, `intake` and `dedupe` dry-run by default and refuse to move files git is tracking; --apply performs the move and --allow-tracked overrides the guard."
+  ]
+}

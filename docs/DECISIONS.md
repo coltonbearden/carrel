@@ -199,3 +199,23 @@ A "Status and support" section states what is stable, what is experimental, whic
 Consequence: `docs/BRAND.md` carries this layering so it survives the next rewrite, and `product.json`'s `description` starts with the functional line, so `sync_product.py` carries it into `pyproject.toml` — and from there the PyPI summary, as motto + line + description. It does **not** reach `CITATION.cff` or the plugin manifests: `sync_product.py` propagates only the *version* to those, and `CITATION.cff` has no description field at all. The line drops its "for you and your agents" clause in `product.json` alone, because the motto sits immediately before it in the composed summary and already says so.
 
 The GitHub repository description is **not** set by anything in this repo — `scripts/github-harden.sh` does not touch it and no test asserts it. Setting it is an owner-facing step recorded in `STATE.md`; until it is run, the repository still shows the old text.
+
+## D-025 (2026-09-12) — Context7 indexes `docs/` and `plugins/`; freshness is a workflow, not a habit
+
+Context7 serves carrel's documentation to other people's coding agents, and it was doing so with no configuration: whatever its crawler made of the repository, including files that are records rather than documentation. `context7.json` at the root now states the scope.
+
+**The library is `/coltonbearden/carrel`.** `/firstcastsolutions423/carrel` redirects to it from the pre-transfer name.
+
+**Scope is `folders: ["docs", "plugins"]`** — the reference pages and the plugin commands, agents and skills. The root `README.md` is indexed regardless of `folders`.
+
+**Both exclusion lists replace Context7's defaults rather than adding to them** ([library-owners](https://context7.com/docs/library-owners.md), "Default Exclusions": *"If you don't specify `excludeFiles` or `excludeFolders` … Context7 uses these default patterns"*). So the three default file names are re-listed with the case and `.mdx` variants the docs give, alongside carrel's own non-documentation: `STATE.md`, `CLAUDE.md`, `BUILD_PLAN.md`, `TEST_REPORT.md`, `REPO_SETTINGS.md`, `HOW_THIS_WAS_BUILT.md`, `BRAND.md`. Those are true records of a moment, and an agent that reads them as current advice gets stale advice.
+
+Dropping the default `excludeFolders` is the deliberate half. Its `*archive*` pattern matches `plugins/carrel-mail/skills/mail-archive` — a shipped skill, and exactly the kind of thing an agent should find. carrel has no `i18n/`, `deprecated/` or `legacy/` trees for the rest of the defaults to protect, so the whole list costs one real page and buys nothing.
+
+**`rules` are five checkable sentences**, not slogans: `--json` plus the exit-code table, `carrel doctor` before relying on a capability, `pack --query` for bounded context and its non-zero empty, `carrel mcp`'s confinement (D-021), and the dry-run/`--allow-tracked` guard (D-022). Each is something an agent can be wrong about in a way a user notices.
+
+**`projectTitle` and `description` come from `product.json`** via `scripts/sync_product.py`, asserted by `tests/test_product_sync.py` and watched by the `product-sync` pre-commit hook — the same treatment every other derived copy gets, so a rename reaches the page other people's agents read. The sync rewrites those two keys only; `folders`, `rules` and the exclusion lists are hand-maintained and a test pins that too.
+
+**No `url` or `public_key`** (owner's answer). Both are in the schema; neither is needed for a public GitHub repository, and `public_key` is a claim credential that belongs in the dashboard rather than in git.
+
+**Freshness is `.github/workflows/context7-refresh.yml`.** The plan for this work assumed the refresh endpoint was undocumented and provided for shipping the config alone — it is documented, in the published OpenAPI spec (<https://context7.com/openapi.json>, "Context7 Public API" 2.0.0): `POST https://context7.com/api/v1/refresh`, bearer auth, body `{"libraryName": "/owner/repo"}`, `200 → {"message": …}`. The workflow was written from that spec rather than from guesswork, and it logs the HTTP status and the documented fields only — never the raw body, because an error from an authenticated endpoint is where a token ends up and the log is public. Until `CONTEXT7_API_KEY` exists the job is green and skipped, so there is nothing to disable and no red history in a repository that never asked for it.

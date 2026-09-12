@@ -66,3 +66,20 @@ def test_no_stale_repository_owner():
 # rewritten to 0.5.0 before the assertion ran). The gate is the `uv-lock-current`
 # pre-commit hook, which shells `uv lock --check` — read-only, and the same
 # condition CI's `UV_LOCKED=1` sync trips on.
+
+
+def test_context7_identity_follows_product():
+    """`context7.json` describes carrel to other people's agents — a rename must reach it."""
+    cfg = json.loads((REPO_ROOT / "context7.json").read_text(encoding="utf-8"))
+    assert cfg["projectTitle"] == PRODUCT["displayName"]
+    assert cfg["description"] == PRODUCT["description"]
+
+
+def test_context7_keeps_its_hand_maintained_keys():
+    """Guard the sync: it must rewrite identity only, never the indexing scope."""
+    cfg = json.loads((REPO_ROOT / "context7.json").read_text(encoding="utf-8"))
+    assert cfg["folders"] == ["docs", "plugins"]
+    assert cfg["rules"], "the agent rules are hand-written and must survive a sync"
+    # setting these replaces Context7's defaults, so the defaults worth keeping
+    # are re-listed here and their loss would be silent
+    assert {"CHANGELOG.md", "LICENSE.md", "CODE_OF_CONDUCT.md"} <= set(cfg["excludeFiles"])

@@ -35,6 +35,15 @@ Release tags cannot be deleted, moved, or force-updated. Same admin bypass.
 - Default `GITHUB_TOKEN` permissions: read-only; Actions cannot approve PRs.
 - Environment `pypi`: deployments only from `v*` tags.
 
+## Secrets
+
+Actions secrets carrel's workflows read. Publishing needs none — PyPI is
+Trusted Publishing (OIDC), so no long-lived token exists anywhere.
+
+| Secret | Set? | Used by | If absent |
+|---|---|---|---|
+| `CONTEXT7_API_KEY` | **not set** | `.github/workflows/context7-refresh.yml` | The job is green and skipped: `HAS_KEY` is decided at job level and the request step is gated on it. Nothing to disable and no red runs. Context7 re-indexes on its own schedule regardless; the key only buys a nudge and higher refresh limits. Generate one at <https://context7.com/dashboard>. |
+
 ## Merge behaviour
 
 - Squash merge (PR title + body) and rebase allowed; merge commits disabled.

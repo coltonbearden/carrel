@@ -6,6 +6,7 @@ Run after editing product.json; finalize.sh runs it during rename. Writes:
 
 - src/<package>/_product.py          (runtime copy; the wheel never ships product.json)
 - pyproject.toml                     (version, description, [project.urls])
+- context7.json                      (projectTitle, description)
 
 It does NOT write `uv.lock`, which also carries the version — run `uv lock`
 after a bump. `tests/test_product_sync.py` fails when the two disagree, and
@@ -110,6 +111,25 @@ def sync_citation(product: dict[str, str]) -> None:
     path.write_text(text, encoding="utf-8", newline="\n")
 
 
+def sync_context7(product: dict[str, str]) -> None:
+    """`projectTitle` and `description` in context7.json follow product.json.
+
+    Only those two keys are rewritten — `folders`, `rules` and the exclusion
+    lists are hand-maintained and must survive a sync. The file is what Context7
+    reads to describe carrel to other people's agents, so a rename that left it
+    behind would be the one stale copy nobody looks at.
+    """
+    path = ROOT / "context7.json"
+    if not path.exists():
+        return
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["projectTitle"] = product["displayName"]
+    data["description"] = product["description"]
+    path.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n"
+    )
+
+
 def main() -> int:
     product = json.loads((ROOT / "product.json").read_text(encoding="utf-8"))
 
@@ -126,10 +146,11 @@ def main() -> int:
     for manifest in sorted(ROOT.glob("plugins/*/.claude-plugin/plugin.json")):
         sync_json_version(manifest, product["version"])
     sync_citation(product)
+    sync_context7(product)
 
     print(
         f"synced: {product['name']} v{product['version']} -> {gen.relative_to(ROOT)}, "
-        "pyproject.toml, marketplace + plugin manifests, CITATION.cff"
+        "pyproject.toml, marketplace + plugin manifests, CITATION.cff, context7.json"
     )
     return 0
 

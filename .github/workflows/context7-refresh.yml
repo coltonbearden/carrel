@@ -1,0 +1,75 @@
+name: context7-refresh
+
+# Ask Context7 to re-index the library after the documentation it serves changes.
+#
+# Endpoint, method and body come from the published OpenAPI spec
+# (https://context7.com/openapi.json, "Context7 Public API" 2.0.0):
+#   POST https://context7.com/api/v1/refresh
+#   bearerAuth; body {"libraryName": "/owner/repo"} (required), optional branch
+#   200 -> {"message": "..."}; 401/403/404/429 are the ones worth reading
+#
+# Until CONTEXT7_API_KEY exists the job is green and skipped rather than red:
+# HAS_KEY is decided at job level, and the only step is gated on it. Nothing to
+# disable, no red runs sitting in the history of a repo that never asked for it.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "plugins/**"
+      - "README.md"
+      - "context7.json"
+      - ".github/workflows/context7-refresh.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: context7-refresh
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    env:
+      HAS_KEY: ${{ secrets.CONTEXT7_API_KEY != '' }}
+    steps:
+      - name: Request a refresh
+        if: env.HAS_KEY == 'true'
+        env:
+          CONTEXT7_API_KEY: ${{ secrets.CONTEXT7_API_KEY }}
+        run: |
+          set -euo pipefail
+          code=$(curl -sS -o response.json -w '%{http_code}' \
+            --max-time 60 --retry 2 --retry-connrefused \
+            -X POST https://context7.com/api/v1/refresh \
+            -H "Authorization: Bearer $CONTEXT7_API_KEY" \
+            -H 'Content-Type: application/json' \
+            -d '{"libraryName": "/coltonbearden/carrel"}')
+          echo "HTTP $code"
+          # Only the documented fields are echoed. The raw body is never printed:
+          # an error response from an authenticated endpoint is exactly where a
+          # token or an internal path ends up, and this log is public.
+          python3 - "$code" <<'PY'
+          import json, sys, pathlib
+          code = sys.argv[1]
+          try:
+              body = json.loads(pathlib.Path("response.json").read_text())
+          except Exception:
+              print("response was not JSON")
+              body = {}
+          if isinstance(body, dict):
+              for key in ("message", "status", "jobId", "error"):
+                  if key in body:
+                      print(f"{key}: {str(body[key])[:200]}")
+          sys.exit(0 if code.startswith("2") else 1)
+          PY
+
+      - name: No API key configured
+        if: env.HAS_KEY != 'true'
+        run: |
+          echo "CONTEXT7_API_KEY is not set — skipping the refresh."
+          echo "Context7 re-indexes on its own schedule; this workflow only asks it to hurry."
+          echo "See docs/REPO_SETTINGS.md for the secret inventory."
