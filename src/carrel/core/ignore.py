@@ -75,25 +75,39 @@ def load_ignore(directory: Path) -> IgnoreFile | None:
 def ancestor_ignores(top: Path, stop_at: Path | None = None) -> tuple[IgnoreFile, ...]:
     """`.gitignore` files above `top`, up to the nearest bounding directory.
 
-    The walk stops at the first ancestor containing `.git` (the repo root) or at
-    `stop_at`, whichever comes first; the stopping directory's own `.gitignore`
-    still counts. `stop_at` is the caller's known boundary — the desk root for
-    `index`, the common root for `pack`.
+    Inside a git work tree the walk always runs to the **worktree root**, which
+    is what git itself does: `git check-ignore` consults every `.gitignore`
+    between a file and the repository root regardless of where the command was
+    invoked. `stop_at` — the desk root for `index`, the packed paths' common
+    root for `pack` — does not shorten that.
 
-    An **unbounded** walk returns nothing. Without that rule a directory outside
-    any git repo collects `.gitignore` files all the way to `/`, where something
-    unrelated can silently exclude the entire tree — a `uv venv` writes a
-    `.gitignore` containing `*` into the venv directory, so a desk created inside
-    one indexed zero files with no error to explain it.
+    It used to. `pack src` from a repository root made `top` and `stop_at` the
+    same directory, which returned nothing, so the root `.gitignore` was never
+    read and `carrel pack src --stats --tree-only` listed 38 `__pycache__`
+    entries while `carrel pack .` listed none — the README's own `pack.gif`
+    command, packing build artefacts into an LLM context window.
+
+    Outside any repository the bound is `stop_at`, and an **unbounded** walk
+    returns nothing. Without that rule a directory outside any git repo
+    collects `.gitignore` files all the way to `/`, where something unrelated
+    can silently exclude the entire tree — a `uv venv` writes a `.gitignore`
+    containing `*` into the venv directory, so a desk created inside one
+    indexed zero files with no error to explain it.
     """
     top = top.resolve()
-    boundary: Path | None = None
-    if stop_at is not None:
-        stop_at = stop_at.resolve()
-        if top == stop_at:
-            return ()  # top's own .gitignore is loaded by the walk itself
-        if top.is_relative_to(stop_at):
-            boundary = stop_at
+    repo = dot_git_ancestor(top)
+    if repo is not None:
+        if repo == top:
+            return ()  # top is the worktree root; the walk loads its own .gitignore
+        boundary: Path | None = repo
+    else:
+        boundary = None
+        if stop_at is not None:
+            stop_at = stop_at.resolve()
+            if top == stop_at:
+                return ()  # top's own .gitignore is loaded by the walk itself
+            if top.is_relative_to(stop_at):
+                boundary = stop_at
 
     found: list[IgnoreFile] = []
     bounded = False

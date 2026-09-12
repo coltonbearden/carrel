@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- **Changed (behaviour):** a `carrel pack` that included **no files** now prints one line on
+  stderr naming the reason, and **under `--json` it exits 5** instead of writing a valid, empty
+  document. FTS5 AND-s the terms of a `--query`, so a natural-language question usually matches
+  nothing — the failure a caller is least likely to notice, because an empty pack is
+  indistinguishable from a successful one. `--no-fail-empty` restores exit 0; human mode still
+  exits 0 by default and `--fail-empty` opts in. Scripts that pipe `pack --json --query` should
+  either fix the query or pass `--no-fail-empty`.
+- **Fixed:** `pack` and `index` now honour the worktree root's `.gitignore` when packing a
+  subdirectory. `ancestor_ignores` returned nothing when its `top` equalled its `stop_at`, and
+  `pack` passes the packed paths' common root as `stop_at` — which for a single directory
+  argument *is* that directory. So `carrel pack src --stats --tree-only` listed 45 `__pycache__`
+  entries from this repo while `carrel pack .` listed none: the README's own `pack.gif` command,
+  packing build artefacts into a context window. Inside a work tree the walk now runs to the
+  repository root regardless of `stop_at`, which is what `git check-ignore` does. Outside any
+  repository nothing changes — the bound is still `stop_at`, and an unbounded walk still
+  contributes nothing, so the `uv venv` `.gitignore` containing `*` cannot blank a desk (v0.3.1).
+  `assets/demo/pack.gif` is re-recorded from the fixed build.
+
 - **Fixed (`watch --print-service`):** the generated systemd unit now sets
   `WorkingDirectory=` to the directory carrel was invoked from, so the unit reproduces the
   invocation. A systemd *user* unit starts in `$HOME`, so a `--run` action holding a relative

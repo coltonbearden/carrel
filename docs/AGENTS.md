@@ -109,7 +109,7 @@ stdio; `initialize` advertises `capabilities: {"tools": {}, "resources": {}}`):
 | Tool | Purpose | Arguments (required in bold) |
 |---|---|---|
 | `carrel_search` | Full-text search of the desk index under a root; needs a prior `carrel index` | **`query`**, `root`, `limit`, `types`, `tags`, `meta` |
-| `carrel_pack` | Pack a file or directory into LLM-ready context (tree + extracted text of text, pdf, office and ebook files); `query` ranks through the index | **`path`**, `max_bytes`, `tree_only`, `format`, `include`, `exclude`, `root`, `query`, `top` |
+| `carrel_pack` | Pack a file or directory into LLM-ready context (tree + extracted text of text, pdf, office and ebook files); `query` ranks through the index. FTS5 AND-s the terms of a `query`, so a natural-language question often matches nothing; the CLI exits 5 under `--json` rather than returning an empty document | **`path`**, `max_bytes`, `tree_only`, `format`, `include`, `exclude`, `root`, `query`, `top` |
 | `carrel_inspect` | Metadata for one file: type, size, mtime, sha256, mime, per-type detail | **`path`**, `deep`, `root` |
 | `carrel_tag` | Add/remove/list tags on a file, or find files by tags | **`action`** (`add`/`rm`/`ls`/`find`), `path`, `tags`, `root` |
 | `carrel_note` | Attach a free-text note to a file, or list its notes | **`action`** (`add`/`ls`), **`path`**, `body`, `root` |

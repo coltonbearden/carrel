@@ -34,42 +34,44 @@ Usage: carrel pack [OPTIONS] PATHS...
   size, never inlined; images are only read (OCR) with --ocr.
 
 Options:
-  -o, --output FILE              Write here instead of stdout (with --chunk: OUT.part1..N).
-  --format [md|xml|json]         Output format.  [default: md]
-  --include GLOB                 Only pack files matching GLOB (repeatable).
-  --exclude GLOB                 Drop files/dirs matching GLOB (repeatable).
-  --no-gitignore                 Do not honor .gitignore files.
-  --max-bytes N                  Stop adding file contents once N total bytes are packed; omissions
-                                 are noted in the header.
-  --max-file-bytes N             Skip any single file larger than N bytes.
-  --chunk TOKENS                 Split into OUT.part1..N, each at most TOKENS tokens under the
-                                 active --tokenizer (requires -o). Files are never split mid-file
-                                 unless one alone exceeds the budget; then it is split on line
-                                 boundaries with (continued) markers.
-  --tree-only                    Emit header + tree only, no contents.
-  --ocr                          OCR images and scanned PDFs (needs tesseract / ocrmypdf).
-  --stats                        Print a per-file token table instead of the pack (the pack is still
-                                 written when -o is given).
-  --query TEXT                   Pack only files the desk index under --root ranks for TEXT (FTS5
-                                 syntax), in relevance order. Requires a prior `index` run.
-  --top N                        With --query: consider at most the N best-ranked hits.  [default:
-                                 20]
-  --since REF                    Pack only files changed since git REF (`git diff --name-only REF`);
-                                 deleted files are listed as removed, not packed.
-  --changed                      Pack only uncommitted changes: files differing from HEAD plus
-                                 untracked files (not --since).
-  --dedupe-content               Inline identical file contents once; later copies are tree-listed
-                                 as [same as <first path>].
-  --tokenizer [heuristic|exact]  Token counting: heuristic = ceil(chars/3.6) labeled tokens_est;
-                                 exact = tiktoken o200k_base labeled tokens (needs the
-                                 'carrel[tokens]' extra).  [default: heuristic]
-  --outline                      Structure instead of contents (tree-only cost): .py top-level
-                                 def/class names with line numbers, .md headings; other types show
-                                 size only. Not with --chunk.
-  --fail-empty                   Exit 5 when no file is packed (e.g. --query without hits, --since
-                                 with no changes).
-  --json                         Machine-readable JSON output.
-  --help                         Show this message and exit.
+  -o, --output FILE               Write here instead of stdout (with --chunk: OUT.part1..N).
+  --format [md|xml|json]          Output format.  [default: md]
+  --include GLOB                  Only pack files matching GLOB (repeatable).
+  --exclude GLOB                  Drop files/dirs matching GLOB (repeatable).
+  --no-gitignore                  Do not honor .gitignore files.
+  --max-bytes N                   Stop adding file contents once N total bytes are packed; omissions
+                                  are noted in the header.
+  --max-file-bytes N              Skip any single file larger than N bytes.
+  --chunk TOKENS                  Split into OUT.part1..N, each at most TOKENS tokens under the
+                                  active --tokenizer (requires -o). Files are never split mid-file
+                                  unless one alone exceeds the budget; then it is split on line
+                                  boundaries with (continued) markers.
+  --tree-only                     Emit header + tree only, no contents.
+  --ocr                           OCR images and scanned PDFs (needs tesseract / ocrmypdf).
+  --stats                         Print a per-file token table instead of the pack (the pack is
+                                  still written when -o is given).
+  --query TEXT                    Pack only files the desk index under --root ranks for TEXT (FTS5
+                                  syntax), in relevance order. Requires a prior `index` run.
+  --top N                         With --query: consider at most the N best-ranked hits.  [default:
+                                  20]
+  --since REF                     Pack only files changed since git REF (`git diff --name-only
+                                  REF`); deleted files are listed as removed, not packed.
+  --changed                       Pack only uncommitted changes: files differing from HEAD plus
+                                  untracked files (not --since).
+  --dedupe-content                Inline identical file contents once; later copies are tree-listed
+                                  as [same as <first path>].
+  --tokenizer [heuristic|exact]   Token counting: heuristic = ceil(chars/3.6) labeled tokens_est;
+                                  exact = tiktoken o200k_base labeled tokens (needs the
+                                  'carrel[tokens]' extra).  [default: heuristic]
+  --outline                       Structure instead of contents (tree-only cost): .py top-level
+                                  def/class names with line numbers, .md headings; other types show
+                                  size only. Not with --chunk.
+  --fail-empty / --no-fail-empty  Exit 5 when no file is packed (e.g. --query without hits, --since
+                                  with no changes). Default: on under --json, off otherwise — an
+                                  agent that packs nothing should not get a valid-looking empty
+                                  document back. --no-fail-empty restores exit 0.
+  --json                          Machine-readable JSON output.
+  --help                          Show this message and exit.
 ```
 <!-- usage:end -->
 
@@ -87,7 +89,7 @@ Shape and budget:
 - `--stats`: per-file token table (the pack is still written when `-o` is given).
 - `--chunk TOKENS` (requires `-o`): split into `OUT.part1..N`, each within the budget. `--tokenizer exact` counts with tiktoken (field `tokens`) when the budget is tight; the default heuristic labels `tokens_est`.
 - `--max-bytes` / `--max-file-bytes N`: byte budgets; omissions are noted in the pack header. `--dedupe-content` inlines identical files once.
-- `--ocr`: also read images/scanned PDFs (needs tesseract/ocrmypdf). `--fail-empty`: exit 5 when nothing was packed (e.g. a `--query` with no hits).
+- `--ocr`: also read images/scanned PDFs (needs tesseract/ocrmypdf). A pack that included no files always says so on stderr, and **under `--json` it exits 5** (`--no-fail-empty` restores exit 0); in human mode `--fail-empty` opts in.
 
 Workflow: orient with `--outline`/`--tree-only` or `--stats`, narrow with `--query`/`--since`/globs, then pack with an appropriate `--chunk`. Afterwards report the output path(s), the token total, and anything the header says was omitted or removed; consult the `context-packing` skill of this plugin for budgeting guidance.
 

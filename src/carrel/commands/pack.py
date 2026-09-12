@@ -1082,9 +1082,11 @@ def _print_stats_table(data: dict[str, Any]) -> None:
     "size only. Not with --chunk.",
 )
 @click.option(
-    "--fail-empty",
-    is_flag=True,
-    help="Exit 5 when no file is packed (e.g. --query without hits, --since with no changes).",
+    "--fail-empty/--no-fail-empty",
+    default=None,
+    help="Exit 5 when no file is packed (e.g. --query without hits, --since with no "
+    "changes). Default: on under --json, off otherwise — an agent that packs nothing "
+    "should not get a valid-looking empty document back. --no-fail-empty restores exit 0.",
 )
 @click.pass_context
 @handled
@@ -1109,7 +1111,7 @@ def cmd(
     dedupe_content: bool,
     tokenizer: str,
     outline: bool,
-    fail_empty: bool,
+    fail_empty: bool | None,
 ) -> None:
     """Bundle PATH... (files or directories) into one LLM-ready context document.
 
@@ -1174,9 +1176,24 @@ def cmd(
         )
     except BadQueryError as e:
         raise click.UsageError(str(e)) from e
-    if fail_empty and result.meta["files_included"] == 0:
-        what = f"no files matched --query {query!r}" if query is not None else "no files to pack"
-        fail(what, ExitCode.EMPTY)
+    if result.meta["files_included"] == 0:
+        # FTS5 AND-s the terms of a --query, so a natural-language question
+        # matches nothing and used to exit 0 with an empty document — the
+        # failure a caller is least likely to notice. Say so in every mode.
+        if query is not None:
+            reason = (
+                f"packed no files: no document contains every term of --query {query!r} "
+                "(FTS5 requires all of them; try fewer terms, or OR between them)"
+            )
+        elif since is not None or changed:
+            reason = "packed no files: git reports nothing changed for --since/--changed"
+        else:
+            reason = "packed no files: nothing matched the given paths and filters"
+        # Under --json the default is to fail: the caller is a program, and a
+        # valid empty document is indistinguishable from a successful pack.
+        if fail_empty or (fail_empty is None and ctx.obj and ctx.obj.get("json")):
+            fail(reason, ExitCode.EMPTY)  # `fail` already writes it to stderr
+        click.echo(f"warning: {reason}", err=True)
 
     written: list[Path] = []
     if output is not None:
