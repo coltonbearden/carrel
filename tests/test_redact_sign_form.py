@@ -646,3 +646,56 @@ def test_json_output_is_single_document(tmp_copy, tmp_path: Path):
     )
     record = json.loads(result.output)  # raises if anything but one JSON doc
     assert record["matches"]["email"] == 2
+
+
+# --------------------------------------------------------- repeatable --builtin
+
+
+def _redacted(tmp_path: Path, *builtin_args: str) -> str:
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    src = tmp_path / "contacts.txt"
+    src.write_text(
+        "mail a@b.com\nIBAN GB33BUKB20201555555555\nSSN 123-45-6789\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    out = tmp_path / "out.txt"
+    run("redact", str(src), "-o", str(out), *builtin_args)
+    return out.read_text(encoding="utf-8")
+
+
+def test_builtin_is_repeatable_and_equals_one_comma_list(tmp_path: Path):
+    """A second `--builtin` silently replaced the first, so only the last kind was redacted.
+
+    On a redaction tool that is the worst possible place for a flag to be
+    last-one-wins: the run reports success and the data it was pointed at is
+    still there.
+    """
+    repeated = _redacted(tmp_path / "a", "--builtin", "email", "--builtin", "iban")
+    one_list = _redacted(tmp_path / "b", "--builtin", "email,iban")
+
+    assert repeated == one_list
+    assert "a@b.com" not in repeated and "GB33BUKB20201555555555" not in repeated
+    assert "123-45-6789" in repeated, "only the kinds asked for are redacted"
+
+
+def test_builtin_mixes_comma_lists_and_repeats(tmp_path: Path):
+    mixed = _redacted(tmp_path / "a", "--builtin", "email,iban", "--builtin", "ssn")
+    flat = _redacted(tmp_path / "b", "--builtin", "email,iban,ssn")
+
+    assert mixed == flat
+    for secret in ("a@b.com", "GB33BUKB20201555555555", "123-45-6789"):
+        assert secret not in mixed
+
+
+def test_a_repeated_builtin_is_deduplicated_not_applied_twice(tmp_path: Path):
+    once = _redacted(tmp_path / "a", "--builtin", "email")
+    twice = _redacted(tmp_path / "b", "--builtin", "email", "--builtin", "email")
+    assert once == twice
+
+
+def test_an_unknown_builtin_still_reports_itself(tmp_path: Path):
+    src = tmp_path / "t.txt"
+    src.write_text("x\n", encoding="utf-8", newline="\n")
+    result = run("redact", str(src), "-o", str(tmp_path / "o.txt"), "--builtin", "nope", expect=2)
+    assert "nope" in result.output

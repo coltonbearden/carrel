@@ -24,7 +24,7 @@ Options:
 Always run `carrel --json doctor` and read the report:
 
 - `product.version`, `python`: what is installed.
-- `adapters[]`: every optional binary carrel knows about — `found`, `path`, `version`, and an `install_hint` when absent (e.g. `sudo apt install tesseract-ocr`).
+- `adapters[]`: every optional binary carrel knows about — `found`, `path`, `version`, and an `install_hint` when absent, already written for the platform `doctor` ran on — relay it rather than composing your own.
 - `commands[]`: per carrel command a `status` of `ok`, `degraded` (works with reduced power; `optional` binaries missing) or `unavailable` (a `requires` binary or Python extra is missing), plus `missing` and a `note`.
 - `icc_dirs`, `tesseract_langs`: color-profile directories found and OCR languages installed.
 

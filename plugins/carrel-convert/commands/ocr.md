@@ -38,6 +38,6 @@ Options:
 - `--redo`: re-OCR PDF pages even if they already have text (only when the user says the existing text layer is bad).
 - `--force`: only when the user explicitly wants an existing output overwritten.
 
-Afterwards, tell the user where the output landed. For `--to txt/md`, offer to show or summarize the extracted text. Exit code 3 means tesseract/ocrmypdf is missing — relay the install hint from stderr (`sudo apt install tesseract-ocr` / `ocrmypdf`). Exit code 4 means the input type isn't OCR-able.
+Afterwards, tell the user where the output landed. For `--to txt/md`, offer to show or summarize the extracted text. Exit code 3 means tesseract/ocrmypdf is missing — relay the install hint from stderr verbatim — it names the package for the user's own platform, which is not always Debian. Exit code 4 means the input type isn't OCR-able.
 
 **Requires the carrel CLI on PATH.** If `carrel` is not found, tell the user to install it with `uv tool install carrel` (see the repo's INSTALL notes), or run it as `uv run carrel ...` from the carrel repo root.

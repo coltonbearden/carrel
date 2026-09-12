@@ -5,7 +5,7 @@ description: Turning an email export (eml files, an mbox, or an Outlook .pst) in
 
 # From a mail export to a searchable archive
 
-`.eml` and `.mbox` are first-class carrel file types: `inspect`, `convert`, `index`/`search`, `pack`, `refs` and the `carrel-guard` Read hook all read them with the standard library — no binary needed. Run `carrel mail --help` and `carrel doctor` before composing flags; only `mail pst` needs an external tool (`readpst`, `sudo apt install pst-utils`).
+`.eml` and `.mbox` are first-class carrel file types: `inspect`, `convert`, `index`/`search`, `pack`, `refs` and the `carrel-guard` Read hook all read them with the standard library — no binary needed. Run `carrel mail --help` and `carrel doctor` before composing flags; only `mail pst` needs an external tool (`readpst`); its exit-3 message carries the install hint for the platform you are on — relay that rather than guessing a package manager.
 
 ## 1. Get one message per file (optional but recommended)
 

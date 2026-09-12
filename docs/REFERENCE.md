@@ -812,8 +812,8 @@ Usage: carrel mail pst [OPTIONS] SRC
   `--format eml` writes one .eml per message (readpst -e); `--format mbox` writes one `mbox` file
   per mail folder (readpst -r), which `carrel mail split` can then take apart.
 
-  Needs readpst (sudo apt install pst-utils); exit 3 with that hint otherwise. JSON: {src, out_dir,
-  format, files, via}.
+  Needs readpst; exit 3 with this platform's install hint otherwise. JSON: {src, out_dir, format,
+  files, via}.
 
 Options:
   --out-dir DIRECTORY  Directory readpst writes into (one subfolder per mail folder).  [required]
@@ -1207,10 +1207,10 @@ Usage: carrel redact [OPTIONS] SRC
 
 Options:
   --pattern REGEX     Custom regex to redact (repeatable).
-  --builtin LIST      Comma-separated builtins: email, phone, ssn, ipv4, cc, invoice, po, order,
-                      check, account, tracking, ticket, iban, routing, ein, vat, isbn, gtin, doi,
-                      ups, usps (label-driven kinds like invoice keep the label and replace the
-                      value).
+  --builtin LIST      Builtins to redact: email, phone, ssn, ipv4, cc, invoice, po, order, check,
+                      account, tracking, ticket, iban, routing, ein, vat, isbn, gtin, doi, ups,
+                      usps. Comma-separated, and repeatable like --pattern (label-driven kinds like
+                      invoice keep the label and replace the value).
   --replacement TEXT  Replacement text for matches (text files only).  [default: █]
   -o, --out PATH      Output file. Default: SRC.redacted.<ext>.
   --fail-empty        Exit 5 when nothing matched.

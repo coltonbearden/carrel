@@ -127,7 +127,34 @@ tesseract languages: eng, osd
 
 (Trimmed; `carrel doctor --json` gives the same data machine-readably.)
 
-The groups below mirror the doctor's install hints exactly.
+`carrel doctor` prints the command for **your** platform — it is the source of
+truth, and the table below is the same data laid out for reading. The grouped
+examples further down are written for Debian/Ubuntu; swap in the column for your
+platform.
+
+| Binary | For | Debian/Ubuntu (`apt`) | macOS (`brew`) | Windows (`winget`) |
+|---|---|---|---|---|
+| `pdftotext`, `pdftoppm`, `pdfimages` | PDF text, thumbnails, embedded images | `poppler-utils` | `poppler` | `oschwartz10612.Poppler` |
+| `qpdf` | PDF surgery (`edit pdf`) | `qpdf` | `qpdf` | `QPDF.QPDF` |
+| `pandoc` | conversion hub | `pandoc` | `pandoc` | `JohnMacFarlane.Pandoc` |
+| `weasyprint` | HTML/CSS → PDF | `weasyprint` | `weasyprint` | *(none — `pipx install weasyprint`)* |
+| `tesseract` | OCR engine | `tesseract-ocr` | `tesseract` | `UB-Mannheim.TesseractOCR` |
+| *(language packs)* | OCR beyond English | `tesseract-ocr-<code>` | `tesseract-lang` (all) | bundled |
+| `ocrmypdf` | OCR text layer for PDFs | `ocrmypdf` | `ocrmypdf` | *(none — `pipx install ocrmypdf`)* |
+| `magick` | image operations | `imagemagick` | `imagemagick` | `ImageMagick.ImageMagick` |
+| `icotool` | `.ico` build/extract | `icoutils` | `icoutils` | *(none — [icoutils](https://www.nongnu.org/icoutils/))* |
+| `exiftool` | deep metadata (`inspect --deep`) | `libimage-exiftool-perl` | `exiftool` | `OliverBetz.ExifTool` |
+| `readpst` | Outlook `.pst`/`.ost` (`mail pst`) | `pst-utils` | `libpst` | *(none — [libpst](https://www.five-ten-sg.com/libpst/))* |
+| `espeak-ng` | baseline TTS voice | `espeak-ng` | `espeak-ng` | `eSpeak-NG.eSpeak-NG` |
+| `ffmpeg`, `ffprobe` | mp3/ogg encoding, durations | `ffmpeg` | `ffmpeg` | `Gyan.FFmpeg` |
+| `gpg` | detached manifest signatures | `gnupg` | `gnupg` | `GnuPG.Gpg4win` |
+| `git` | `pack --since` / `--changed` | `git` | `git` | `Git.Git` |
+| `piper`, `edge-tts` | better TTS voices | `pipx install piper-tts` / `edge-tts` | same | same |
+
+Every name above was resolved against the real registry before it was written
+down — a wrong package name wastes more of your time than no name at all.
+
+The groups below mirror the doctor's install hints, in Debian/Ubuntu spelling.
 
 ### PDF handling
 
@@ -206,9 +233,24 @@ sudo apt install gnupg           # gpg — detached signatures for manifests
 ### Everything at once
 
 ```bash
+# Debian / Ubuntu
 sudo apt install poppler-utils qpdf pandoc weasyprint \
   tesseract-ocr ocrmypdf imagemagick icoutils \
-  libimage-exiftool-perl espeak-ng ffmpeg gnupg git
+  libimage-exiftool-perl espeak-ng ffmpeg gnupg git pst-utils
+```
+
+```bash
+# macOS
+brew install poppler qpdf pandoc weasyprint tesseract tesseract-lang \
+  ocrmypdf imagemagick icoutils exiftool espeak-ng ffmpeg gnupg git libpst
+```
+
+```powershell
+# Windows — the four with no winget package are listed in the table above
+winget install --id oschwartz10612.Poppler --id QPDF.QPDF --id JohnMacFarlane.Pandoc `
+  --id UB-Mannheim.TesseractOCR --id ImageMagick.ImageMagick --id OliverBetz.ExifTool `
+  --id eSpeak-NG.eSpeak-NG --id Gyan.FFmpeg --id GnuPG.Gpg4win --id Git.Git
+pipx install weasyprint ocrmypdf
 ```
 
 Then re-run `carrel doctor` — every row in the *command capabilities* table

@@ -8,7 +8,7 @@ import sys
 import click
 
 from carrel._product import PRODUCT
-from carrel.core.output import CarrelError
+from carrel.core.output import CarrelError, fail
 
 # command name -> module under carrel.commands (lazy: a broken optional import
 # only breaks its own command, and --help stays fast)
@@ -140,8 +140,7 @@ def main() -> None:
     except CarrelError as e:
         if debug:
             raise
-        click.echo(f"error: {e}", err=True)
-        sys.exit(int(e.exit_code))
+        fail(str(e), e.exit_code)
     except BrokenPipeError:
         sys.exit(0)
     except Exception as e:

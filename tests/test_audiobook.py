@@ -273,7 +273,7 @@ def test_missing_ffmpeg_nonwav_exits_3(tmp_copy, monkeypatch):
     res = run("audiobook", str(src), "--format", "mp3")
     assert res.exit_code == 3
     out = all_output(res)
-    assert "ffmpeg" in out and "apt install ffmpeg" in out
+    assert "ffmpeg" in out and "install:" in out
     assert not src.with_suffix(".mp3").exists()
 
 

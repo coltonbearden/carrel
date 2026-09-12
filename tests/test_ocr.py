@@ -15,7 +15,7 @@ from click.testing import CliRunner
 from conftest import needs
 
 from carrel.cli import cli
-from carrel.commands.ocr import default_dest, ocr_file
+from carrel.commands.ocr import _lang_pack_hint, default_dest, ocr_file
 from carrel.core import adapters
 
 # ------------------------------------------------------------------ helpers
@@ -146,7 +146,7 @@ def test_missing_tesseract_exits_3_with_hint(fixtures, tmp_path: Path, monkeypat
         "tesseract",
         ("definitely-not-a-real-binary-xyz",),
         real.version_args,
-        real.install_hint,
+        real.hints,
         real.purpose,
     )
     monkeypatch.setitem(adapters.ADAPTERS, "tesseract", broken)
@@ -163,7 +163,7 @@ def test_missing_ocrmypdf_exits_3_with_hint(fixtures, tmp_path: Path, monkeypatc
         "ocrmypdf",
         ("definitely-not-a-real-binary-xyz",),
         real.version_args,
-        real.install_hint,
+        real.hints,
         real.purpose,
     )
     monkeypatch.setitem(adapters.ADAPTERS, "ocrmypdf", broken)
@@ -177,12 +177,12 @@ def test_missing_ocrmypdf_exits_3_with_hint(fixtures, tmp_path: Path, monkeypatc
 @needs("tesseract")
 def test_missing_language_pack_hint_image(fixtures, tmp_path: Path):
     # 'xyz' is not a real language pack: tesseract fails loading it, and the
-    # error must carry the apt install hint. Exit 3 = missing dependency.
+    # error must carry an install hint for this platform. Exit 3 = missing dependency.
     result = CliRunner().invoke(
         cli, ["ocr", str(fixtures / "scanned.png"), "--lang", "xyz", "-o", str(tmp_path / "o.txt")]
     )
     assert result.exit_code == 3
-    assert "sudo apt install tesseract-ocr-xyz" in result.stderr
+    assert f"  hint: {_lang_pack_hint('xyz')}" in result.stderr
 
 
 @needs("ocrmypdf")
@@ -191,7 +191,7 @@ def test_missing_language_pack_hint_pdf(fixtures, tmp_path: Path):
         cli, ["ocr", str(fixtures / "scanned.pdf"), "--lang", "xyz", "-o", str(tmp_path / "o.txt")]
     )
     assert result.exit_code == 3
-    assert "sudo apt install tesseract-ocr-xyz" in result.stderr
+    assert f"  hint: {_lang_pack_hint('xyz')}" in result.stderr
 
 
 # --------------------------------------------------------- input validation

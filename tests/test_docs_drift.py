@@ -316,3 +316,90 @@ def test_state_status_counts_are_current():
         wrong += [f"{n} {noun} (live: {count})" for n in stated if n != count]
     assert not unstated, f"STATE.md's Status no longer states: {unstated}"
     assert not wrong, "STATE.md's Status is stale: " + "; ".join(wrong)
+
+
+# --------------------------------------------------- test and recipe counts
+
+
+#: "855 tests" in README.md, "501 tests" in CONTRIBUTING.md — both wrong by
+#: hundreds, both read as current fact. A count in live prose has to be
+#: generated or absent; the `HISTORY` files are dated records and may state
+#: whatever was true on their date.
+TEST_COUNT_RE = re.compile(r"\b(?P<count>\d[\d,]*)\s+tests\b", re.IGNORECASE)
+#: "Wave 1 tests synthesized their own inputs" names a wave, not a quantity. The
+#: labels this repo actually numbers, so the scanner does not cry wolf on prose.
+LABELLED_NUMBER = re.compile(r"\b(?:wave|phase|round|step|python|v)\s*$", re.IGNORECASE)
+RECIPE_COUNT_RE = re.compile(
+    r"\b(?P<count>\d+|" + "|".join(_WORD_TO_NUMBER) + r")\s+(?:end-to-end\s+)?recipes\b",
+    re.IGNORECASE,
+)
+
+
+def _recipe_count() -> int:
+    return len(list((REPO_ROOT / "examples" / "cookbook").glob("*.sh")))
+
+
+def _test_count() -> int:
+    """`def test_` across the suite — only ever used to make the failure message useful."""
+    return sum(
+        len(re.findall(r"^def test_|^    def test_", _read(p), re.M))
+        for p in (REPO_ROOT / "tests").rglob("test_*.py")
+    )
+
+
+@pytest.mark.parametrize("pattern", [TEST_COUNT_RE, RECIPE_COUNT_RE], ids=["tests", "recipes"])
+def test_no_live_doc_states_a_test_or_recipe_count(pattern: re.Pattern[str]):
+    """A number nobody regenerates is wrong within a week of being written."""
+    wrong: list[str] = []
+    for path in _live_docs():
+        rel = path.relative_to(REPO_ROOT).as_posix()
+        for lineno, line in enumerate(_read(path).splitlines(), 1):
+            for m in pattern.finditer(line):
+                before = line[: m.start()]
+                if HISTORICAL_COUNT.search(before):
+                    continue  # "v0.1.0 shipped 501 tests" — a dated record
+                if LABELLED_NUMBER.search(before):
+                    continue  # "Wave 1 tests" — a label, not a count
+                wrong.append(f"{rel}:{lineno}: {m.group(0).strip()}")
+    assert not wrong, "\n".join(
+        [
+            "these state a count that nothing keeps current — generate it or drop it",
+            f"(live now: {_test_count()} tests, {_recipe_count()} recipes)",
+            *wrong,
+        ]
+    )
+
+
+def test_the_count_scanners_are_not_vacuous():
+    """Guard the guard: the exact sentences this repo actually wrote."""
+    assert TEST_COUNT_RE.search("uv run pytest           # 501 tests; binary-gated")
+    assert TEST_COUNT_RE.search("executed for real (855 tests; cookbook runs)")
+    assert RECIPE_COUNT_RE.search("— ten end-to-end recipes, from scan→searchable-notes")
+    assert RECIPE_COUNT_RE.search("12 recipes")
+    # ...and prose that merely mentions the words is left alone
+    assert not TEST_COUNT_RE.search("binary-gated tests skip when a binary is absent")
+    assert not RECIPE_COUNT_RE.search("end-to-end recipes, from scan to notes")
+    # ...as is a numbered label, which is not a quantity of anything
+    assert LABELLED_NUMBER.search("No cross-deps: Wave ")
+    assert not LABELLED_NUMBER.search("executed for real (855 ")
+
+
+def test_the_history_exemption_is_load_bearing():
+    """`HISTORY` files really do state counts, so excluding them is not cosmetic.
+
+    Located explicitly, not by `rglob`: two `CHANGELOG.md` exist (the root and
+    `docs/`), so a walk could assert against whichever it reached first — and it
+    would descend `.venv`, where a dependency's own CHANGELOG is a candidate
+    match. A renamed HISTORY file now fails with this test's message rather than
+    a bare `StopIteration`.
+    """
+    found = {name: [REPO_ROOT / name, DOCS / name] for name in HISTORY}
+    missing = sorted(n for n, paths in found.items() if not any(p.is_file() for p in paths))
+    assert not missing, f"HISTORY names no existing file: {missing}"
+    stated = [
+        name
+        for name, paths in found.items()
+        for path in paths
+        if path.is_file() and any(TEST_COUNT_RE.search(line) for line in _read(path).splitlines())
+    ]
+    assert stated, "no HISTORY file states a test count — is the exemption still needed?"

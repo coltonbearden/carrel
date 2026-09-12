@@ -50,8 +50,8 @@ Usage: carrel mail pst [OPTIONS] SRC
   `--format eml` writes one .eml per message (readpst -e); `--format mbox` writes one `mbox` file
   per mail folder (readpst -r), which `carrel mail split` can then take apart.
 
-  Needs readpst (sudo apt install pst-utils); exit 3 with that hint otherwise. JSON: {src, out_dir,
-  format, files, via}.
+  Needs readpst; exit 3 with this platform's install hint otherwise. JSON: {src, out_dir, format,
+  files, via}.
 
 Options:
   --out-dir DIRECTORY  Directory readpst writes into (one subfolder per mail folder).  [required]
@@ -93,7 +93,7 @@ Options:
 ```
 <!-- usage:end -->
 
-- Choose the subcommand from intent: "pull the attachments out of X" → `attachments FILE...` (eml or mbox **files**, not folders) `--out-dir DIR`; "break this mailbox into messages" → `split box.mbox --out-dir DIR` (an mbox file); "what conversations are in here" → `threads PATH...` (files **or** folders); "I exported Outlook to a .pst" → `pst FILE.pst --out-dir DIR` (needs readpst: `sudo apt install pst-utils`; exit 3 says so). `--format eml` writes one `.eml` per message, `--format mbox` one `mbox` file per mail folder.
+- Choose the subcommand from intent: "pull the attachments out of X" → `attachments FILE...` (eml or mbox **files**, not folders) `--out-dir DIR`; "break this mailbox into messages" → `split box.mbox --out-dir DIR` (an mbox file); "what conversations are in here" → `threads PATH...` (files **or** folders); "I exported Outlook to a .pst" → `pst FILE.pst --out-dir DIR` (needs readpst; exit 3 carries the install hint for the user's platform). `--format eml` writes one `.eml` per message, `--format mbox` one `mbox` file per mail folder.
 - Reading the mail itself needs no subcommand: `.eml` and `.mbox` are desk file types, so `carrel inspect`, `carrel index` + `carrel search`, `carrel pack` and `/carrel-finance:refs` all read them directly, and the `carrel-guard` Read hook turns them into text for you. Conversion targets differ by type: `.eml` → md, txt, html or pdf; `.mbox` → md or txt only (anything else exits 4 and lists the real targets).
 - `carrel convert msg.eml --to pdf` renders the message's **text**, never its HTML, so converting a message can never fetch a tracking pixel or pull in a local file; `--to html` keeps the sender's HTML (opening that in a browser will fetch whatever it references, exactly like opening the mail would).
 - Attachments and split messages are never overwritten without `--force`; colliding names get `-1`, `-2`, … suffixes.

@@ -16,6 +16,7 @@ module is added, add it to the count or to `NO_HANDLED` with the reason.
 from __future__ import annotations
 
 import ast
+import json
 from pathlib import Path
 
 import click
@@ -192,3 +193,42 @@ def test_the_real_cli_maps_a_bad_input_to_exit_4() -> None:
 
     assert result.exit_code == int(ExitCode.BAD_INPUT)
     assert "Traceback" not in result.output
+
+
+# ------------------------------------------- the error channel under --json
+
+
+@click.command("boom")
+@click.pass_context
+@handled
+def _boom(ctx: click.Context) -> None:
+    raise CarrelInputError("no such file: /nope")
+
+
+def _run_boom(*args: str):
+    @click.group()
+    @click.option("--json", "json_", is_flag=True)
+    @click.pass_context
+    def root(ctx: click.Context, json_: bool) -> None:
+        ctx.ensure_object(dict)
+        ctx.obj["json"] = json_
+
+    root.add_command(_boom)
+    return CliRunner().invoke(root, [*args, "boom"])
+
+
+def test_an_error_under_json_is_itself_json():
+    """A caller piping `--json` had to parse English out of stderr."""
+    result = _run_boom("--json")
+
+    assert result.exit_code == int(ExitCode.BAD_INPUT)
+    assert result.stdout == "", "stdout is the data channel and stays clean"
+    payload = json.loads(result.stderr)
+    assert payload == {"error": "no such file: /nope", "exit_code": int(ExitCode.BAD_INPUT)}
+
+
+def test_an_error_without_json_is_still_the_plain_line():
+    result = _run_boom()
+
+    assert result.exit_code == int(ExitCode.BAD_INPUT)
+    assert result.stderr.strip() == "error: no such file: /nope"

@@ -32,7 +32,7 @@ import click
 
 from carrel._product import PRODUCT
 from carrel.core import adapters
-from carrel.core.adapters import Adapter, MissingDependencyError
+from carrel.core.adapters import Adapter, Hints, MissingDependencyError
 from carrel.core.db import DeskDB, file_hash
 from carrel.core.filetypes import FileType, detect
 from carrel.core.fsops import GIT_ENV_OVERRIDES, repo_root, within
@@ -59,9 +59,11 @@ _TIKTOKEN = Adapter(
     name="tiktoken",
     binaries=("tiktoken",),
     version_args=(),
-    install_hint=(
-        f"uv tool install '{PRODUCT['package']}[tokens]' "
-        "(or `uv sync --extra tokens` from a checkout)"
+    hints=Hints(
+        anywhere=(
+            f"uv tool install '{PRODUCT['package']}[tokens]' "
+            "(or `uv sync --extra tokens` from a checkout)"
+        )
     ),
     purpose=f"exact token counts for `{PRODUCT['cli']} pack --tokenizer exact`",
 )

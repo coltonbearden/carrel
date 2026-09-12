@@ -367,7 +367,7 @@ def test_docx_to_pdf_without_weasyprint(tmp_copy, monkeypatch: pytest.MonkeyPatc
     src = tmp_copy("sample.docx")
     res = run("convert", str(src), "--to", "pdf")
     assert res.exit_code == 3
-    assert "weasyprint" in all_output(res) and "apt install" in all_output(res)
+    assert "weasyprint" in all_output(res) and "install:" in all_output(res)
 
 
 def test_convert_docx_without_pandoc(tmp_copy, monkeypatch: pytest.MonkeyPatch):
@@ -376,7 +376,7 @@ def test_convert_docx_without_pandoc(tmp_copy, monkeypatch: pytest.MonkeyPatch):
     res = run("convert", str(src), "--to", "md")
     assert res.exit_code == 3
     out = all_output(res)
-    assert "pandoc" in out and "sudo apt install pandoc" in out
+    assert "pandoc" in out and "install:" in out
     assert not src.with_suffix(".md").exists()
 
 

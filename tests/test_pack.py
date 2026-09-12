@@ -538,7 +538,7 @@ def test_since_without_git_exits_3(repo: Path, monkeypatch: pytest.MonkeyPatch):
     assert not adapters.have("git")
     res = run("pack", str(repo), "--since", "HEAD~1")
     assert res.exit_code == 3, res.output
-    assert "'git' is required" in res.output and "apt install git" in res.output
+    assert "'git' is required" in res.output and "install:" in res.output
 
 
 def test_since_without_git_outside_a_repo_still_exits_3(
@@ -555,7 +555,7 @@ def test_since_without_git_outside_a_repo_still_exits_3(
     monkeypatch.setenv("CARREL_BIN_GIT", "/nonexistent/git")
     res = run("pack", str(tmp_path), "--changed")
     assert res.exit_code == 3, res.output
-    assert "'git' is required" in res.output and "apt install git" in res.output
+    assert "'git' is required" in res.output and "install:" in res.output
 
 
 def test_query_and_since_intersect(repo: Path):
