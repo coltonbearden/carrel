@@ -1507,7 +1507,7 @@ Options:
 | 2 | `USAGE` | bad usage/arguments |
 | 3 | `MISSING_DEP` | missing optional dependency (message names the binary + install hint) |
 | 4 | `BAD_INPUT` | input file not found / unreadable / unsupported type |
-| 5 | `EMPTY` | operation produced no result (e.g. `search --fail-empty` with no hits) |
+| 5 | `EMPTY` | operation produced no result (`pack --json` that packed nothing; elsewhere opt in with `--fail-empty`) |
 
 Note: `carrel diff` deliberately reuses `1` to mean "inputs differ" — its help
 text above spells out the full mapping.

@@ -14,7 +14,7 @@ carrel pack PATH... [existing flags]
 ```
 
 ## Behavior
-- **`--query TEXT`** — requires a desk index under `--root` (else exit 4 with `run carrel index --root …` hint). Rank with `DeskDB.fts_search(query, limit=top)` (default `--top 20`), keep only hits that also survive the normal PATH/include/exclude/gitignore filters, and emit them **in relevance order** (not tree order). Header adds `query`, `top`, and per-file `score` (also in `--stats`/`--json`). Zero hits: header says so; with `--fail-empty` exit 5. `--query` and `--since` may be combined (intersection).
+- **`--query TEXT`** — requires a desk index under `--root` (else exit 4 with `run carrel index --root …` hint). Rank with `DeskDB.fts_search(query, limit=top)` (default `--top 20`), keep only hits that also survive the normal PATH/include/exclude/gitignore filters, and emit them **in relevance order** (not tree order). Header adds `query`, `top`, and per-file `score` (also in `--stats`/`--json`). Zero hits: the header says so, one line names the query and the FTS5 AND rule on stderr, and the pack exits 5 — by default under `--json` (`--no-fail-empty` opts out), and with `--fail-empty` in human mode. `PackResult.empty_reason` carries the same sentence, so the MCP `carrel_pack` tool reports it too. `--query` and `--since` may be combined (intersection).
 - **`--since REF`** / **`--changed`** — file list from `git diff --name-only REF` (resp. `git diff --name-only HEAD` plus untracked via `git ls-files --others --exclude-standard`) run through `adapters.run("git", …)` with cwd = the PATH's git root. `git` missing → exit 3 with hint; not a repo or bad ref → exit 4 with git's first stderr line. Result is intersected with the walk (deleted files are listed in the header as `removed`, not packed). Mutually exclusive with each other (exit 2).
 - **Negation in `.gitignore`** — `_IgnoreFile` (`pack.py:90`) honors `!pattern`; rules apply in file order, last match wins, directory-only rules (`dir/`) and anchored rules (`/x`) keep current semantics. Remove the "negation NOT supported" note from the module docstring and docs.
 - **`--dedupe-content`** — compute `db.file_hash` per packed text file; second and later identical files are not inlined; the tree marks them `[same as <first path>]`; header counts `deduped`.
@@ -23,7 +23,7 @@ carrel pack PATH... [existing flags]
 - All new fields appear in `--json` and `--stats`; ordering stays deterministic.
 
 ## Acceptance
-- Index a tmp tree of 6 text files, `pack . --query "sentinel" --json`: only files containing the sentinel appear, ordered by `score`, non-hits absent; `--fail-empty` with a nonsense query exits 5; without an index exits 4.
+- Index a tmp tree of 6 text files, `pack . --query "sentinel" --json`: only files containing the sentinel appear, ordered by `score`, non-hits absent; a nonsense query exits 5 under `--json` (and with `--fail-empty` in human mode); without an index exits 4.
 - Temp git repo: commit A (3 files), commit B modifies 1 and adds 1 → `pack . --since HEAD~1` packs exactly those 2; `--changed` after editing an uncommitted file packs it; `--since` with no `git` on PATH (monkeypatched `have`) exits 3; outside a repo exits 4.
 - Negation: `.gitignore` = `*.log` then `!keep.log` → `keep.log` packed, `other.log` not; a `!` rule before its matching ignore rule has no effect (order semantics).
 - `--dedupe-content` on two identical text files packs one and marks the other; `--json` `meta.deduped == 1`.

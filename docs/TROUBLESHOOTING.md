@@ -76,7 +76,7 @@ table above) instead of writing a valid, empty document:
 
 ```console
 $ carrel --json --root docs pack docs --query "how do I cut a release"
-warning: packed no files: no document contains every term of --query 'how do I
+error: packed no files: no document contains every term of --query 'how do I
 cut a release' (FTS5 requires all of them; try fewer terms, or OR between them)
 $ echo $?
 5
@@ -88,8 +88,8 @@ a successful one. Two ways out:
 - **Fix the query.** FTS5 requires *every* term, so a natural-language question
   almost never matches. Use the two or three words that actually appear, or
   `OR` between them: `--query 'release OR changelog'`.
-- **Keep exit 0.** `--no-fail-empty` restores the old behaviour; the stderr line
-  stays either way. In human mode exit 0 is already the default, and
+- **Keep exit 0.** `--no-fail-empty` restores the old behaviour; the line stays,
+  with a `warning:` prefix rather than `error:`. In human mode exit 0 is already the default, and
   `--fail-empty` opts in.
 
 If the query looks right and still matches nothing, read on.
@@ -121,12 +121,13 @@ so three things have to line up:
    (`--no-gitignore` opts out). Hidden entries (`.git`, dotfiles) are never
    walked.
 
-With an index and no hits, the header says so and the pack is empty; add
-`--fail-empty` to turn that into exit 5 for scripts:
+With an index and no hits the pack is empty and says so; under `--json` that
+is exit 5 by default, and `--fail-empty` asks for the same in human mode:
 
 ```console
 $ carrel --root docs pack docs --query xyzzyplugh --fail-empty --tree-only
-error: no files matched --query 'xyzzyplugh'
+error: packed no files: no document contains every term of --query 'xyzzyplugh'
+(FTS5 requires all of them; try fewer terms, or OR between them)
 $ echo $?
 5
 ```

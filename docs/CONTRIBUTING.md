@@ -47,7 +47,7 @@ running user-supplied shell actions.
 | 2 | bad usage/arguments |
 | 3 | missing optional dependency (message names the binary + install hint) |
 | 4 | input file missing / unreadable / unsupported type |
-| 5 | empty result with `--fail-empty` |
+| 5 | empty result (`pack --json` with nothing packed; elsewhere `--fail-empty`) |
 
 ## How to add a command
 

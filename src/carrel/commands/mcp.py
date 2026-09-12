@@ -504,6 +504,12 @@ def _tool_pack(args: dict[str, Any], default_root: Path) -> dict[str, Any]:
         "entries": entries,
         "omitted": list(result.meta.get("omitted_budget", [])),
     }
+    if result.empty_reason is not None:
+        # The whole point of the CLI's exit 5 is that an agent must not read a
+        # valid-looking empty document as a successful pack. The tool has no
+        # exit code, so it carries the same sentence — FTS5 AND-s the terms of
+        # a `query`, so a natural-language question usually matches nothing.
+        payload["empty_reason"] = result.empty_reason
     if fmt == "json":
         payload["tree"] = result.tree
         payload["files"] = (

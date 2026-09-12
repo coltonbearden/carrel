@@ -180,6 +180,10 @@ class PackResult:
     tree: str
     entries: list[PackEntry]
     documents: list[str]  # one rendered document, or N parts when chunked
+    #: why this pack found nothing, or None when it found something. Set here
+    #: rather than in the click layer so the MCP `carrel_pack` tool and the desk
+    #: TUI inherit the signal instead of returning a valid-looking empty payload.
+    empty_reason: str | None = None
 
     @property
     def document(self) -> str:
@@ -761,6 +765,16 @@ def pack_paths(
             raise CarrelInputError(f"no such path: {t}")
     common = Path(os.path.commonpath([str(t) for t in tops]))
     root = common if common.is_dir() else common.parent
+    # The bound for the ancestor `.gitignore` walk is the **desk root** — the
+    # scope the user declared with --root (default: the cwd) — the same thing
+    # `index` passes. `root` above is the packed arguments' common path, which
+    # for a single directory argument *is* that directory, so passing it made
+    # the walk stop before reading anything: `carrel pack src --stats
+    # --tree-only` listed 45 `__pycache__` entries from this repo while
+    # `carrel pack .` listed none. Bounding at the desk root instead keeps the
+    # v0.3.1 guard intact — nothing above the declared scope is consulted, so
+    # a `uv venv`'s `.gitignore` of `*` still cannot blank a desk.
+    ignore_bound = Path(desk_root).resolve() if desk_root is not None else root
     if outline:
         tree_only = True
 
@@ -809,7 +823,7 @@ def pack_paths(
         if t.is_file():
             _add(t)  # explicitly named files are always packed
         else:
-            _walk_dir(t, () if no_gitignore else _ancestor_ignores(t, root))
+            _walk_dir(t, () if no_gitignore else _ancestor_ignores(t, ignore_bound))
 
     # -- git-aware narrowing -------------------------------------------------
     removed: list[str] = []
@@ -929,8 +943,52 @@ def pack_paths(
     else:
         documents = [_RENDERERS[fmt](meta, tree, body, None)]
     return PackResult(
-        fmt=fmt, root=root, meta=meta, tree=tree, entries=entries, documents=documents
+        fmt=fmt,
+        root=root,
+        meta=meta,
+        tree=tree,
+        entries=entries,
+        documents=documents,
+        empty_reason=_empty_reason(entries, meta, query=query, since=since, changed=changed),
     )
+
+
+def _empty_reason(
+    entries: list[PackEntry],
+    meta: dict[str, Any],
+    *,
+    query: str | None,
+    since: str | None,
+    changed: bool,
+) -> str | None:
+    """Why this pack found nothing, or None when it found something.
+
+    "Nothing" means no file reached the pack at all — **not** that nothing was
+    inlined. A directory of images packs a complete, useful tree with
+    `files_included == 0`, and so does `--tree-only`; calling those empty would
+    fail a perfectly good pack. Likewise a `--since` whose only change was a
+    deletion: `removed` is the answer the caller asked for.
+
+    The reason names the filter that actually emptied the result, in pipeline
+    order. Blaming `--query` whenever one was passed told users to loosen a
+    query that had matched, when `--since` or an `--include` was the cause.
+    """
+    if entries or meta.get("removed"):
+        return None
+    if (since is not None or changed) and meta.get("changed") == 0:
+        ref = meta.get("since", "HEAD")
+        return f"packed no files: git reports nothing changed for --since {ref}"
+    if query is not None and meta.get("hits") == 0:
+        return (
+            f"packed no files: no document contains every term of --query {query!r} "
+            "(FTS5 requires all of them; try fewer terms, or OR between them)"
+        )
+    if query is not None:
+        return (
+            f"packed no files: --query {query!r} matched {meta.get('hits')} file(s), but the "
+            "paths, --include/--exclude globs or byte budgets removed all of them"
+        )
+    return "packed no files: nothing matched the given paths and filters"
 
 
 def _safe_hash(path: Path) -> str | None:
@@ -1176,25 +1234,6 @@ def cmd(
         )
     except BadQueryError as e:
         raise click.UsageError(str(e)) from e
-    if result.meta["files_included"] == 0:
-        # FTS5 AND-s the terms of a --query, so a natural-language question
-        # matches nothing and used to exit 0 with an empty document — the
-        # failure a caller is least likely to notice. Say so in every mode.
-        if query is not None:
-            reason = (
-                f"packed no files: no document contains every term of --query {query!r} "
-                "(FTS5 requires all of them; try fewer terms, or OR between them)"
-            )
-        elif since is not None or changed:
-            reason = "packed no files: git reports nothing changed for --since/--changed"
-        else:
-            reason = "packed no files: nothing matched the given paths and filters"
-        # Under --json the default is to fail: the caller is a program, and a
-        # valid empty document is indistinguishable from a successful pack.
-        if fail_empty or (fail_empty is None and ctx.obj and ctx.obj.get("json")):
-            fail(reason, ExitCode.EMPTY)  # `fail` already writes it to stderr
-        click.echo(f"warning: {reason}", err=True)
-
     written: list[Path] = []
     if output is not None:
         if chunk:
@@ -1206,11 +1245,30 @@ def cmd(
             output.write_text(result.document, encoding="utf-8", newline="\n")
             written.append(output)
 
+    def signal_empty() -> None:
+        """Say the pack found nothing; under --json (or --fail-empty) exit 5.
+
+        Run *after* the output is written, not before: a `--json` pack that
+        emptied used to leave a previous run's `-o` file untouched, so a CI step
+        that did not branch on the exit code shipped last run's context.
+
+        The default is on under `--json` because the caller is a program, and a
+        valid empty document is indistinguishable from a successful pack — FTS5
+        AND-s the terms of a `--query`, so a natural-language question usually
+        matches nothing.
+        """
+        if result.empty_reason is None:
+            return
+        if fail_empty or (fail_empty is None and as_json):
+            fail(result.empty_reason, ExitCode.EMPTY)  # `fail` writes it to stderr
+        click.echo(f"warning: {result.empty_reason}", err=True)
+
     if show_stats:
         data = result.stats()
         if written:
             data["written"] = [str(p) for p in written]
         emit(ctx, data, human=_print_stats_table)
+        signal_empty()
         return
     if written:
         summary = {"written": [str(p) for p in written], **result.meta}
@@ -1223,5 +1281,7 @@ def cmd(
                 err=True,
             ),
         )
+        signal_empty()
         return
     click.echo(result.document, nl=False)
+    signal_empty()

@@ -99,3 +99,29 @@ Consequence: a command module imports `handled`, `root_of` and `debugging` and n
 3. **`--apply` only, and after argument validation.** Dry-run is never guarded, and a bad `--into` or template reports itself rather than being masked by a refusal.
 
 Consequence: `git` becomes load-bearing for a safety property, so `repo_root` never raises and trusts git's answer in both directions (a ceiling directory or a malformed `.git` means "not ours"), and every git call drops `GIT_DIR`/`GIT_WORK_TREE` so a run from inside a git hook is not told about the hook's repository. The refusal is a `CarrelUsageError` (exit 2) rather than `click.UsageError`, which would print a `Usage:` banner implying the arguments were malformed, and which would put the CLI framework inside `core/`.
+
+## D-018 (2026-09-12) — An empty `pack` is an error under `--json`, and the reason travels with the result
+
+`carrel pack --query` that matched nothing exited 0 with a valid, empty document. FTS5 AND-s the terms of a query, so a natural-language question ("how do I cut a release") matches nothing far more often than users expect — and an empty pack is indistinguishable from a successful one, which makes it the failure a caller is least likely to notice.
+
+A pack that found no files now names the reason on stderr in every mode, and exits **5** by default under `--json`. `--no-fail-empty` restores exit 0; human mode still exits 0 by default and `--fail-empty` opts in. This is a behaviour change for scripts that pipe `pack --json --query`.
+
+Three scope decisions, each from the review that followed:
+
+1. **"Empty" means no file reached the pack, not "nothing was inlined."** A directory of images packs a complete, useful tree with `files_included == 0`, and so does `--tree-only`; `--max-file-bytes` can skip every file and still leave a correct listing. Failing those would break good packs. A `--since` whose only change was a deletion is likewise not empty — `removed` is the answer the caller asked for.
+2. **The reason names the filter that actually emptied the result**, in pipeline order (`--since`/`--changed`, then `--query`, then paths and globs). Blaming `--query` whenever one was present told users to loosen a query that had matched when `--since` was the cause.
+3. **The signal lives on `PackResult.empty_reason`, not in the click layer.** The MCP `carrel_pack` tool and the desk TUI call `pack_paths` directly; putting the check in the command would have left an agent — the caller the change exists for — reading a valid-looking empty payload with no diagnostic. The tool has no exit code, so it carries the sentence instead.
+
+Consequence: the exit-code tables in `docs/ARCHITECTURE.md`, `docs/CONTRIBUTING.md` and the generated `docs/REFERENCE.md` no longer condition 5 on the flag, and `specs/16-pack-query.md` records the new contract.
+
+## D-019 (2026-09-12) — The ancestor `.gitignore` walk is bounded by the **desk root**, for `pack` as well as `index`
+
+`carrel pack src --stats --tree-only` listed 45 `__pycache__` entries from this repo while `carrel pack .` listed none — the README's own `pack.gif` command, packing build artefacts into a context window. `ancestor_ignores` returns nothing when its `top` equals its `stop_at`, and `pack` passed the packed arguments' **common path** as `stop_at`, which for a single directory argument *is* that directory. So the walk stopped before reading anything.
+
+`pack` passes the desk root now — `--root`, default the cwd — which is what `index` already passed. One call site; the walker is unchanged.
+
+**The alternative was tried and reverted.** Making the walk run to the *worktree root* regardless of `stop_at` is what git itself does (`git check-ignore` consults every `.gitignore` up to the repository root), and it fixes `pack src` too. It also reinstates the v0.3.1 incident: `uv venv` writes a `.gitignore` containing `*`, venvs normally live inside a checkout, and a desk under one then indexed zero files again with nothing to explain it. The v0.3.1 rule — never consult anything above the scope the user declared — outranks matching git's semantics, because the user naming a directory is a stronger signal than an ancestor's ignore file.
+
+One narrowing came with it: when `top` is **outside** `stop_at` entirely, the walk now returns nothing rather than falling back to the repository root, for the same reason. There is no declared scope covering that path, and an unbounded walk contributes nothing (the existing rule).
+
+Consequence: `tests/test_pack.py` pins all three — the subdirectory case, a desk inside a `.venv` inside a repository, and a `$HOME` dotfiles work tree whose `.gitignore` is `*`.
