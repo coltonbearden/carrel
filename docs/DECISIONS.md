@@ -125,3 +125,17 @@ Consequence: the exit-code tables in `docs/ARCHITECTURE.md`, `docs/CONTRIBUTING.
 One narrowing came with it: when `top` is **outside** `stop_at` entirely, the walk now returns nothing rather than falling back to the repository root, for the same reason. There is no declared scope covering that path, and an unbounded walk contributes nothing (the existing rule).
 
 Consequence: `tests/test_pack.py` pins all three — the subdirectory case, a desk inside a `.venv` inside a repository, and a `$HOME` dotfiles work tree whose `.gitignore` is `*`.
+
+## D-020 (2026-09-12) — The guard converts what `Read` cannot open; images stay pictures
+
+`carrel-guard`'s README said Claude's `Read` "cannot parse PDFs, Word/OpenDocument/EPUB/RTF files, spreadsheets, email files **or images**". Per the [tools reference](https://code.claude.com/docs/en/tools-reference) it returns images as visual content Claude can see and reads PDFs natively (in `pages` ranges past ten pages), so the claim holds only for `.docx .odt .epub .rtf .xlsx .eml .mbox .mbx`. The guard behaved as if the README were true, and OCR'd every image Read with no way to turn it off — replacing a picture Claude could already see with a worse transcription of a screenshot, a chart or a photo.
+
+Three defaults follow from what `Read` actually does:
+
+1. **Formats `Read` cannot open are converted.** Pure gain, no decision to make.
+2. **PDFs are converted, but the conversion is a *token* saving, not a capability.** Page images cost far more than the text, so text stays the default; `CARREL_GUARD_PDF_TEXT=0` returns them to the visual `Read` when layout or diagrams carry the meaning.
+3. **Images are left alone.** `CARREL_GUARD_OCR_IMAGES=1` opts in. `.ico` sits behind the same switch for consistency rather than for the same reason — `Read` cannot render an ICO container either, so OCR is the only text carrel can offer for one.
+
+Timeouts became visible with it. The budget was 5 s, which measurement showed kills ordinary documents: `carrel convert --to txt` takes 2.4 s on a 33 KB pandoc-written docx, 6.7 s on 68 KB and 13.9 s on 127 KB, against 0.28 s for a 600-page PDF. It is 15 s now, and a timeout reports itself rather than exiting 0 in silence — `additionalContext` with no `updatedInput`, which the [hooks reference](https://code.claude.com/docs/en/hooks) allows, the decision fields being independent. The note differs by format, because "reading the original instead" is only true where `Read` can open it; for a docx it says the following Read will fail and names the manual conversion.
+
+Consequence: a killed conversion's partial output is deleted rather than served — `carrel convert` writes the text in one call, so SIGTERM mid-write truncates it, and the truncated file is newer than its source, so the freshness check would have cached it forever. And `hooks/hooks.json` caps the hook at 60 s, so a budget above that cannot be reached; the note and the tunables table say so.

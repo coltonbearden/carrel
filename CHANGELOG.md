@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- **Changed (behaviour, `carrel-guard`):** image `Read`s pass through to Claude by default.
+  The guard OCR'd every `.png/.jpg/.jpeg/.ico` unconditionally, replacing a picture Claude can
+  already see with a transcription — worse for a screenshot, a chart or a photo, and with no
+  way to turn it off. `CARREL_GUARD_OCR_IMAGES=1` restores it. PDFs are still converted to text
+  by default, because page images cost far more tokens, but `CARREL_GUARD_PDF_TEXT=0` now hands
+  them back to the visual `Read` when layout or diagrams matter.
+- **Fixed (`carrel-guard`):** the README claimed Claude's `Read` "cannot parse PDFs, Word/
+  OpenDocument/EPUB/RTF files, spreadsheets, email files or images". Per the
+  [tools reference](https://code.claude.com/docs/en/tools-reference) it reads images as pictures
+  and PDFs natively; the claim holds only for `.docx .odt .epub .rtf .xlsx .eml .mbox .mbx`. The
+  plugin README, the README marketplace row and `docs/MARKETPLACE.md` all say what is true now.
+- **Fixed (`carrel-guard`):** `CARREL_GUARD_TIMEOUT` defaults to 15 s, up from 5. `carrel
+  convert --to txt` takes 6.7 s on a 68 KB pandoc-written docx and 13.9 s on a 127 KB one, so
+  the old budget killed ordinary documents — and did it silently, because a timeout exited 0
+  with no output and Claude saw only a Read that happened to be slow. A timeout now reports
+  itself and lets the Read proceed on the original: `additionalContext` without `updatedInput`,
+  which the [hooks reference](https://code.claude.com/docs/en/hooks) allows, the decision fields
+  being independent. Every conversion note also says where the original still is, and when to
+  prefer it.
 - **Changed (behaviour):** a `carrel pack` that found **no files** now prints one line on stderr
   naming the reason, and **under `--json` it exits 5** instead of writing a valid, empty
   document. FTS5 AND-s the terms of a `--query`, so a natural-language question usually matches

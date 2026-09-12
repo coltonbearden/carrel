@@ -654,7 +654,8 @@ def test_read_guard_converts_pdf_and_rewrites_read_input(tmp_path: Path):
     assert ctx.startswith("carrel-guard: ")
     assert str(src.resolve()) in ctx and str(txt) in ctx
     assert f"({len(txt.read_bytes().decode())} chars)" in ctx  # wc -m counts CR too
-    assert "Original left untouched" in ctx
+    assert "The original is untouched" in ctx
+    assert "directly when layout" in ctx  # ...and when to prefer it
     assert src.read_bytes() == (REPO / "tests" / "fixtures" / "b.pdf").read_bytes()
 
     # Second run reuses the cached text (no rewrite) and rewrites only file_path.
@@ -722,3 +723,110 @@ def test_claude_plugin_validate():
             pytest.skip(f"claude errored for environmental reasons on {target}: {output!r}")
         assert proc.returncode == 0, f"{target}: {output}"
         assert "Validation passed" in output, f"{target}: {output}"
+
+
+# ----------------------------------------- the guard's defaults (D-020)
+
+
+@needs_bash
+@needs_carrel
+@needs("tesseract")
+def test_read_guard_leaves_images_to_claudes_vision_by_default(tmp_path: Path):
+    """`Read` returns a PNG as a picture Claude can see (tools reference).
+
+    OCR replaced that with a transcription — worse for a screenshot, a chart or
+    a photo — and it happened on every image Read with no way to turn it off.
+    """
+    proc = run_guard(READ_GUARD, read_payload(FIXTURES / "sample.png"), tmp_path)
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout == "", proc.stdout
+
+
+@needs_bash
+@needs_carrel
+@needs("tesseract")
+def test_read_guard_ocrs_an_image_when_asked(tmp_path: Path):
+    proc = run_guard(
+        READ_GUARD,
+        read_payload(FIXTURES / "scanned.png"),
+        tmp_path,
+        extra_env={"CARREL_GUARD_OCR_IMAGES": "1"},
+    )
+    assert proc.returncode == 0, proc.stderr
+    hso = json.loads(proc.stdout)["hookSpecificOutput"]
+    assert hso["permissionDecision"] == "allow"
+    assert Path(hso["updatedInput"]["file_path"]).suffix == ".txt"
+
+
+@needs_bash
+@needs_carrel
+def test_read_guard_leaves_pdfs_to_the_visual_read_when_asked(tmp_path: Path):
+    """`Read` reads PDFs natively; the text conversion is a token saving, not a
+    capability, so it has to be switchable off when layout matters."""
+    proc = run_guard(
+        READ_GUARD,
+        read_payload(FIXTURES / "b.pdf"),
+        tmp_path,
+        extra_env={"CARREL_GUARD_PDF_TEXT": "0"},
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout == "", proc.stdout
+
+    # ...and still converts by default, where pdftotext exists to do it
+    if shutil.which("pdftotext"):
+        proc = run_guard(READ_GUARD, read_payload(FIXTURES / "b.pdf"), tmp_path)
+        assert json.loads(proc.stdout)["hookSpecificOutput"]["permissionDecision"] == "allow"
+
+
+@needs_bash
+@needs_carrel
+@needs("pandoc")
+def test_read_guard_names_the_original_in_its_context_line(tmp_path: Path):
+    """Claude has to know the original is still there, and when to prefer it."""
+    src = FIXTURES / "sample.docx"
+    proc = run_guard(READ_GUARD, read_payload(src), tmp_path)
+    assert proc.returncode == 0, proc.stderr
+    ctx = json.loads(proc.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert str(src.resolve()) in ctx, ctx
+    assert "directly when layout" in ctx, ctx
+
+
+@needs_bash
+@pytest.mark.skipif(shutil.which("timeout") is None, reason="needs coreutils timeout")
+@pytest.mark.skipif(os.name == "nt", reason="the stub is a POSIX shell script")
+def test_read_guard_says_so_when_a_conversion_times_out(tmp_path: Path):
+    """A timeout used to exit 0 in silence, so Claude saw only a slow Read.
+
+    The hooks reference lists `additionalContext` and `updatedInput` as
+    independent decision fields, and an omitted `permissionDecision` means the
+    normal permission flow applies — so the guard can report the timeout and
+    still let the Read proceed on the original.
+
+    Driven by a stub `carrel` that sleeps rather than by a small budget on the
+    real one: `convert --to txt` on a docx is a pure-Python zip read and
+    finishes inside 10 ms, so any timing-based version of this test would be a
+    coin toss on a loaded runner.
+    """
+    stub_dir = tmp_path / "stub-bin"
+    stub_dir.mkdir()
+    stub = stub_dir / "carrel"
+    stub.write_text("#!/bin/sh\nsleep 30\n", encoding="utf-8", newline="\n")
+    stub.chmod(0o755)
+
+    proc = run_guard(
+        READ_GUARD,
+        read_payload(FIXTURES / "sample.docx"),
+        tmp_path,
+        extra_env={
+            "PATH": f"{stub_dir}{os.pathsep}{os.environ['PATH']}",
+            "CARREL_GUARD_TIMEOUT": "1",
+        },
+    )
+    assert proc.returncode == 0, proc.stderr
+    hso = json.loads(proc.stdout)["hookSpecificOutput"]
+    assert hso["hookEventName"] == "PreToolUse"
+    assert "timed out" in hso["additionalContext"], hso
+    assert "CARREL_GUARD_TIMEOUT" in hso["additionalContext"], hso
+    # the Read must proceed on the original: no rewrite, no decision
+    assert "updatedInput" not in hso, hso
+    assert "permissionDecision" not in hso, hso
