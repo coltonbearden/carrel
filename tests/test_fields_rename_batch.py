@@ -5,7 +5,8 @@ from __future__ import annotations
 
 import json
 import os
-import shlex
+import shutil
+import sys
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -666,9 +667,12 @@ def test_watch_print_service_writes_absolute_paths(tmp_path: Path, monkeypatch):
     ).output
 
     exec_start = next(ln for ln in unit.splitlines() if ln.startswith("ExecStart="))
-    # the line was built with shlex.join, so it round-trips through shlex.split;
-    # a bare `in` check would pass on Windows, where every path comes out quoted
-    argv = shlex.split(exec_start.removeprefix("ExecStart="))
+    # `_systemd_split`, not `shlex.split`: the line is built by `_systemd_word`,
+    # which doubles `%` and `$` for systemd's specifier and variable expansion.
+    # shlex does not undo that, so these assertions passed only because pytest's
+    # tmp_path happens to hold neither character — a `--basetemp` under a path
+    # containing `%` failed the test while the product was correct.
+    argv = _systemd_split(exec_start.removeprefix("ExecStart="))
     after = {flag: argv[argv.index(flag) + 1] for flag in ("--root", "--done-dir", "watch")}
 
     assert after["--root"] == str(tmp_path.resolve()), argv
@@ -1104,6 +1108,9 @@ def test_print_service_systemd_round_trips_every_action(tmp_path: Path):
     exec_start = next(ln for ln in unit.splitlines() if ln.startswith("ExecStart="))
     assert _runs(_systemd_split(exec_start.removeprefix("ExecStart="))) == SYSTEMD_ACTIONS
     description = next(ln for ln in unit.splitlines() if ln.startswith("Description="))
+    # Bare, not quoted: systemd 259 does not unquote Description= (quotes show
+    # up verbatim in `systemctl show`) or WorkingDirectory= (a quoted path is
+    # rejected as "not absolute"). Only `%` is doubled.
     assert description == f"Description=carrel watch {str(watched.resolve()).replace('%', '%%')}"
 
 
@@ -1169,3 +1176,256 @@ def test_print_service_carries_the_global_json_flag(tmp_path: Path):
 
     plain = run("watch", str(watched), "--run", "true", "--print-service", "systemd").output
     assert "--json-lines" not in plain
+
+
+# ------------------------------------ regressions from the owed review of #36
+
+
+@pytest.mark.skipif(
+    os.name == "nt", reason="NTFS forbids a newline or a trailing backslash in a name"
+)
+def test_a_directory_name_cannot_inject_directives_into_the_unit(tmp_path: Path):
+    """`Description=` was unquoted, so a newline in a path ended the line.
+
+    Everything after it became further unit directives in the file the user is
+    told to save and `systemctl --user enable`. The milder variant is a name
+    ending in a backslash: systemd's line continuation then swallowed the
+    `After=` line that followed, dropping the ordering dependency.
+    """
+    hostile = tmp_path / "x\n[Service]\nExecStart=/bin/sh -c touch /tmp/pwned"
+    hostile.mkdir(parents=True)
+    err = run("watch", str(hostile), "--run", "true", "--print-service", "systemd", expect=2).stderr
+    assert "cannot represent" in err and "newline" in err, err
+
+    # A trailing backslash is the quieter version: verified against systemd 259,
+    # `Description=... back\` swallowed the `After=default.target` line that
+    # followed, and After= fell back to its defaults.
+    trailing = tmp_path / "back\\"
+    trailing.mkdir()
+    err = run(
+        "watch", str(trailing), "--run", "true", "--print-service", "systemd", expect=2
+    ).stderr
+    assert "backslash" in err, err
+
+    # Trailing whitespace is the third shape a bare line cannot carry: verified
+    # on systemd 259, the config parser strips it, so `WorkingDirectory=/x/in `
+    # silently becomes `/x/in` — a different directory that either fails the
+    # unit 200/CHDIR under Restart=on-failure or quietly becomes the action cwd.
+    spaced = tmp_path / "inbox "
+    spaced.mkdir()
+    err = run("watch", str(spaced), "--run", "true", "--print-service", "systemd", expect=2).stderr
+    assert "whitespace" in err, err
+
+    # and the schtasks arm refuses the same injection: its own first line says
+    # "Paste into cmd.exe", and list2cmdline does not escape a newline
+    err = run(
+        "watch", str(hostile), "--run", "true", "--print-service", "schtasks", expect=2
+    ).stderr
+    assert "newline" in err and "pasted command line" in err, err
+
+
+def test_the_unit_pins_a_working_directory(tmp_path: Path):
+    """A systemd *user* unit starts in $HOME, so relative `--run` paths moved
+    every processed file into the home directory instead of the inbox."""
+    watched = tmp_path / "inbox"
+    watched.mkdir()
+    unit = run(
+        "watch",
+        str(watched),
+        "--run",
+        'mv {path} "archive/$(date +%Y-%m)"',
+        "--print-service",
+        "systemd",
+    ).output
+    workdir = next(ln for ln in unit.splitlines() if ln.startswith("WorkingDirectory="))
+    # the cwd, not the watched directory: `_abs` already resolves option paths
+    # against the cwd, so a unit pinned to the watch would resolve `--done-dir
+    # archive` and `cp {path} backups/` against two different roots.
+    assert workdir == f"WorkingDirectory={Path.cwd()}"
+
+
+def test_launcher_path_survives_a_degenerate_argv0():
+    """`with_name` raises ValueError when argv[0] has no final component, and
+    `@handled` only converts CarrelError — so it escaped as a traceback.
+
+    For pathlib that is exactly `/` and `.`: a trailing separator is stripped,
+    so `bin/` has the name `bin` and never reached the raising branch. The
+    `windows=True` half is the one that mattered — it is the only caller of
+    `with_name` — and it is asserted first for that reason.
+    """
+    from carrel.commands.watch import _launcher_path
+
+    for argv0 in ("/", "."):  # the two that raised
+        assert _launcher_path(argv0, windows=True) is None
+        assert _launcher_path(argv0, windows=False) is None
+    for argv0 in ("..", "bin/", ""):  # never raised; still must not match
+        assert _launcher_path(argv0, windows=True) is None
+
+
+def test_launcher_path_normalises_dot_dot(tmp_path: Path, monkeypatch):
+    """systemd refuses an ExecStart whose executable path is not normalised.
+
+    `absolute()` prepends the cwd without resolving `..`; `resolve()` would
+    follow the Homebrew/Nix symlink into a store the next upgrade deletes.
+    """
+    from carrel.commands.watch import _launcher_path
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    launcher = bin_dir / "carrel"
+    launcher.write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    found = _launcher_path("bin/../bin/carrel", windows=False)
+    assert found is not None
+    assert ".." not in found.parts, found
+    assert found == launcher
+
+
+def test_the_guard_walk_skips_git_internals_and_the_archive(tmp_path: Path):
+    """`.git/objects` can never be tracked, and the archive grows without bound.
+
+    Hidden *files* stay in the set: `--existing` skips them, but a live event
+    reaches `_Watcher.seed`, which applies only `--glob`.
+    """
+    from carrel.commands.watch import _walk_files
+
+    root = tmp_path / "inbox"
+    (root / ".git" / "objects").mkdir(parents=True)
+    (root / ".git" / "objects" / "abc").write_text("x", encoding="utf-8")
+    (root / "sub").mkdir()
+    done = root / "done"
+    done.mkdir()
+    (done / "filed.pdf").write_text("x", encoding="utf-8")
+    (root / ".gitkeep").write_text("", encoding="utf-8")
+    (root / "sub" / "a.pdf").write_text("x", encoding="utf-8")
+
+    found = _walk_files(root, recursive=True, skip=[done], glob_=None)
+    names = {p.name for p in found}
+    assert names == {".gitkeep", "a.pdf"}, found
+    assert not any(".git" in p.parts for p in found)
+    assert not any(p.is_relative_to(done) for p in found)
+
+    assert {p.name for p in _walk_files(root, recursive=True, skip=[done], glob_="*.pdf")} == {
+        "a.pdf"
+    }
+    assert {p.name for p in _walk_files(root, recursive=False, skip=[done])} == {".gitkeep"}
+
+
+def test_schtasks_warns_when_the_tr_value_is_over_budget(tmp_path: Path):
+    """schtasks rejects or truncates a /TR past ~261 characters."""
+    watched = tmp_path / ("inbox_" + "x" * 120)
+    watched.mkdir()
+    long_line = run(
+        "watch",
+        str(watched),
+        "--run",
+        "magick {path} {dir}/thumb.png",
+        "--done-dir",
+        str(tmp_path / ("done_" + "y" * 120)),
+        "--print-service",
+        "schtasks",
+    ).output
+    assert "WARNING: the /TR value is" in long_line, long_line
+
+    short = tmp_path / "in"
+    short.mkdir()
+    ok = run("watch", str(short), "--run", "true", "--print-service", "schtasks").output
+    assert "WARNING" not in ok, ok
+
+
+def test_the_schtasks_warning_names_every_part_of_the_line(tmp_path: Path):
+    """`C:\\R&D\\inbox` splits the pasted line just as a `--run` action would."""
+    watched = tmp_path / "inbox"
+    watched.mkdir()
+    out = run("watch", str(watched), "--run", "true", "--print-service", "schtasks").output
+    assert "--done-dir" in out and "--log" in out and "--run action" in out
+    assert "ANY part of the line" in out
+
+
+def test_generated_service_text_comes_from_product_json(tmp_path: Path, monkeypatch):
+    """CLAUDE.md: the product name lives only in product.json, and anything
+    generated must read it. `_launcher_path` compared `argv[0]` against a
+    literal "carrel", and the unit file name, Description and schtasks /TN were
+    hardcoded too — so after `scripts/finalize.sh` renamed the product, every
+    generated unit named a module that no longer exists and died at boot.
+
+    Asserted by renaming the product and reading the output, not by grepping
+    the source: prose in docstrings legitimately says "carrel".
+    """
+    from carrel.commands import watch as watch_mod
+
+    watched = tmp_path / "inbox"
+    watched.mkdir()
+    monkeypatch.setitem(watch_mod.PRODUCT, "cli", "shelf")
+    monkeypatch.setitem(watch_mod.PRODUCT, "package", "shelf")
+
+    unit = run("watch", str(watched), "--run", "true", "--print-service", "systemd").output
+    assert "shelf-watch.service" in unit and "--now shelf-watch" in unit, unit
+    assert "Description=shelf watch " in unit, unit
+    # Asserted on shape, not by scanning for the string "carrel": every line
+    # carrying a path also carries tmp_path, and `--basetemp` under a directory
+    # named carrel would fail this while the product is correct — the same
+    # false alarm this PR removes from the ExecStart test above.
+    assert f"WorkingDirectory={Path.cwd()}" in unit, unit
+    assert "carrel-watch.service" not in unit and "carrel watch " not in unit, unit
+
+    task = run("watch", str(watched), "--run", "true", "--print-service", "schtasks").output
+    assert '/TN "shelf watch"' in task, task
+    assert '/TN "carrel watch"' not in task, task
+
+    # and the module fallback, used when argv[0] is not a product launcher
+    monkeypatch.setattr(sys, "argv", ["pytest"])
+    unit = run("watch", str(watched), "--run", "true", "--print-service", "systemd").output
+    assert '"-m" "shelf.cli"' in unit, unit
+
+
+@pytest.mark.skipif(
+    shutil.which("systemd-analyze") is None, reason="systemd-analyze is not installed"
+)
+def test_the_generated_unit_is_accepted_by_real_systemd(tmp_path: Path):
+    """Round-trip through the consumer, not through our model of it.
+
+    `_systemd_split` is a reimplementation of systemd.syntax(7). It has no
+    notion of value whitespace stripping, specifier expansion or line
+    continuation, so a unit systemd rejects still passes every string
+    assertion — which is exactly how the first draft of this fix shipped a
+    quoted `WorkingDirectory=` that systemd refuses as "path is not absolute".
+    """
+    import subprocess as sp
+
+    watched = tmp_path / "in%box with spaces"
+    watched.mkdir()
+    unit_text = run(
+        "watch",
+        str(watched),
+        "--run",
+        'mv {path} "archive/$(date +%Y-%m)"',
+        "--print-service",
+        "systemd",
+    ).output
+
+    unit = tmp_path / "carrel-probe.service"
+    unit.write_text(unit_text, encoding="utf-8", newline="\n")
+    proc = sp.run(
+        ["systemd-analyze", "--user", "verify", str(unit)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=60,
+    )
+    output = proc.stdout + proc.stderr
+    # `--user` needs a reachable user manager. Under `env -i PATH=/usr/bin`
+    # (the minimal-environment gate) there is no XDG_RUNTIME_DIR, so
+    # systemd-analyze cannot start one — an unavailable capability, which
+    # CLAUDE.md says must skip with a reason rather than fail.
+    if "Failed to initialize manager" in output or "RuntimeDirectory" in output:
+        pytest.skip("no user systemd manager reachable in this environment")
+
+    complaints = [
+        ln
+        for ln in output.splitlines()
+        # the ExecStart binary need not exist on a CI box; everything else must be clean
+        if ln.strip() and "Executable" not in ln and "not found" not in ln.lower()
+    ]
+    assert not complaints, "systemd rejects the generated unit:\n" + "\n".join(complaints)
