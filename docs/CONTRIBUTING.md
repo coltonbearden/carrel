@@ -100,14 +100,30 @@ generated fixtures **are** committed.
 `.claude/settings.json` is committed so an unattended agent run does not stall
 waiting for a human to approve the commands this repository's release loop
 actually uses: `uv run`/`sync`/`build`, `git switch`/`fetch`/`rebase`/`worktree`,
-the read-only and PR-opening halves of `gh`, `claude plugin`, `mkdocs build`,
-and `scripts/github-harden.sh`.
+`git add`/`git commit`/`git push` (the loop has to be able to land a branch),
+`git branch -d`/`-D`, the read-only and PR-management halves of `gh`,
+`claude plugin`, `mkdocs build`, and `scripts/github-harden.sh`.
 
-**Read the rules as prefixes, because that is what they are.** A rule matches
-any command *beginning* with its text, so `Bash(gh pr:*)` would also permit
-`gh pr merge`, and `Bash(rm -rf /:*)` would deny `rm -rf /tmp/scratch`. Every
-entry here is therefore written as a specific verb, and three consequences
-follow that are easy to get wrong:
+**A rule is a match against the whole command, with `*` standing in for any
+text** ([permissions reference](https://code.claude.com/docs/en/permissions)).
+Three properties of that matcher decide how this file has to be written, and
+each of them has caught us out:
+
+- A trailing ` *` **also matches the bare command**, but only when it is the
+  rule's only wildcard — and `:*` is just another spelling of that trailing
+  wildcard. So `Bash(git push --force:*)` already denied a plain
+  `git push --force`; the entries worth adding were the ones naming a
+  *different* shape, such as `Bash(git push * --force)`.
+- A `*` with no space before it keeps matching inside the word. That is why
+  `Bash(git push --force*)` (in a user-level file) also blocks
+  `git push --force-with-lease`.
+- The `:*` form is recognised **only at the end of a pattern**, which means no
+  rule can end in a literal colon followed by a wildcard. `Bash(git push * :*)`
+  reads as `git push *  *`, not as "a refspec beginning with a colon".
+
+`tests/test_settings_permissions.py` implements that matcher and asserts on real
+command strings, so the file is checked by execution rather than by reading.
+Three further consequences are easy to get wrong:
 
 - **`gh api` is not allow-listed at all.** No endpoint prefix is safe: `gh api
   repos/owner/repo` also matches `gh api repos/owner/repo/... -X DELETE`, and
@@ -132,9 +148,22 @@ follow that are easy to get wrong:
   `/tmp` scratch directory. Do not read an absence here as a guarantee.
 
 Destructive verbs that discard uncommitted work are denied alongside the
-obvious ones: `git checkout .`, `git checkout -f`, `git stash drop`/`clear` and
-`git branch -D` destroy exactly what `git reset --hard` and `git clean` do.
-`git switch` is allowed and covers branch changes safely.
+obvious ones: `git checkout .`, `git checkout -f` and `git stash drop`/`clear`
+destroy exactly what `git reset --hard` and `git clean` do. `git switch` is
+allowed and covers branch changes safely.
+
+`git branch -D` is **allowed**, unlike those: it deletes a ref, not a working
+tree, and pruning branches whose commits are already on `main` is ordinary
+housekeeping in this repo. Note that it also deletes that branch's own reflog,
+so confirm the commits are upstream first — `git cherry -v main <branch>`, or
+a tree comparison against the squash-merge commit for a squashed branch.
+
+Because `Bash(git push:*)` pre-approves *every* push, the deny list has to name
+everything that must not happen anyway: any push that lands on `main`, a `+`
+refspec (a force push spelled without the flag), `--mirror`, `--delete`,
+`--receive-pack=`/`--exec=` (arbitrary execution against a local remote), the
+bundled `-fu` spelling, and git's own `git -C …`/`git -c … push` prefix forms,
+which no rule anchored on the literal text `git push` can see.
 
 Your own `.claude/settings.local.json` is git-ignored and takes precedence, so a
 local `ask` entry still overrides an `allow` here. This file sets the floor for
