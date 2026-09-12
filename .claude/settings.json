@@ -112,7 +112,19 @@
       "Bash(gh release delete:*)",
       "Bash(gh repo delete:*)",
       "Bash(gh secret:*)",
-      "Bash(gh auth token:*)"
+      "Bash(gh auth token:*)",
+      "Bash(git worktree remove --force*)",
+      "Bash(git worktree remove * --force*)",
+      "Bash(git worktree remove -f*)",
+      "Bash(git worktree remove * -f*)",
+      "Bash(git commit --no-verify*)",
+      "Bash(git commit * --no-verify*)",
+      "Bash(git commit -n*)",
+      "Bash(git commit * -n *)",
+      "Bash(git add -A*)",
+      "Bash(git add --all*)",
+      "Bash(git add .)",
+      "Bash(git add . *)"
     ]
   }
 }

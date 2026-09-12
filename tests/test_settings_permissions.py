@@ -146,8 +146,30 @@ def test_the_destructive_git_verbs_stay_denied():
         "git checkout .",
         "git stash drop",
         "git filter-branch --tree-filter true HEAD",
+        # same data loss as reset --hard, reached through a different verb
+        "git worktree remove --force .claude/worktrees/x",
+        "git worktree remove .claude/worktrees/x --force",
+        # skipping the hooks is how unformatted or fixture-corrupting work lands
+        "git commit --no-verify -m wip",
+        "git commit -m wip --no-verify",
+        "git commit -n -m wip",
+        # stage-everything publishes whatever .gitignore happens to miss
+        "git add -A",
+        "git add --all",
+        "git add .",
     ):
         assert _covered("deny", cmd), f"no deny rule covers {cmd!r}"
+
+
+def test_the_ordinary_forms_of_those_verbs_still_work():
+    """A deny added above must not take the everyday spelling with it."""
+    for cmd in (
+        "git commit -m 'fix: thing'",
+        "git add src/carrel/commands/pack.py tests/test_pack.py",
+        "git worktree remove .claude/worktrees/x",
+    ):
+        assert not _covered("deny", cmd), f"a deny rule blocks the ordinary {cmd!r}"
+        assert _covered("allow", cmd), f"no allow rule covers {cmd!r}"
 
 
 def test_the_release_loop_commands_are_allowed():

@@ -165,6 +165,14 @@ refspec (a force push spelled without the flag), `--mirror`, `--delete`,
 bundled `-fu` spelling, and git's own `git -C …`/`git -c … push` prefix forms,
 which no rule anchored on the literal text `git push` can see.
 
+The same reasoning applies to the other broad grants, so the deny list also
+names `git worktree remove --force` (it discards uncommitted work, exactly like
+`git reset --hard`), `git commit --no-verify`/`-n` (it skips the hooks, which is
+how unformatted or fixture-corrupting work lands), and `git add -A`/`--all`/`.`
+(they stage whatever `.gitignore` happens to miss, against CLAUDE.md's rule
+about generated junk). Naming a path to `git add` still works, which is what the
+release loop does.
+
 Your own `.claude/settings.local.json` is git-ignored and takes precedence, so a
 local `ask` entry still overrides an `allow` here. This file sets the floor for
 a fresh clone, not a ceiling on your machine — but note that a `deny` cannot be
