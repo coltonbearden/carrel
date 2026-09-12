@@ -106,12 +106,12 @@ and the hook answers (one line, shown wrapped):
   "hookEventName":"PreToolUse",
   "permissionDecision":"allow",
   "updatedInput":{"file_path":"~/.cache/carrel-guard/9cf65504…3683ca/b.txt","limit":40},
-  "additionalContext":"carrel-guard: .../tests/fixtures/b.pdf was converted to text at ~/.cache/carrel-guard/9cf65504…3683ca/b.txt (135 chars). Original left untouched."}}
+  "additionalContext":"carrel-guard: .../tests/fixtures/b.pdf was converted to text at ~/.cache/carrel-guard/9cf65504…3683ca/b.txt (135 chars). The original is untouched — Read .../tests/fixtures/b.pdf directly when layout, diagrams or images matter."}}
 ```
 
 The Read then proceeds on `b.txt` — `offset`/`limit` pass through untouched — and Claude
 sees the `additionalContext` line explaining where the text came from. For anything else
-(a `.md` file, a file over 64 MiB, `carrel` missing, conversion failed or timed out, OCR
+(a `.md` file, a file over 64 MiB, `carrel` missing, conversion failed, OCR
 not installed) the hook prints nothing and the normal Read happens.
 
 The cache lives at `${XDG_CACHE_HOME:-$HOME/.cache}/carrel-guard/<sha256 of the absolute

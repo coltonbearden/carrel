@@ -36,7 +36,7 @@ If the conversion **times out**, the guard says so and lets the Read proceed on 
 independent and an omitted `permissionDecision` means the normal permission flow applies.
 
 If anything is off — not one of those extensions, `carrel` missing, file over 64 MiB,
-conversion failed or timed out, OCR unavailable — the script prints nothing, exits 0, and
+conversion failed, OCR unavailable — the script prints nothing, exits 0, and
 the normal Read happens exactly as it would without the plugin.
 
 **`SessionStart` → `scripts/capabilities.sh`.** Runs `carrel doctor --json` once and adds
@@ -73,6 +73,10 @@ rm -rf "${XDG_CACHE_HOME:-$HOME/.cache}/carrel-guard"
 | `CARREL_GUARD_OCR_IMAGES` | `0` | `1` OCRs `.png/.jpg/.jpeg/.ico` instead of letting Claude see them |
 | `CARREL_GUARD_PDF_TEXT` | `1` | `0` leaves PDFs to the visual `Read` instead of converting them to text |
 | `CARREL_GUARD_MAX_BYTES` | `67108864` | files larger than this (64 MiB) are left to the plain Read |
+
+Every toggle reads the same way: `0`, `false`, `no` or `off` (any case) is off, anything else
+is on. `hooks/hooks.json` caps this hook at **60 s**, so a `CARREL_GUARD_TIMEOUT` above that
+cannot be reached — Claude Code kills the hook first and nothing is printed.
 | `CARREL_GUARD_DOCTOR_TIMEOUT` | `20` | seconds allowed for `carrel doctor` at session start |
 
 ## Try it by hand

@@ -654,8 +654,8 @@ def test_read_guard_converts_pdf_and_rewrites_read_input(tmp_path: Path):
     assert ctx.startswith("carrel-guard: ")
     assert str(src.resolve()) in ctx and str(txt) in ctx
     assert f"({len(txt.read_bytes().decode())} chars)" in ctx  # wc -m counts CR too
-    assert "The original is untouched at" in ctx
-    assert "Read it directly" in ctx  # ...and when to prefer it
+    assert "The original is untouched" in ctx
+    assert "directly when layout" in ctx  # ...and when to prefer it
     assert src.read_bytes() == (REPO / "tests" / "fixtures" / "b.pdf").read_bytes()
 
     # Second run reuses the cached text (no rewrite) and rewrites only file_path.
@@ -725,11 +725,12 @@ def test_claude_plugin_validate():
         assert "Validation passed" in output, f"{target}: {output}"
 
 
-# ------------------------------------- the guard's defaults (v0.5.0, D-020)
+# ----------------------------------------- the guard's defaults (D-020)
 
 
 @needs_bash
 @needs_carrel
+@needs("tesseract")
 def test_read_guard_leaves_images_to_claudes_vision_by_default(tmp_path: Path):
     """`Read` returns a PNG as a picture Claude can see (tools reference).
 
@@ -787,7 +788,7 @@ def test_read_guard_names_the_original_in_its_context_line(tmp_path: Path):
     assert proc.returncode == 0, proc.stderr
     ctx = json.loads(proc.stdout)["hookSpecificOutput"]["additionalContext"]
     assert str(src.resolve()) in ctx, ctx
-    assert "Read it directly" in ctx, ctx
+    assert "directly when layout" in ctx, ctx
 
 
 @needs_bash
