@@ -15,7 +15,7 @@ from click.testing import CliRunner
 from conftest import needs
 
 from carrel.cli import cli
-from carrel.commands.ocr import default_dest, ocr_file
+from carrel.commands.ocr import _lang_pack_hint, default_dest, ocr_file
 from carrel.core import adapters
 
 # ------------------------------------------------------------------ helpers
@@ -182,7 +182,7 @@ def test_missing_language_pack_hint_image(fixtures, tmp_path: Path):
         cli, ["ocr", str(fixtures / "scanned.png"), "--lang", "xyz", "-o", str(tmp_path / "o.txt")]
     )
     assert result.exit_code == 3
-    assert "hint:" in result.stderr and "xyz" in result.stderr
+    assert f"  hint: {_lang_pack_hint('xyz')}" in result.stderr
 
 
 @needs("ocrmypdf")
@@ -191,7 +191,7 @@ def test_missing_language_pack_hint_pdf(fixtures, tmp_path: Path):
         cli, ["ocr", str(fixtures / "scanned.pdf"), "--lang", "xyz", "-o", str(tmp_path / "o.txt")]
     )
     assert result.exit_code == 3
-    assert "hint:" in result.stderr and "xyz" in result.stderr
+    assert f"  hint: {_lang_pack_hint('xyz')}" in result.stderr
 
 
 # --------------------------------------------------------- input validation

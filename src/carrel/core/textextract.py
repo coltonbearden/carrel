@@ -11,6 +11,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, ClassVar, TextIO
 
+from carrel._product import PRODUCT
 from carrel.core import adapters
 from carrel.core.filetypes import FileType, detect_or_die
 from carrel.core.output import CarrelInputError
@@ -31,7 +32,10 @@ OPENPYXL = adapters.Adapter(
     binaries=("openpyxl",),
     version_args=(),
     hints=adapters.Hints(
-        anywhere="uv tool install 'carrel[office]'  (from a checkout: uv sync --extra office)"
+        anywhere=(
+            f"uv tool install '{PRODUCT['package']}[office]' "
+            "(from a checkout: uv sync --extra office)"
+        )
     ),
     purpose="read .xlsx workbooks (xlsx → text/csv/json, inspect)",
 )

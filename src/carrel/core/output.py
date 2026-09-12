@@ -60,19 +60,28 @@ def emit(ctx: click.Context | None, data: Any, human: Callable[[Any], None] | No
         rprint(data)
 
 
-def fail(msg: str, code: ExitCode = ExitCode.ERROR) -> NoReturn:
-    """Report an error and exit; under `--json` the report is itself JSON.
+def error_line(msg: str, code: ExitCode = ExitCode.ERROR) -> str:
+    """One stderr line for an error — JSON under `--json`, `error: ...` otherwise.
 
-    stdout stays exactly as it was — the data channel is never mixed with the
-    error channel — but a caller piping `--json` had to parse English out of
-    stderr to learn anything more than the exit code, and the exit code is what
-    a *shell* sees, not what an MCP client or a `subprocess` reading stderr does.
+    stdout is never touched: the data channel and the error channel stay apart.
+    But a caller piping `--json` had to parse English out of stderr to learn
+    anything beyond the exit code, and the exit code is what a *shell* sees, not
+    what an MCP client or a `subprocess` reading stderr does.
+
+    Every error carrel prints goes through here — `fail`, and the per-file loops
+    in `convert` and `thumb` that report an error per source and keep going. The
+    one exception is `click.UsageError` (a malformed command line), which click
+    renders itself with the `Usage:` banner that is the answer to it.
     """
     ctx = click.get_current_context(silent=True)
     if ctx is not None and ctx.obj and ctx.obj.get("json"):
-        click.echo(json.dumps({"error": msg, "exit_code": int(code)}), err=True)
-    else:
-        click.echo(f"error: {msg}", err=True)
+        return json.dumps({"error": msg, "exit_code": int(code)})
+    return f"error: {msg}"
+
+
+def fail(msg: str, code: ExitCode = ExitCode.ERROR) -> NoReturn:
+    """Report an error on stderr and exit with its code."""
+    click.echo(error_line(msg, code), err=True)
     sys.exit(int(code))
 
 

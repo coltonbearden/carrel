@@ -44,6 +44,6 @@ Note: `--json` is a **global** flag and may come before the subcommand.
 - `--rate`: words per minute (80–450); `--voice`: engine-specific voice name or piper model path.
 - `--force`: only when the user explicitly wants an existing output overwritten.
 
-Interpret the JSON result `{src, outputs, engine, duration_s, chars}`: tell the user which engine spoke, the output file(s), and the duration. Exit code 3 means a TTS engine or ffmpeg is missing — relay the install hint from stderr (espeak-ng is the minimal engine: `sudo apt install espeak-ng`; suggest `--format wav` when ffmpeg is absent).
+Interpret the JSON result `{src, outputs, engine, duration_s, chars}`: tell the user which engine spoke, the output file(s), and the duration. Exit code 3 means a TTS engine or ffmpeg is missing — relay the install hint from stderr verbatim — it names the package for the user's own platform (espeak-ng is the minimal engine; suggest `--format wav` when ffmpeg is absent).
 
 **Requires the carrel CLI on PATH.** If `carrel` is not found, tell the user to install it with `uv tool install carrel` (see the repo's INSTALL notes), or run it as `uv run carrel ...` from the carrel repo root.

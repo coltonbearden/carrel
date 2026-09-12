@@ -11,6 +11,7 @@ override counts as missing (never a silent fallback) and the error names it.
 
 from __future__ import annotations
 
+import functools
 import os
 import shutil
 import subprocess
@@ -69,41 +70,67 @@ class Hints:
     url: str | None = None
 
 
-#: the binary that proves a package manager is usable here
-_MANAGER_BIN = {"apt": "apt", "brew": "brew", "winget": "winget"}
-#: which manager to name first, by platform
-_MANAGER_ORDER = {
-    "darwin": ("brew", "winget", "apt"),
-    "win32": ("winget", "brew", "apt"),
-}
-_DEFAULT_ORDER = ("apt", "brew", "winget")
+#: manager → the command that installs a package with it. One table, keyed by the
+#: manager name, which is also the binary to look for on PATH.
 _INSTALL_CMD = {
     "apt": "sudo apt install {}",
     "brew": "brew install {}",
     "winget": "winget install --id {}",
 }
+#: Platforms with one conventional manager, worth naming even when it is absent:
+#: "install Homebrew, then this" is a real answer on a Mac. **Linux is not one of
+#: them** — `sys.platform` is "linux" for Debian and Fedora alike, and `sudo apt
+#: install` is exactly as useless on Fedora as it was on macOS. A Debian box has
+#: `apt` on PATH and is served by the loop below; anything else is told the
+#: package's name under each manager we know instead.
+_MANAGER_ORDER = {
+    "darwin": ("brew", "winget", "apt"),
+    "win32": ("winget", "brew", "apt"),
+}
+_ANY_ORDER = ("apt", "brew", "winget")
+
+
+@functools.cache
+def _manager_present(manager: str) -> bool:
+    """Whether `manager` is on PATH. Cached: `doctor` asks once per missing adapter.
+
+    `shutil.which` has no cache of its own and walks PATH every call — with
+    nineteen adapters and three managers that is up to 57 full scans for a report
+    that used to render constant strings, and `@needs(...)` asks again at test
+    collection.
+    """
+    return shutil.which(manager) is not None
 
 
 def render_hint(hints: Hints, name: str) -> str:
     """The install line to show *here*: this platform's manager, then any usable one.
 
-    Picked at render time rather than baked in, so one wheel serves every
-    platform. A manager actually on PATH wins; failing that the platform's
-    conventional one is still named, because "install Homebrew, then this" is a
-    better answer than silence.
+        Picked at render time rather than baked in, so one wheel serves every
+        platform. A manager actually on PATH wins; failing that the platform's
+        conventional one is still named, because "install Homebrew, then this" is a
+        better answer than silence.
+
+    On a Linux that is not Debian-derived there *is* no conventional manager to
+        fall back to — dnf, pacman, zypper and apk all name these packages
+        differently, and `sys.platform` cannot tell them apart — so rather than print
+        `sudo apt install …` at a Fedora user (the same advice that cannot work which
+        this function exists to stop printing at Mac users) the known package names
+        are listed with the manager each belongs to.
     """
-    order = _MANAGER_ORDER.get(sys.platform, _DEFAULT_ORDER)
-    # a manager actually on PATH first — a WSL box with brew, a Mac with apt via
-    # a port tree — since that is a command the user can run right now
-    for manager in order:
-        if getattr(hints, manager) and shutil.which(_MANAGER_BIN[manager]):
+    order = _MANAGER_ORDER.get(sys.platform, _ANY_ORDER)
+    named = [m for m in order if getattr(hints, m)]
+    for manager in named:
+        if _manager_present(manager):
             return _INSTALL_CMD[manager].format(getattr(hints, manager))
-    # else the platform's *own* manager, if it packages this at all: "install
-    # Homebrew, then this" is a good answer on a Mac, and `brew install` is a
-    # useless one on Windows, so the fallback never crosses platforms.
-    primary = order[0]
-    if getattr(hints, primary):
-        return _INSTALL_CMD[primary].format(getattr(hints, primary))
+    # nothing usable is installed. On a platform whose manager we know, name it
+    # anyway — the package name is the useful half and Homebrew is installable.
+    if sys.platform in _MANAGER_ORDER:
+        primary = order[0]
+        if getattr(hints, primary):
+            return _INSTALL_CMD[primary].format(getattr(hints, primary))
+    elif named:  # unknown distro/platform: the package under each name we know
+        spellings = ", ".join(f"{getattr(hints, m)} ({m})" for m in named)
+        return f"no known package manager on PATH — the package is {spellings}"
     # `anywhere` is the fallback, not the first choice: `weasyprint` has a Debian
     # package and a pipx one, and on Debian `apt` is the better answer — pipx is
     # what to say on the platform where nothing native exists.

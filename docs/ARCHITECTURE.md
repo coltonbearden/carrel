@@ -54,8 +54,19 @@ class Adapter:
     name: str            # e.g. "pandoc"
     binaries: tuple[str, ...]   # candidates in order, e.g. ("magick", "convert")
     version_args: tuple[str, ...]
-    install_hint: str    # "sudo apt install pandoc"
+    hints: Hints         # per-manager package names; see below
     purpose: str
+
+    @property
+    def install_hint(self) -> str: ...   # rendered for *this* platform
+
+@dataclass(frozen=True, slots=True)
+class Hints:
+    apt: str | None = None       # "pandoc"
+    brew: str | None = None      # "pandoc"
+    winget: str | None = None    # "JohnMacFarlane.Pandoc"
+    anywhere: str | None = None  # one cross-platform command, e.g. "pipx install edge-tts"
+    url: str | None = None       # vendor page when nothing packages it
 
 ADAPTERS: dict[str, Adapter]                 # single registry, used by doctor
 have(name) -> bool
@@ -72,6 +83,14 @@ error: 'pandoc' is required for this operation but was not found (override CARRE
   purpose: document conversion hub (md/html/txt…)
   install: sudo apt install pandoc
 ```
+
+The `install:` line is rendered per platform (`adapters.render_hint`): a package
+manager actually on `PATH` first, then the platform's conventional one — but
+never another platform's, and never `apt` on a Linux without `apt`, since
+`sys.platform` cannot tell Debian from Fedora. On macOS that same error ends
+`install: brew install pandoc`. Package names are only ever added to `Hints`
+after being resolved against the real registry (`formulae.brew.sh`,
+`winget search`); a wrong package name is worse than none.
 
 `doctor` shows `found via CARREL_BIN_PANDOC` / `MISSING via CARREL_BIN_PANDOC`, and its `--json` adapter rows carry `"override": {"var", "path"}` or `null`. This is the single exception to config-free; details in [CONFIGURATION.md](CONFIGURATION.md#pinning-a-binary-carrel_bin_name).
 

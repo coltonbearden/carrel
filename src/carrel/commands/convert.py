@@ -53,7 +53,7 @@ import click
 
 from carrel.core import adapters, textextract
 from carrel.core.filetypes import FileType, detect_or_die
-from carrel.core.output import CarrelError, CarrelInputError, debugging, emit
+from carrel.core.output import CarrelError, CarrelInputError, debugging, emit, error_line
 from carrel.core.textextract import read_text_file
 
 ICO_SIZES = (16, 32, 48, 64, 128, 256)
@@ -913,7 +913,7 @@ def cmd(
             results.append(
                 {"src": str(src), "dest": str(dest), "via": None, "ok": False, "error": str(e)}
             )
-            click.echo(f"error: {e}", err=True)
+            click.echo(error_line(str(e), e.exit_code), err=True)
             first_err = first_err or int(e.exit_code)
     emit(ctx, results, human=_human)
     if first_err:

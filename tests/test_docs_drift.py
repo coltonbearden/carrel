@@ -385,12 +385,21 @@ def test_the_count_scanners_are_not_vacuous():
 
 
 def test_the_history_exemption_is_load_bearing():
-    """`HISTORY` files really do state counts, so excluding them is not cosmetic."""
+    """`HISTORY` files really do state counts, so excluding them is not cosmetic.
+
+    Located explicitly, not by `rglob`: two `CHANGELOG.md` exist (the root and
+    `docs/`), so a walk could assert against whichever it reached first — and it
+    would descend `.venv`, where a dependency's own CHANGELOG is a candidate
+    match. A renamed HISTORY file now fails with this test's message rather than
+    a bare `StopIteration`.
+    """
+    found = {name: [REPO_ROOT / name, DOCS / name] for name in HISTORY}
+    missing = sorted(n for n, paths in found.items() if not any(p.is_file() for p in paths))
+    assert not missing, f"HISTORY names no existing file: {missing}"
     stated = [
         name
-        for name in HISTORY
-        if any(
-            TEST_COUNT_RE.search(line) for line in _read(next(REPO_ROOT.rglob(name))).splitlines()
-        )
+        for name, paths in found.items()
+        for path in paths
+        if path.is_file() and any(TEST_COUNT_RE.search(line) for line in _read(path).splitlines())
     ]
     assert stated, "no HISTORY file states a test count — is the exemption still needed?"

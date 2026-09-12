@@ -6,8 +6,12 @@
   stderr — `{"error": "...", "exit_code": N}` — instead of `error: ...`. stdout is unchanged
   and still the data channel. A caller that pipes `--json` had to parse English out of stderr
   to learn anything beyond the exit code, and the exit code is what a *shell* sees, not what an
-  MCP client or a `subprocess` reading stderr does. Scripts that grep stderr for `error:` under
-  `--json` need updating; without `--json` nothing changed.
+  MCP client or a `subprocess` reading stderr does. Every error carrel itself prints goes
+  through one formatter — `fail`, the top-level handler in `cli.py`, and the per-file loops in
+  `convert` and `thumb` that report an error per source and keep going. The one exception is
+  `click.UsageError` (a malformed command line, exit 2), which click renders itself with the
+  `Usage:` banner that is the answer to it. Scripts that grep stderr for `error:` under `--json`
+  need updating; without `--json` nothing changed.
 - **Changed (behaviour, `redact`):** `--builtin` is repeatable, like `--pattern`. It took one
   comma list, so a second `--builtin` silently *replaced* the first —
   `--builtin email --builtin iban` redacted IBANs and left every address in place, reporting
@@ -22,7 +26,13 @@
   the hint says so and gives the vendor page (`icotool`, `readpst` on Windows); where the tool
   is a Python package it falls back to `pipx` only on the platform with no native package.
   Every package name was resolved against the real registry — `formulae.brew.sh` and
-  `winget search` — because a confidently wrong package name is worse than no hint.
+  `winget search` — because a confidently wrong package name is worse than no hint. A Linux
+  with no manager we recognise is **not** told to use `apt`: `sys.platform` is `linux` for
+  Debian and Fedora alike, so a box without `apt` on `PATH` gets the package's name under each
+  manager instead. `docs/INSTALL.md` gains the same data as a table, and the six plugin docs
+  that told an agent to relay `sudo apt install …` now tell it to relay the hint carrel
+  printed. A test fails on any `apt|brew|winget|dnf|yum|pacman|…` install command in shipped
+  code or a plugin doc.
 - **Fixed:** `README.md` claimed 855 tests and ten cookbook recipes, `docs/CONTRIBUTING.md`
   claimed 501 tests; the live numbers are 1062 and 12. Counts nobody regenerates are wrong
   within a week, so the live docs no longer state them, and

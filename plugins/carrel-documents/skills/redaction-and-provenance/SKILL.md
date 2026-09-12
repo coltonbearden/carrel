@@ -19,7 +19,7 @@ A PDF redaction that draws a black box over text leaves the text in the file —
 
 - Nothing is recoverable from the output — that is the point.
 - The output is an image PDF: **not searchable, not selectable, larger**, and its metadata (title/author) is not carried over. `carrel inspect OUT --json` shows `pages` but no `title`.
-- It needs tesseract (matches are located by OCR-ing the render); exit 3 → `sudo apt install tesseract-ocr`. Scanned PDFs work the same way; born-digital ones lose their text layer deliberately.
+- It needs tesseract (matches are located by OCR-ing the render); exit 3 carries the install hint for the user's platform — relay it verbatim. Scanned PDFs work the same way; born-digital ones lose their text layer deliberately.
 - Verification: `carrel convert OUT --to txt -o check.txt` must yield an empty/near-empty file. A PDF redaction with **zero matches** still rasterizes — check the JSON match counts, and when they are 0 say so instead of shipping a pointless image PDF.
 
 **Re-OCR afterwards** when the recipient needs a searchable file: `carrel ocr OUT.redacted.pdf --to pdf -o OUT.redacted.searchable.pdf`. OCR reads only what is visible, so painted-over words cannot come back — but grep the OCR text (`carrel convert ... --to txt`) for your patterns anyway; near-misses (a partially covered digit run) are what you are looking for.

@@ -101,7 +101,7 @@ def test_require_missing_binary_raises_with_hint(monkeypatch):
         adapters.require("frobnicator")
     msg = str(exc.value)
     assert "frobnicator" in msg
-    assert "frobnicator" in msg.lower()  # actionable install hint, in this platform's words
+    assert fake.install_hint in msg  # actionable install hint, in this platform's words
     assert exc.value.exit_code == ExitCode.MISSING_DEP == 3
     assert adapters.version_of("frobnicator") is None
 
@@ -191,7 +191,7 @@ def test_override_nonexistent_path_counts_as_missing(monkeypatch):
         adapters.require("pandoc")
     msg = str(exc.value)
     assert "override CARREL_BIN_PANDOC=/nonexistent/dir/pandoc not found" in msg
-    assert "pandoc" in msg.lower()  # install hint still present
+    assert ADAPTERS["pandoc"].install_hint in msg  # install hint still present
     assert exc.value.exit_code == 3
 
 
@@ -256,7 +256,8 @@ def test_doctor_json_marks_stale_override_missing(monkeypatch):
     assert row["found"] is False and row["path"] is None
     assert row["override"] == {"var": "CARREL_BIN_PANDOC", "path": "/nonexistent"}
     assert "CARREL_BIN_PANDOC=/nonexistent not found" in row["install_hint"]
-    assert "pandoc" in row["install_hint"].lower()
+    # the prefix names the stale override; the hint itself must still be there
+    assert row["install_hint"].endswith(ADAPTERS["pandoc"].install_hint)
     # human table names the override too
     human = CliRunner().invoke(cli, ["doctor"])
     assert human.exit_code == 0
@@ -296,12 +297,21 @@ def test_doctor_adapter_list_matches_registry():
 
 
 def _hint(adapter: str, platform: str, on_path: str | None) -> str:
-    """`adapter`'s hint as rendered on `platform` with only `on_path` installed."""
-    with (
-        mock.patch.object(sys, "platform", platform),
-        mock.patch.object(adapters.shutil, "which", lambda b: b if b == on_path else None),
-    ):
-        return ADAPTERS[adapter].install_hint
+    """`adapter`'s hint as rendered on `platform` with only `on_path` installed.
+
+    `_manager_present` is `lru_cache`d — `doctor` asks once per missing adapter —
+    so the cache has to be dropped around a patched `shutil.which` or the first
+    scenario's answer serves every later one.
+    """
+    adapters._manager_present.cache_clear()
+    try:
+        with (
+            mock.patch.object(sys, "platform", platform),
+            mock.patch.object(adapters.shutil, "which", lambda b: b if b == on_path else None),
+        ):
+            return ADAPTERS[adapter].install_hint
+    finally:
+        adapters._manager_present.cache_clear()
 
 
 @pytest.mark.parametrize(
@@ -354,6 +364,14 @@ def test_every_adapter_has_a_hint_on_every_platform():
             assert hint and not hint.endswith("ensure it is on PATH"), (name, platform, hint)
 
 
+#: every package manager whose install command names a platform. `uv`/`pipx`
+#: installs are manager-neutral and stay legal.
+PLATFORM_INSTALL_RE = re.compile(
+    r"\b(?:apt|apt-get|brew|winget|dnf|yum|pacman|zypper|apk|choco|scoop|port)"
+    r"\s+(?:-\S+\s+)*install\b"
+)
+
+
 def test_no_shipped_code_hardcodes_one_platforms_install_command():
     """A Debian-only hint is how this started, and it hid in `ocr` too.
 
@@ -362,13 +380,20 @@ def test_no_shipped_code_hardcodes_one_platforms_install_command():
     because `test-minimal (macos)` failed. Every install line goes through
     `render_hint` now, so the manager names belong in this module alone.
     """
-    src = Path(__file__).resolve().parent.parent / "src"
+    root = Path(__file__).resolve().parent.parent
+    scanned = [
+        *(root / "src").rglob("*.py"),
+        # the files a Claude Code agent reads and relays verbatim — a Mac user
+        # gets `sudo apt install pst-utils` out of a plugin doc just as surely as
+        # out of the CLI, and the plugin docs were the half this test first missed
+        *(root / "plugins").rglob("*.md"),
+    ]
     offenders = [
-        f"{p.relative_to(src.parent).as_posix()}:{n}: {line.strip()}"
-        for p in src.rglob("*.py")
-        if p.name != "adapters.py"
-        for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
-        if re.search(r"\b(?:apt|brew|winget)\s+install\b", line)
+        f"{q.relative_to(root).as_posix()}:{n}: {line.strip()}"
+        for q in scanned
+        if q.name != "adapters.py"
+        for n, line in enumerate(q.read_text(encoding="utf-8").splitlines(), 1)
+        if PLATFORM_INSTALL_RE.search(line)
     ]
     assert not offenders, "\n".join(
         ["install commands belong in adapters.Hints, rendered per platform:", *offenders]
@@ -376,8 +401,45 @@ def test_no_shipped_code_hardcodes_one_platforms_install_command():
 
 
 def test_that_scanner_is_not_vacuous():
-    assert re.search(
-        r"\b(?:apt|brew|winget)\s+install\b", "  hint: sudo apt install tesseract-ocr-deu"
-    )
-    assert re.search(r"\b(?:apt|brew|winget)\s+install\b", 'return "brew install pandoc"')
-    assert not re.search(r"\b(?:apt|brew|winget)\s+install\b", "uv tool install 'carrel[office]'")
+    assert PLATFORM_INSTALL_RE.search("  hint: sudo apt install tesseract-ocr-deu")
+    assert PLATFORM_INSTALL_RE.search('return "brew install pandoc"')
+    assert PLATFORM_INSTALL_RE.search("run `apt-get install poppler-utils` first")
+    assert PLATFORM_INSTALL_RE.search("choco install ffmpeg")
+    # ...and the manager-neutral installs carrel really does document stay legal
+    assert not PLATFORM_INSTALL_RE.search("uv tool install 'carrel[office]'")
+    assert not PLATFORM_INSTALL_RE.search("pipx install edge-tts")
+
+
+def test_a_linux_without_apt_is_not_told_to_use_apt():
+    """`sys.platform` is "linux" for Debian and Fedora alike (finding: the first
+    version of this fix moved "advice that cannot work" from macOS to every
+    RPM distro). A box with no manager we know gets the package names instead."""
+    hint = _hint("pdftotext", "linux", None)
+    assert "apt install" not in hint
+    assert "poppler-utils (apt)" in hint and "poppler (brew)" in hint
+
+
+def test_a_debian_box_is_still_served_by_apt():
+    assert _hint("pdftotext", "linux", "apt") == "sudo apt install poppler-utils"
+
+
+def test_manager_presence_is_cached_not_rescanned_per_adapter():
+    """`doctor` renders a hint per missing adapter; PATH must not be walked each time."""
+    adapters._manager_present.cache_clear()
+    calls: list[str] = []
+
+    def counting(binary: str) -> str | None:
+        calls.append(binary)
+        return "/usr/bin/apt" if binary == "apt" else None
+
+    try:
+        with (
+            mock.patch.object(sys, "platform", "linux"),
+            mock.patch.object(adapters.shutil, "which", counting),
+        ):
+            for name in ADAPTERS:
+                _ = ADAPTERS[name].install_hint
+        assert sorted(set(calls)) == calls or len(set(calls)) <= 3
+        assert len(calls) <= 3, f"PATH scanned {len(calls)} times for 3 managers"
+    finally:
+        adapters._manager_present.cache_clear()

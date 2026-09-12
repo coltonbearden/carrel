@@ -70,7 +70,10 @@ def _engine_error(engine: str, proc: subprocess.CompletedProcess[str], lang: str
     detail = (proc.stderr or proc.stdout or "").strip()
     msg = f"{engine} failed (rc={proc.returncode}): {detail}"
     if any(marker in detail.lower() for marker in _LANG_ERR_MARKERS):
-        hints = "\n".join(f"  hint: {_lang_pack_hint(code)}" for code in lang.split("+"))
+        # deduplicated in order: only the Debian hint names the language code, so
+        # `--lang deu+fra+spa` on a Mac would otherwise print one line three times
+        rendered = dict.fromkeys(_lang_pack_hint(code) for code in lang.split("+"))
+        hints = "\n".join(f"  hint: {h}" for h in rendered)
         return LanguagePackError(f"{msg}\n{hints}")
     return CarrelError(msg)
 
