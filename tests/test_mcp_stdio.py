@@ -17,6 +17,8 @@ from pathlib import Path
 
 import pytest
 
+from carrel.commands.mcp import TOOLS
+
 TIMEOUT = 60
 
 
@@ -487,6 +489,129 @@ class TestMcpProtocolVersion:
     def test_anything_else_gets_the_newest_supported_version(self, tmp_path, requested):
         """Echoing an unknown string would claim a revision never run against."""
         assert self.initialize(tmp_path, requested) == "2025-06-18"
+
+
+# --------------------------------------------------------------------------
+# the boundary, checked against every tool the registry declares
+#
+# Both boundary escapes found in review were "one more tool also does this":
+# symlinked files in four walkers, then `carrel_mail` as a fifth. Naming the
+# tools in a test reproduces that failure — the next tool is missed the same
+# way. These two drive the whole of `TOOLS` and derive their arguments from each
+# tool's own schema, so a tool added tomorrow is covered the day it is added.
+# --------------------------------------------------------------------------
+
+
+def tool_cases() -> list[tuple[str, str | None]]:
+    """Every (tool, action) pair the registry declares.
+
+    A tool is not the unit of behaviour here: `carrel_mail attachments` reads the
+    files it is handed while `carrel_mail threads` walks a directory, and only the
+    second could escape the root. A per-tool test exercised the first action of
+    each and passed with the `threads` boundary reverted — checked, not assumed.
+    """
+    cases: list[tuple[str, str | None]] = []
+    for tool in TOOLS:
+        action = tool["inputSchema"]["properties"].get("action")
+        if action:
+            cases += [(tool["name"], value) for value in action["enum"]]
+        else:
+            cases.append((tool["name"], None))
+    return cases
+
+
+TOOL_CASES = tool_cases()
+CASE_IDS = [f"{name}:{action}" if action else name for name, action in TOOL_CASES]
+
+
+def minimal_args(tool: dict, action: str | None, *, outside_file: Path, outside_dir: Path) -> dict:
+    """Arguments satisfying `tool`'s required set, every path-shaped one outside the root."""
+    values: dict[str, object] = {
+        "query": "anything",
+        "path": str(outside_file),
+        "paths": [str(outside_file)],
+        "a": str(outside_file),
+        "b": str(outside_file),
+        "to": "txt",
+        "out_dir": str(outside_dir),
+        "body": "a note",
+        "tags": ["t"],
+        "keys": ["k"],
+        "key": "k",
+        "fields": {"k": "v"},
+        "conditions": ["k?"],
+    }
+    schema = tool["inputSchema"]
+    args = {k: values[k] for k in schema.get("required", []) if k in values}
+    if action is not None:
+        # the action under test, plus everything any action of this tool needs
+        args["action"] = action
+        args |= {
+            k: values[k]
+            for k in ("path", "tags", "body", "fields", "keys", "key", "conditions", "out_dir")
+            if k in schema["properties"]
+        }
+    return args
+
+
+@pytest.mark.parametrize(("name", "action"), TOOL_CASES, ids=CASE_IDS)
+def test_every_tool_refuses_a_root_outside_the_server_root(tmp_path, name, action):
+    """`root` is on all fourteen schemas, so all fourteen must refuse an outside one."""
+    desk = tmp_path / "desk"
+    desk.mkdir()
+    make_tree(desk)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secret.txt").write_text("the passphrase is hunter2\n")
+
+    tool = next(t for t in TOOLS if t["name"] == name)
+    if "root" not in tool["inputSchema"]["properties"]:
+        pytest.skip(f"{name} takes no root")  # carrel_doctor
+    args = minimal_args(tool, action, outside_file=outside / "secret.txt", outside_dir=outside)
+    args["root"] = str(outside)
+
+    proc = run_server([tool_call(1, name, args)], desk)
+
+    assert proc.returncode == 0, proc.stderr
+    is_error, payload = tool_payload(parse_lines(proc.stdout)[0])
+    assert is_error is True, payload
+    assert "outside the server root" in payload["error"], payload
+    assert "hunter2" not in proc.stdout
+
+
+@pytest.mark.skipif(os.name == "nt", reason="symlink creation needs privileges on Windows")
+@pytest.mark.parametrize(("name", "action"), TOOL_CASES, ids=CASE_IDS)
+def test_no_tool_reads_through_a_symlink_planted_in_the_desk(tmp_path, name, action):
+    """Whatever a tool does with a directory, it must not read out of the root doing it.
+
+    The tools that walk are not identifiable from the schema, so this runs all of
+    them against a desk holding links to a secret and asserts the marker never
+    reaches stdout. A sixth walker is caught the day it lands.
+    """
+    desk = tmp_path / "desk"
+    desk.mkdir()
+    make_tree(desk)  # creates desk/sub
+    secret = tmp_path / "secret.txt"
+    secret.write_text("the passphrase is hunter2\n")
+    (tmp_path / "secret.eml").write_text("Subject: hunter2-subject\n\nhunter2 body\n")
+    for link in ("sub/leak.txt", "sub/leak.md", "sub/leak.eml", "sub/leak.csv"):
+        (desk / link).symlink_to(secret if not link.endswith(".eml") else tmp_path / "secret.eml")
+
+    tool = next(t for t in TOOLS if t["name"] == name)
+    args = minimal_args(tool, action, outside_file=desk, outside_dir=desk / "out")
+    for key in ("path", "a", "b"):  # aim every tool at the desk directory itself
+        if key in args:
+            args[key] = "."
+    if "paths" in args:
+        args["paths"] = ["."]
+
+    # "passphrase", not the marker: a search echoes its own query back
+    proc = run_server(
+        [tool_call(1, name, args), tool_call(2, "carrel_search", {"query": "passphrase"})], desk
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "hunter2" not in proc.stdout, f"{name} read through the symlink"
 
 
 if __name__ == "__main__":
