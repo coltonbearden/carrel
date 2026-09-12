@@ -92,8 +92,15 @@ def ancestor_ignores(top: Path, stop_at: Path | None = None) -> tuple[IgnoreFile
         stop_at = stop_at.resolve()
         if top == stop_at:
             return ()  # top's own .gitignore is loaded by the walk itself
-        if top.is_relative_to(stop_at):
-            boundary = stop_at
+        if not top.is_relative_to(stop_at):
+            # `top` is outside the declared scope, so nothing here is a bound
+            # we can trust — and an unbounded walk contributes nothing, for the
+            # reason in the docstring. Letting the repository root bound it
+            # instead would re-open the v0.3.1 incident whenever the tree sits
+            # under a `.gitignore` of `*` inside some repo: a `uv venv` writes
+            # exactly that, and venvs normally live inside a checkout.
+            return ()
+        boundary = stop_at
 
     found: list[IgnoreFile] = []
     bounded = False

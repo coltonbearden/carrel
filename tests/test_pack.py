@@ -24,7 +24,7 @@ from carrel.cli import cli
 from carrel.commands import pack as pack_mod
 from carrel.commands.pack import PackResult, estimate_tokens, pack_paths
 from carrel.core import adapters
-from carrel.core.output import CarrelInputError
+from carrel.core.output import CarrelInputError, ExitCode
 
 # Every write_text below passes newline="\n": byte budgets, content hashes and
 # outline sizes are asserted in bytes, and Windows would otherwise write CRLF.
@@ -144,7 +144,7 @@ def test_xml_parses_with_cdata_intact(proj: Path):
 
 def test_json_format_structure_and_tokens(proj: Path):
     res = run("pack", str(proj), "--format", "json")
-    obj = json.loads(res.output)
+    obj = json.loads(res.stdout)
     assert set(obj) == {"meta", "tree", "files"}
     # 5 = a.txt, docs/readme.md, data.json, sub/notes.txt, .gitignore (text too)
     assert obj["meta"]["files_included"] == len(obj["files"]) == 5
@@ -159,7 +159,7 @@ def test_json_format_structure_and_tokens(proj: Path):
 
 def test_global_json_flag_emits_json_pack(proj: Path):
     res = run("--json", "pack", str(proj))
-    obj = json.loads(res.output)
+    obj = json.loads(res.stdout)
     assert obj["meta"]["files_included"] == 5
 
 
@@ -173,7 +173,7 @@ def test_tree_only_has_no_contents(proj: Path):
         assert "a.txt" in res.output  # listed in tree
         assert "hello world alpha beta" not in res.output
         assert "note line here" not in res.output
-    obj = json.loads(run("pack", str(proj), "--tree-only", "--format", "json").output)
+    obj = json.loads(run("pack", str(proj), "--tree-only", "--format", "json").stdout)
     assert obj["files"] == []
 
 
@@ -245,7 +245,7 @@ def test_chunk_small_file_not_split(proj: Path, tmp_path: Path):
 
 def test_stats_json(proj: Path):
     res = run("--json", "pack", str(proj), "--stats")
-    obj = json.loads(res.output)
+    obj = json.loads(res.stdout)
     assert {"files", "totals"} <= set(obj)
     assert obj["totals"]["included"] == 5
     assert obj["totals"]["tokens_est"] > 0
@@ -318,7 +318,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 def _meta_and_files(res: CliRunner.Result) -> tuple[dict, list[dict]]:
     assert res.exit_code == 0, res.output
-    obj = json.loads(res.output)
+    obj = json.loads(res.stdout)
     return obj["meta"], obj["files"]
 
 
@@ -399,7 +399,10 @@ def test_query_zero_hits_header_and_fail_empty(indexed: Path):
     assert "no hits" in res.output
     res = run("--root", str(indexed), "pack", str(indexed), "--query", "zzzqqq", "--fail-empty")
     assert res.exit_code == 5, res.output
-    assert "no files matched" in res.output
+    # the message names the query and why FTS5 matched nothing, so the caller
+    # can act on it rather than just learning that the result was empty
+    assert "packed no files" in res.stderr and "zzzqqq" in res.stderr, res.stderr
+    assert "FTS5 requires all of them" in res.stderr, res.stderr
 
 
 def test_query_without_index_exits_4(tmp_path: Path):
@@ -414,7 +417,7 @@ def test_query_stats_and_library_api(indexed: Path):
         "--root", str(indexed), "pack", str(indexed), "--query", "sentinel", "--stats", "--json"
     )
     assert res.exit_code == 0, res.output
-    obj = json.loads(res.output)
+    obj = json.loads(res.stdout)
     assert obj["totals"]["query"] == "sentinel" and obj["totals"]["hits"] == 3
     assert all("score" in row for row in obj["files"])
     # library: desk_root defaults to the pack root
@@ -480,9 +483,14 @@ def test_since_packs_exactly_the_changed_files(repo: Path):
 
 
 def test_since_no_changes_and_fail_empty(repo: Path):
-    res = run("pack", str(repo), "--since", "HEAD", "--json")
+    # under --json an empty pack exits 5 by default now; --no-fail-empty keeps
+    # the document and exit 0, and the stderr line is printed either way
+    res = run("pack", str(repo), "--since", "HEAD", "--json", "--no-fail-empty")
     meta, files = _meta_and_files(res)
     assert files == [] and meta["changed"] == 0
+    assert "nothing changed" in res.stderr, res.stderr
+
+    assert run("pack", str(repo), "--since", "HEAD", "--json").exit_code == 5
     res = run("pack", str(repo), "--since", "HEAD", "--fail-empty")
     assert res.exit_code == 5
 
@@ -559,8 +567,21 @@ def test_query_and_since_intersect(repo: Path):
     )
     meta, files = _meta_and_files(res)
     assert [f["path"] for f in files] == ["a.txt"]
+    # the filters intersect to nothing. Whether that counts as an *empty* pack
+    # (and so exits 5 under --json) depends on whether any entry survived the
+    # walk to be listed; `--no-fail-empty` keeps this test about the
+    # intersection rather than about the exit code either way.
     res = run(
-        "--root", str(repo), "pack", str(repo), "--since", "HEAD~1", "--query", "bravo", "--json"
+        "--root",
+        str(repo),
+        "pack",
+        str(repo),
+        "--since",
+        "HEAD~1",
+        "--query",
+        "bravo",
+        "--json",
+        "--no-fail-empty",
     )
     meta, files = _meta_and_files(res)
     assert files == [] and meta["hits"] == 0
@@ -629,12 +650,12 @@ def test_dedupe_content_marks_duplicates(proj: Path):
     paths = [f["path"] for f in files]
     # walk order is dirs-first, so sub/copy2.txt is the first copy seen and wins
     assert "sub/copy2.txt" in paths and "a.txt" not in paths and "copy.txt" not in paths
-    assert json.loads(res.output)["tree"].count("[same as sub/copy2.txt]") == 2
+    assert json.loads(res.stdout)["tree"].count("[same as sub/copy2.txt]") == 2
     md = run("pack", str(proj), "--dedupe-content").output
     assert md.count("hello world alpha beta") == 5  # inlined exactly once
     assert "deduped: 2 identical file(s) not inlined" in md
     # stats carry the same_as field
-    st = json.loads(run("pack", str(proj), "--dedupe-content", "--stats", "--json").output)
+    st = json.loads(run("pack", str(proj), "--dedupe-content", "--stats", "--json").stdout)
     dup = next(r for r in st["files"] if r["path"] == "copy.txt")
     assert dup["same_as"] == "sub/copy2.txt" and dup["skipped"] == "same as sub/copy2.txt"
     assert st["totals"]["deduped"] == 2
@@ -815,7 +836,9 @@ def test_git_queries_ignore_an_inherited_git_dir(
     assert adapters.run("git", "-C", str(other), "commit", "-qm", "o").returncode == 0
 
     monkeypatch.setenv("GIT_DIR", str(other / ".git"))
-    res = run("--json", "pack", str(repo), "--changed", "--tree-only")
+    # --changed finds nothing here, which exits 5 under --json now; the claim
+    # under test is which repository was asked, so opt out of that exit code
+    res = run("--json", "pack", str(repo), "--changed", "--tree-only", "--no-fail-empty")
 
     assert res.exit_code == 0, res.output
     assert "only-in-other.txt" not in res.output
@@ -840,3 +863,288 @@ def test_a_repository_git_refuses_keeps_gits_own_diagnostic(
 
     assert res.exit_code == 4, res.output
     assert "repositoryformatversion" in res.output or "repo version" in res.output
+
+
+# ------------------------------------- the worktree root .gitignore (v0.5.0)
+
+
+def _repo_with_root_ignore(tmp_path: Path) -> Path:
+    """A repo whose root `.gitignore` excludes build artefacts, plus a subdir."""
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    (repo / ".gitignore").write_text("__pycache__/\n*.pyc\n", encoding="utf-8", newline="\n")
+    pkg = repo / "pkg"
+    (pkg / "__pycache__").mkdir(parents=True)
+    (pkg / "__pycache__" / "mod.cpython-312.pyc").write_bytes(b"\x00compiled")
+    (pkg / "mod.py").write_text("VALUE = 1\n", encoding="utf-8", newline="\n")
+    (repo / "README.md").write_text("# repo\n", encoding="utf-8", newline="\n")
+    return repo
+
+
+def test_packing_a_subdirectory_honours_the_worktree_root_gitignore(tmp_path: Path):
+    """`carrel pack src` listed 45 `__pycache__` entries; `carrel pack .` listed none.
+
+    `ancestor_ignores` returned nothing when `top == stop_at`, and `pack`
+    passes the packed paths' common root as `stop_at` — which for a single
+    directory argument *is* that directory. So the root `.gitignore` was never
+    read, and the README's own `pack.gif` command packed build artefacts into
+    a context window.
+    """
+    repo = _repo_with_root_ignore(tmp_path)
+
+    # `--root repo` is what running `carrel pack src` from the repo does: the
+    # desk root defaults to the cwd, and that is the scope bounding the walk.
+    obj = json.loads(
+        run("--json", "--root", str(repo), "pack", str(repo / "pkg"), "--tree-only").stdout
+    )
+    assert "__pycache__" not in obj["tree"], obj["tree"]
+    assert "mod.py" in obj["tree"]
+
+    # from the repo root it was already right, and must stay right
+    obj = json.loads(run("--json", "--root", str(repo), "pack", str(repo), "--tree-only").stdout)
+    assert "__pycache__" not in obj["tree"], obj["tree"]
+
+    # --no-gitignore is still the way to get everything
+    obj = json.loads(
+        run(
+            "--json",
+            "--root",
+            str(repo),
+            "pack",
+            str(repo / "pkg"),
+            "--tree-only",
+            "--no-gitignore",
+        ).stdout
+    )
+    assert "__pycache__" in obj["tree"], obj["tree"]
+
+
+def test_indexing_a_subdirectory_honours_the_worktree_root_gitignore(tmp_path: Path):
+    """`index` shares the walk, and passes the *desk root* as `stop_at`."""
+    repo = _repo_with_root_ignore(tmp_path)
+    summary = json.loads(run("--json", "--root", str(repo), "index", str(repo / "pkg")).stdout)
+    assert summary["indexed"] == 1, summary  # mod.py only, never the .pyc
+    hits = {
+        h["path"] for h in json.loads(run("--json", "--root", str(repo), "search", "VALUE").stdout)
+    }
+    assert hits == {"pkg/mod.py"}
+
+
+def test_a_venv_gitignore_inside_a_repository_still_cannot_blank_a_desk(tmp_path: Path):
+    """The v0.3.1 incident, in the place venvs actually live.
+
+    The first draft of this fix walked to the worktree root regardless of the
+    declared scope, which reads `.venv/.gitignore` — `uv venv` writes one
+    containing `*` — and blanked the desk again. Venvs normally sit inside a
+    checkout, so "outside any repository" was the wrong place to guard.
+    """
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    venv = repo / ".venv"
+    venv.mkdir()
+    (venv / ".gitignore").write_text("*\n", encoding="utf-8", newline="\n")
+    desk = venv / "desk"
+    desk.mkdir()
+    (desk / "a.md").write_text("alpha\n", encoding="utf-8", newline="\n")
+    (desk / "b.md").write_text("bravo\n", encoding="utf-8", newline="\n")
+
+    # the desk is the declared scope
+    obj = json.loads(run("--json", "--root", str(desk), "pack", str(desk), "--tree-only").stdout)
+    assert obj["meta"]["files_included"] == 2, obj["meta"]
+
+    # ...and so is packing it from outside, where no declared scope covers it
+    obj = json.loads(run("--json", "pack", str(desk), "--tree-only").stdout)
+    assert obj["meta"]["files_included"] == 2, obj["meta"]
+
+    summary = json.loads(run("--json", "--root", str(desk), "index", str(desk)).stdout)
+    assert summary["indexed"] == 2, summary
+
+
+def test_a_dotfiles_home_repository_does_not_blank_a_subdirectory(tmp_path: Path):
+    """`$HOME` as a work tree with `.gitignore` = `*` is a mainstream layout."""
+    home = tmp_path / "home"
+    (home / ".git").mkdir(parents=True)
+    (home / ".gitignore").write_text("*\n!papers/\n", encoding="utf-8", newline="\n")
+    papers = home / "papers"
+    papers.mkdir()
+    (papers / "one.md").write_text("paper one\n", encoding="utf-8", newline="\n")
+
+    obj = json.loads(
+        run("--json", "--root", str(papers), "pack", str(papers), "--tree-only").stdout
+    )
+    assert obj["meta"]["files_included"] == 1, obj["meta"]
+
+
+def test_the_walk_is_still_bounded_outside_any_repository(tmp_path: Path):
+    """The guard this fix must not undo.
+
+    `uv venv` writes a `.gitignore` containing `*` into the venv directory, so
+    a desk created inside one indexed zero files with no error to explain it
+    (v0.3.1). Outside a work tree the walk is still bounded by `stop_at`, and
+    an unbounded walk still contributes nothing.
+    """
+    (tmp_path / ".gitignore").write_text("*\n", encoding="utf-8", newline="\n")
+    outer = tmp_path / "mid"
+    outer.mkdir()
+    (outer / ".gitignore").write_text("*\n", encoding="utf-8", newline="\n")
+    proj = outer / "proj"
+    proj.mkdir()
+    (proj / "a.py").write_text("A = 1\n", encoding="utf-8", newline="\n")
+
+    obj = json.loads(run("--json", "pack", str(proj), "--tree-only").stdout)
+    assert obj["meta"]["files_included"] == 1, obj["meta"]
+    assert "a.py" in obj["tree"]
+
+
+# ------------------------------- an empty --query is loud, and fails under --json
+
+
+def _indexed_desk(tmp_path: Path) -> Path:
+    root = tmp_path / "desk"
+    (root / "docs").mkdir(parents=True)
+    (root / "docs" / "a.md").write_text("The quick brown fox\n", encoding="utf-8", newline="\n")
+    (root / "docs" / "b.md").write_text("Lorem ipsum dolor\n", encoding="utf-8", newline="\n")
+    assert run("--root", str(root), "index", str(root / "docs")).exit_code == 0
+    return root
+
+
+#: two words that never co-occur in the fixtures above
+NO_HITS = "kumquat velocipede"
+
+
+def test_an_empty_query_pack_fails_under_json_and_names_the_reason(tmp_path: Path):
+    """FTS5 AND-s the terms, so a natural-language query packs nothing — and
+    used to exit 0 with a valid, empty document, which is the failure a caller
+    is least likely to notice."""
+    root = _indexed_desk(tmp_path)
+
+    res = run("--json", "--root", str(root), "pack", str(root / "docs"), "--query", NO_HITS)
+    assert res.exit_code == int(ExitCode.EMPTY), res.output
+    assert NO_HITS in res.stderr and "FTS5 requires all of them" in res.stderr, res.stderr
+
+    # --no-fail-empty restores the old exit code, still loudly
+    res = run(
+        "--json",
+        "--root",
+        str(root),
+        "pack",
+        str(root / "docs"),
+        "--query",
+        NO_HITS,
+        "--no-fail-empty",
+    )
+    assert res.exit_code == 0, res.output
+    assert NO_HITS in res.stderr, res.stderr
+
+    # human mode stays exit 0 by default, but says so
+    res = run("--root", str(root), "pack", str(root / "docs"), "--query", NO_HITS)
+    assert res.exit_code == 0, res.output
+    assert "packed no files" in res.stderr, res.stderr
+
+    # ...and opting in still fails there
+    res = run("--root", str(root), "pack", str(root / "docs"), "--query", NO_HITS, "--fail-empty")
+    assert res.exit_code == int(ExitCode.EMPTY), res.output
+
+
+def test_a_query_with_hits_is_silent(tmp_path: Path):
+    """Guard the guard: the warning must not fire on a successful pack."""
+    root = _indexed_desk(tmp_path)
+    res = run("--json", "--root", str(root), "pack", str(root / "docs"), "--query", "quick fox")
+    assert res.exit_code == 0, res.output
+    assert "packed no files" not in res.stderr, res.stderr
+    assert json.loads(res.stdout)["meta"]["files_included"] == 1
+
+
+def test_a_pack_that_found_files_but_inlined_none_is_not_empty(tmp_path: Path):
+    """ "Empty" means no file reached the pack, not "nothing was inlined".
+
+    A directory of images packs a complete, useful tree with
+    `files_included == 0`; failing that under --json would break a good pack.
+    """
+    root = tmp_path / "bins"
+    root.mkdir()
+    Image.new("RGB", (4, 4), "red").save(root / "a.png")
+    Image.new("RGB", (4, 4), "blue").save(root / "b.png")
+
+    res = run("--json", "pack", str(root), "--tree-only")
+    assert res.exit_code == 0, res.stderr
+    obj = json.loads(res.stdout)
+    assert obj["meta"]["files_included"] == 0 and obj["meta"]["files_skipped"] == 2
+    assert "a.png" in obj["tree"]
+    assert "packed no files" not in res.stderr
+
+    # ...and the same for a byte budget that skips every file
+    text = tmp_path / "texts"
+    text.mkdir()
+    (text / "a.txt").write_text("plenty of words\n", encoding="utf-8", newline="\n")
+    res = run("--json", "pack", str(text), "--max-file-bytes", "3")
+    assert res.exit_code == 0, res.stderr
+    assert "packed no files" not in res.stderr
+
+
+def test_a_since_pack_whose_only_change_was_a_deletion_is_not_empty(repo: Path):
+    """`removed` is the answer `--since` was asked for, not an empty result."""
+    # `_sh_git`, not `adapters.run`: it supplies the author/committer identity
+    # and `GIT_CONFIG_GLOBAL=/dev/null`. A CI runner has no global identity, so
+    # a bare `git commit` there exits 128.
+    _sh_git(repo, "rm", "-q", "a.txt")
+    _sh_git(repo, "commit", "-q", "-m", "drop")
+
+    res = run("--json", "--root", str(repo), "pack", str(repo), "--since", "HEAD~1", "--tree-only")
+    assert res.exit_code == 0, res.stderr
+    assert json.loads(res.stdout)["meta"]["removed"] == ["a.txt"]
+    assert "packed no files" not in res.stderr
+
+
+def test_the_empty_reason_names_the_filter_that_emptied_the_pack(repo: Path):
+    """Blaming --query whenever one was passed told users to loosen a query
+    that had matched, when --since was the cause."""
+    assert run("--root", str(repo), "index", str(repo)).exit_code == 0
+
+    res = run(
+        "--json",
+        "--root",
+        str(repo),
+        "pack",
+        str(repo),
+        "--since",
+        "HEAD",
+        "--query",
+        "alpha",
+        "--tree-only",
+    )
+    assert res.exit_code == int(ExitCode.EMPTY)
+    assert "nothing changed for --since HEAD" in res.stderr, res.stderr
+    assert "FTS5" not in res.stderr, res.stderr
+
+    res = run("--json", "--root", str(repo), "pack", str(repo), "--query", "zzzqqq", "--tree-only")
+    assert res.exit_code == int(ExitCode.EMPTY)
+    assert "FTS5 requires all of them" in res.stderr, res.stderr
+
+
+def test_an_empty_pack_still_writes_its_output_file(tmp_path: Path, repo: Path):
+    """Failing before the write left a previous run's -o file in place, so a CI
+    step that did not branch on the exit code shipped last run's context."""
+    out = tmp_path / "pr.md"
+    out.write_text("STALE PACK FROM LAST RUN\n", encoding="utf-8", newline="\n")
+
+    res = run("--json", "--root", str(repo), "pack", str(repo), "--since", "HEAD", "-o", str(out))
+    assert res.exit_code == int(ExitCode.EMPTY), res.stderr
+    assert "STALE PACK FROM LAST RUN" not in out.read_text(encoding="utf-8")
+    assert "carrel pack" in out.read_text(encoding="utf-8")
+
+
+def test_the_mcp_pack_tool_carries_the_same_reason(tmp_path: Path):
+    """An agent has no exit code to read, so the payload must say it."""
+    from carrel.commands.mcp import _tool_pack
+
+    root = tmp_path / "desk"
+    root.mkdir()
+    (root / "a.md").write_text("The quick brown fox\n", encoding="utf-8", newline="\n")
+    assert run("--root", str(root), "index", str(root)).exit_code == 0
+
+    payload = _tool_pack({"path": str(root), "query": "kumquat velocipede"}, root)
+    assert "FTS5 requires all of them" in payload["empty_reason"], payload
+
+    payload = _tool_pack({"path": str(root), "query": "quick fox"}, root)
+    assert "empty_reason" not in payload, payload

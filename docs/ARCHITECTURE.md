@@ -44,7 +44,7 @@ src/carrel/
 
 ### Exit codes (`core.output.ExitCode`)
 
-`0` OK · `1` error · `2` usage · `3` missing optional dependency (binary **or** extra) · `4` bad/unsupported input · `5` empty result with `--fail-empty`.
+`0` OK · `1` error · `2` usage · `3` missing optional dependency (binary **or** extra) · `4` bad/unsupported input · `5` empty result (`pack --json` with nothing packed; elsewhere `--fail-empty`).
 
 ### Adapter layer (`core.adapters`)
 

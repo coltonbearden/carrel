@@ -40,7 +40,7 @@ EXIT_CODE_MEANINGS: dict[str, str] = {
     "USAGE": "bad usage/arguments",
     "MISSING_DEP": "missing optional dependency (message names the binary + install hint)",
     "BAD_INPUT": "input file not found / unreadable / unsupported type",
-    "EMPTY": "operation produced no result (e.g. `search --fail-empty` with no hits)",
+    "EMPTY": "operation produced no result (`pack --json` that packed nothing; elsewhere opt in with `--fail-empty`)",
 }
 
 

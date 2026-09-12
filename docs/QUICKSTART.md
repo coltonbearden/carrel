@@ -256,11 +256,13 @@ includes source and config files (`.py`, `.toml`, `.yaml`, …), indexed as type
 them with `search --type code`, or index documents only with `--no-source`.
 The walk honors `.gitignore`, so `node_modules/` and `build/` stay out.
 
-In scripts, a query with no hits is exit 5 with `--fail-empty`:
+In scripts, a query with no hits is exit 5 — the default under `--json`, and
+`--fail-empty` in human mode:
 
 ```console
 $ carrel --root docs pack docs --query xyzzyplugh --fail-empty --tree-only
-error: no files matched --query 'xyzzyplugh'
+error: packed no files: no document contains every term of --query 'xyzzyplugh'
+(FTS5 requires all of them; try fewer terms, or OR between them)
 $ echo $?
 5
 ```
