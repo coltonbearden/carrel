@@ -5,34 +5,88 @@
 
 ## Now
 
-- **Status:** v0.4.1 "consolidation and guardrails" is the current release (2026-09-11); its
-  verification record is the v0.4.1 entry under Done. 33 commands, 14 MCP tools, 19 adapters,
+- **Status:** v0.5.0 "the first five minutes" is the current release (2026-09-12); its
+  verification record is the v0.5.0 entry under Done. 33 commands, 14 MCP tools, 19 adapters,
   9 marketplace plugins, desk schema v2. Repo `coltonbearden/carrel`, docs at
   https://coltonbearden.github.io/carrel/, PyPI package `carrel`.
-- **In flight:** v0.5.0 "the first five minutes" — the defect/boundary/positioning wave.
-  Landed: #38 (permissions), #39 (the gate), #40 (the owed review's findings), #41 (pack
-  `.gitignore`, loud empty `--query`), #42 (guard honesty), #43 (MCP confinement,
-  `--allow-tracked`), #44 (platform install hints, counts, PyPI metadata, JSON errors),
-  #45 (README positioning), #46 (the release itself). The full record lands in the
-  post-release `docs(state)` PR.
-- **Next:** MCP v3 (`specs/30-mcp-v3.md`): 11 new tools, 14 → 25, with `rename` and `intake`
-  first so the accounting-inbox pipeline stops being CLI-only. `batch` is cut from that wave —
-  it is the single `shell=True` site (D-013) — and `audiobook`, `color` and `proof` are
-  deferred; the spec says why. **First**, replace the `confine_to` flag threaded through five
-  walkers with one confined filesystem accessor (see Open issues) — that wave adds mutating
-  tools to the same surface.
+- **In flight:** the Context7 configuration PR is the last of the wave; everything else has
+  landed. (Written in the release's own `docs(state)` PR — if you are reading this from `main`,
+  that PR merged.)
+- **Next:** MCP v3 (`specs/30-mcp-v3.md`) as **v0.6.0**: 11 new tools, 14 → 25, with `rename`,
+  `intake`, `organize` and `ocr` first. That ordering is this wave's brief, not spec 30, which
+  states none: `rename`/`intake`/`organize` are what stop the accounting-inbox pipeline being
+  CLI-only, and `ocr` rides along on their entry points. The Open-issue entry below still names
+  the older headline set (`rename`, `batch`, `intake`); `batch` is cut as the `shell=True` site.
+  `batch` is cut from that wave — it is the single `shell=True` site (D-013) — and `audiobook`,
+  `color` and `proof` are deferred; the spec says why. Every mutating tool is dry-run by
+  default, and confinement is settled by **D-021** rather than re-opened.
+  **Do this first, before any mutating tool lands:** replace the `confine_to` flag threaded
+  through five walkers and two writers with one confined filesystem accessor (Open issues).
+  Five review rounds on v0.5.0 each found one more caller that had been missed; the flag is
+  the reason, and MCP v3 adds callers to the same surface.
 - **Also pending:**
-  - ~~**A review is owed.**~~ **Done 2026-09-12.** The v0.4.1 second-review fixes
-    (`refs/pull/36/head`, `5b88c7a`) were reviewed; the eleven confirmed findings shipped as
-    #40. Do not re-run it.
   - **Owner's step, on or after 2026-09-24:** promote `test-minimal (windows)` to required once
-    it has been green on `main` for two consecutive weeks. That changes branch protection, so it
-    needs the owner's go-ahead in that session: drop `continue-on-error` in
-    `.github/workflows/test.yml`, add the check to `REQUIRED_CHECKS`, then run
-    `scripts/github-harden.sh`. (`test-minimal (macos)` was added on 2026-09-11 under the
-    owner's authorisation in the v0.4.1 brief.)
+    it has been green on `main` for two consecutive weeks. Note what the evidence so far is:
+    green on every v0.5.0 *PR* check, which runs a merge simulation, not `main`'s post-merge
+    runs — check those before promoting. That changes branch protection, so it needs the owner's go-ahead in that session: drop
+    `continue-on-error` in `.github/workflows/test.yml`, add the check to `REQUIRED_CHECKS`,
+    then run `scripts/github-harden.sh`. (`test-minimal (macos)` was added on 2026-09-11 under
+    the owner's authorisation in the v0.4.1 brief.)
+  - **Owner decision:** four `.claude/settings.json` items — a `gh workflow run` allow that can
+    deploy Pages, a dead `--force-with-lease` allow (whose fix is to split a *user-level* deny),
+    a `gh repo edit` allow broader than the one command needing it, and four unreachable deny
+    shapes. See the subsection at the end of Open issues. None is urgent; all are the owner's
+    call because the file is theirs.
 
 ## Done
+
+- 2026-09-12 (v0.5.0): released in seven PRs (#40–#46) plus the two Step-0 PRs (#38, #39).
+  The GitHub Release is pinned to the release PR's merge commit `cda1aa8`; PyPI via Trusted
+  Publishing. **Verified from PyPI in a clean `/tmp` venv:** `carrel 0.5.0`; `doctor --json`
+  33 commands (31 ok, `mail` degraded without readpst, `desk` unavailable without the `tui`
+  extra) and 19 adapters; in a fresh clone with `src` compiled,
+  `carrel pack src --stats --tree-only | grep -c __pycache__` → **0** (45 before the fix); an
+  MCP server started in a scratch desk answered `resources/read` for a path outside it with
+  `resource not found` and `carrel_inspect` with `isError: true, exit_code 2`, and the file's
+  contents appeared nowhere in the output; a `.png` `Read` payload through `read-guard.sh`
+  produced no output and exit 0. The wheel **and** the sdist each carry a PEP 740 attestation
+  naming `coltonbearden/carrel`, `publish.yml`, environment `pypi`. The global install went
+  0.4.1 → 0.5.0 (`uv tool upgrade carrel --reinstall`; note `--refresh` is not a flag of that
+  subcommand). The GitHub repository description was set to the functional line.
+
+  What the wave fixed: `pack` ignored the worktree root's `.gitignore` when packing a
+  subdirectory (#41); an empty `--query` pack exited 0 (#41); `carrel-guard`'s README was wrong
+  about `Read` and images were OCR'd unconditionally (#42); the MCP server was not confined
+  though `SECURITY.md` said it was (#43); install hints were Debian-only on every platform,
+  prose counts were stale by hundreds, PyPI had no classifiers, `--json` errors were English,
+  and `redact --builtin` was last-one-wins (#44); the README led with the TUI (#45).
+
+  **The owed v0.4.1 review is discharged.** `refs/pull/36/head` (`5b88c7a`) — the systemd and
+  schtasks quoting in `commands/watch.py`, and the guard's symlink handling,
+  `--literal-pathspecs` and per-repository lookup in `core/fsops.py` — was reviewed on
+  2026-09-12 and its eleven confirmed findings shipped as **#40**. Do not re-run it. The local
+  `pr36` and `review/pr36-owed` branches were deleted once #40 landed.
+
+  **The MCP boundary took five review rounds**, each finding one more way a path reached the
+  filesystem: named by the client, found by a walk (symlinked *files* were read even though
+  symlinked directories were skipped), a fifth walker nobody had listed (`carrel_mail threads`),
+  derived by a writer (`convert` and `mail attachments` wrote *through* planted symlinks, and a
+  dangling one created the file outside), read back from the desk index (rows an unconfined CLI
+  had stored), and the index's own location (`<root>/.carrel` as a symlink moved the whole
+  database out of the desk). All closed, each with a test that fails when the fix is reverted,
+  plus two registry-driven tests that drive every (tool, action) pair from `mcp.TOOLS`. Those
+  two cover the *read* side; the write-side twin is hand-listed over `carrel_convert` and
+  `carrel_mail attachments`, the only two tools that write today — so v0.6.0's mutating tools
+  are not covered by it automatically and must be added. The threading approach is what let
+  each round find one more caller — hence the v0.6.0 item above.
+
+  Process notes worth keeping: the release PR's first push reddened **every** CI job in seconds
+  because `uv.lock` pins carrel's own version and CI syncs under `UV_LOCKED=1`. The lock was
+  correct on disk the whole time — `uv run` had relocked it silently during the gate — and was
+  simply never staged. It now has a `uv-lock-current` pre-commit hook (`uv lock --check`), and
+  the reason it needs a *hook* rather than a test is that anything reached through `uv run`
+  relocks first and repairs the very staleness it is asked to detect. CLAUDE.md's gate invokes
+  pre-commit through `uv run`, so CI is the real backstop for this class.
 
 - 2026-09-11 the gate could not be run (#39). `pre-commit run --all-files` is a step in
   CLAUDE.md's gate and had never been executed: `pre-commit` is not a project dependency and
@@ -210,6 +264,53 @@
 
 ## Open issues
 
+- **The MCP boundary is a flag, not a mechanism.** `confine_to` is threaded to five walkers
+  (`index._walk`, `pack._walk_dir`, `refs._candidates`, `mail._mail_files`, `fields.fields_for`),
+  `confined_dest` to two writers, `_inside` to three result readers, and `_root` guards the desk
+  directory. Five review rounds on #43 each found one more caller that had been missed, and the
+  last — `<root>/.carrel`, the database's own location — was invisible to the registry-driven
+  tests because it is neither a walk nor a path any schema names. The shape to aim at is `Desk`
+  owning the primitives (`desk.open`, `desk.db`, `desk.walk`) so a new surface is confined by
+  construction. **First item of v0.6.0**, before its mutating tools land on the same surface.
+
+  The callers that *do not* pass it are the ones to watch, because none is reachable over MCP
+  today and that is the only reason they are not holes: `rename.py:195` and `catalog.py:190`
+  call the shared `candidate_files`/`_walk` without a boundary, as do `dedupe.py:39`/`:179`,
+  `batch.py:42`, `edit.py:453`/`:474` and `desk/app.py:405`. **`rename` is first on v0.6.0's
+  list.** Wiring `confine_to` tool-by-tool from the confined-caller list would miss it — which
+  is the sixth round this entry exists to prevent.
+
+- **Should `publish.yml` refuse a patch tag whose CHANGELOG entry says "Changed (behaviour)"?**
+  D-023 settles the *rule* (a previously-successful invocation that can newly exit non-zero is a
+  minor bump) and explicitly leaves the *enforcement* here. Enforcing it needs a CHANGELOG
+  convention stricter than the one in use — today the bullet prefixes are a habit, not a schema.
+
+- **`inspect` opens a CSV twice.** `src/carrel/commands/inspect.py::_csv_detail` reads a
+  64 KiB sample for the dialect sniff, then re-opens and reads to EOF for the row/column count.
+  Deferred in `84fc6db` and never logged until now. The cost is 64 KiB plus one full pass, not
+  two full passes — worth fixing on large files, not urgent.
+
+- **`docs/QUICKSTART.md` §6's captured output cannot be re-captured.** The block shows a
+  tutorial `docs/` tree (5 files, 661 B, 186 tokens) that nothing in the repo builds, so a
+  release can only update its `generated-by:` line by hand — which `docs/RELEASING.md`
+  explicitly forbids. At v0.5.0 that line was changed after verifying by execution that the
+  header renders `generated-by: carrel 0.5.0`; the counts are untouched and are still that
+  tree's. Reconstructing the tree from the documented byte sizes lands within one token but is
+  a fabrication, which is worse. Fix: commit the tree as a fixture with a capture script.
+
+- **`pack --json --no-fail-empty` prints a plain-text `warning:` on stderr** — the one `--json`
+  path that does not emit JSON there, and the flag the v0.5.0 CHANGELOG points script authors
+  at. In spec as written (the contract covers *errors*; this is a warning) but inconsistent.
+  Not changed inside the release that introduced the contract. Fix: route warnings through a
+  sibling of `core/output.error_line`, or state in the contract that warnings stay plain.
+
+- **Considered and declined in #43:** a per-call MCP `root` bounds the ancestor `.gitignore`
+  walk at that root rather than at the server's launch root, so
+  `carrel_refs {"path": ".", "root": "sub"}` does not apply `<desk>/.gitignore`. Left as is:
+  the tool schema documents `root` as "Desk root", D-019 fixes the bound at the desk root, and
+  the CLI behaves identically (`carrel --root sub refs .` vs `carrel --root desk refs sub`).
+  Revisit if MCP v3 redefines the per-call `root` as "a subtree of the desk".
+
 - 19 of 33 commands have no MCP tool, so an agent can read a desk but not act on it. Four are
   excluded by design (`watch` is a long-running loop, `desk` is a TUI, `completion` prints a
   shell script, `mcp` is the server). The other 15 are the gap: `audiobook`, `batch`,
@@ -219,18 +320,6 @@
   for exactly the steps that move files. Most already have `_file()`/`_paths()` entry points
   the tool layer can call, and six headline `pack` flags remain agent-invisible. Its own spec
   (30), scoped as MCP v3: 14 → 25 tools (`batch` is cut — it is the single `shell=True` site).
-
-
-- v0.4.1 ships a documented behaviour change (`--apply` refuses tracked files, exit 2) as a
-  **patch** bump. The release review argued for 0.5.0: a `carrel~=0.4.0` pin or a routine
-  `uv tool upgrade` pulls it in, and a cron `intake --apply` whose `--to` sits under a
-  dotfiles repo could start exiting 2. Kept at 0.4.1 because the session brief named that
-  version; the guard only bites on *tracked* files, and `--allow-tracked` is the documented
-  way through (spelled `--force` before v0.5.0 — D-022; the alias is kept, with no
-  removal date). **Decided in v0.5.0 (D-023):** a previously-successful invocation
-  that can newly exit non-zero is a minor bump, so this wave is 0.5.0. Still open:
-  whether `publish.yml` should refuse a patch tag when the CHANGELOG entry says
-  "Changed (behaviour)".
 
 - `watch --print-service schtasks` prints a one-line `schtasks /Create … /TR …` for pasting.
   The `/TR` value is now quoted correctly for both of Windows' own parsing passes (a parser
@@ -262,62 +351,6 @@
   constraints — `uv build --build-constraint`), keep it bumped by Dependabot, and let CI's build
   job prove each bump.
 
-- ~~`--force` carries two unrelated meanings.~~ **Decided in v0.5.0 (D-022):** the
-  tracked-files guard on `rename`, `organize`, `intake` and `watch` is overridden by
-  `--allow-tracked`, which is not reachable by reflex from the "overwrite existing output"
-  meaning `--force` keeps on `mail`, `edit`, `sign`, `form`, `catalog`, `meta` and
-  `audiobook`. `--force` stays on all four as a deprecated alias that warns once when the
-  guard is actually consulted; it is not removed and no removal date is set.
-
-- **`docs/QUICKSTART.md` §6's captured output cannot be re-captured.** The block shows a
-  tutorial `docs/` tree (5 files, 661 B, 186 tokens) that nothing in the repo builds, so a
-  release can only update its `generated-by:` version line by hand — which
-  `docs/RELEASING.md` explicitly forbids ("never hand-edit the numbers in real output"). At
-  v0.5.0 that one line was changed after verifying by execution that the header renders
-  `generated-by: carrel 0.5.0`; the counts were left untouched and are still that tree's.
-  Reconstructing the tree from the documented byte sizes gets within a token (187 vs 186) but
-  is a fabrication, which is worse. Fix: commit the tutorial tree as a fixture with a capture
-  script, so §6 is regenerated like `docs/REFERENCE.md` rather than transcribed.
-
-- **`pack --json --no-fail-empty` prints a plain-text `warning:` on stderr**, the one `--json`
-  path that does not emit JSON there — and the v0.5.0 CHANGELOG points script authors straight
-  at that flag. In spec as written (the stderr contract covers *errors*, and this is a warning)
-  but inconsistent in practice. Not changed in the release PR: altering the stderr shape again
-  inside the release that introduces the contract is worse than documenting it. Fix: route
-  warnings through `core/output.error_line`'s sibling, or say in the contract that warnings stay
-  plain.
-
-- **Deferred from PR #43:** the MCP boundary is threaded as a `confine_to` flag into
-  five separate walkers (`index._walk`, `pack._walk_dir`, `refs._candidates`,
-  `mail._mail_files`, `fields.fields_for`) plus `confined_dest` at two writers,
-  rather than fixed once in a confined filesystem accessor. Four review rounds
-  each found "one more caller also does this" — four walkers, then `mail`, then
-  the write side and the stored index rows, then `<root>/.carrel` itself — which
-  is the argument for one
-  `iter_files(top, confine_to=...)` every walker uses. Not done here: it is a
-  cross-module refactor of five walkers with different ignore-stack shapes, in a
-  PR that is already 37 files, and the regression risk lands on `pack` and
-  `index`, the two most-used commands. The registry-driven tests
-  (`test_no_tool_reads_through_a_symlink_planted_in_the_desk`,
-  `test_every_tool_refuses_a_root_outside_the_server_root`, and their write-side
-  twin) drive every (tool, action) pair from `mcp.TOOLS` — but they only see
-  surfaces that walk or write a *named* path, which is exactly why the `.carrel`
-  hole survived them. The shape to aim at is `Desk` owning the primitives
-  (`desk.open`, `desk.db`, `desk.walk`) so a new surface is confined by
-  construction. **Do this first in the MCP v3 wave (v0.6.0)**, before its
-  mutating tools land on the same surface.
-
-- **Considered and declined in PR #43:** a per-call MCP `root` bounds the ancestor
-  `.gitignore` walk at that root, not at the server's launch root, so
-  `carrel_refs {"path": ".", "root": "sub"}` does not apply `<desk>/.gitignore`.
-  A review argued the same file should give the same answer whichever way the
-  client addresses it. Left as is because the tool schema documents `root` as
-  "Desk root (default: server --root / cwd)" — a client naming `sub` is naming a
-  desk, and D-019 fixes the bound at the desk root, so this is the documented
-  semantics rather than a defect. The CLI behaves identically
-  (`carrel --root sub refs .` versus `carrel --root desk refs sub`). Revisit if
-  MCP v3 makes the per-call `root` mean "subtree of the desk" instead.
-
 - The suite cannot run under a non-UTF-8 locale: `LC_ALL=C PYTHONUTF8=0 uv run pytest -q`
   fails 45 tests across 9 files with `UnicodeDecodeError`. Every one is *test-side* —
   `subprocess.run(..., text=True)` and `Path.read_text()` in the harness, not in shipped code,
@@ -333,6 +366,27 @@
   (also in `test_refs.py`, `test_desk_db_cmds.py`, `test_watch_org_dedupe.py`,
   `test_redact_sign_form.py` and others). `tests/conftest.py` is the shared-plumbing home;
   hoisting it is a whole-suite edit, deliberately not bundled into a behaviour PR.
+
+### Owner's call: `.claude/settings.json`
+
+Found by #38's review and deferred by the owner's decision that the file lands byte-for-byte.
+None is urgent; all four are the owner's to make.
+
+- `Bash(gh workflow run:*)` can dispatch `docs.yml`, which deploys GitHub Pages on any
+  non-`pull_request` event. Narrow to the workflows that are safe to dispatch, or drop it.
+- `Bash(git push --force-with-lease:*)` in the allow list is dead: the user-level
+  `Bash(git push --force*)` has no space before the `*`, so it matches `--force-with-lease`
+  too and deny beats allow. Either split the user-level rule into
+  `Bash(git push --force)` + `Bash(git push --force *)`, or drop the dead allow entry. This
+  session did every rebase with `gh pr update-branch` because of it.
+- `Bash(gh repo edit:*)` is live again: the user-level deny was narrowed to the governance
+  shapes (`--visibility`, `--default-branch`, `--template`, `--allow-forking`,
+  `--enable-secret-scanning`, `--enable-advanced-security`) on 2026-09-12, and
+  `gh repo edit --description` ran successfully at the v0.5.0 release. The project allow entry
+  is broader than the one command that needs it.
+- Four subsumed or unreachable deny entries, including `Bash(git push * :*)` — a trailing `:*`
+  is always read as the wildcard suffix, so it cannot express a literal colon and the rule
+  never matches what it was written for. Cosmetic.
 
 ## Key facts for a fresh session
 
