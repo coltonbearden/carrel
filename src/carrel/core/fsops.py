@@ -72,15 +72,20 @@ def move_file(src: Path, dest: Path, *, desk_root: Path | None = None) -> Path:
 GIT_ENV_OVERRIDES = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR")
 
 
-def _nearest_existing(path: Path) -> Path:
+def _nearest_existing(path: Path, *, resolved: bool = False) -> Path:
     """The deepest existing ancestor of `path` (or `path` itself, resolved).
 
     Only ever used to decide *which repository to ask*. It is deliberately not
     used as the thing asked about: `intake --to ~/filed` on a first run would
     otherwise climb to `~`, and in a dotfiles repo the guard would refuse and
     name every tracked dotfile — the false refusal D-017 exists to avoid.
+
+    `resolved=True` says the caller already did the `expanduser().resolve()`.
+    `resolve()` is a full realpath walk — one `lstat` per component — and
+    `would_move_tracked` resolves every path before calling this, so a
+    recursive `watch` over 425 files was doing 850 of them for 425 answers.
     """
-    candidate = path.expanduser().resolve()
+    candidate = path if resolved else path.expanduser().resolve()
     while not candidate.exists() and candidate != candidate.parent:
         candidate = candidate.parent
     return candidate
@@ -219,7 +224,7 @@ def would_move_tracked(paths: Iterable[Path]) -> dict[Path, list[str]]:
         if asked.is_symlink():
             key = asked.parent  # never follow the leaf, even to find the repository
         else:
-            probe = _nearest_existing(asked)
+            probe = _nearest_existing(asked, resolved=True)  # _asked_about resolved it
             key = probe if probe.is_dir() else probe.parent
         if key not in candidate_of:
             candidate_of[key] = dot_git_ancestor(key)

@@ -1,5 +1,45 @@
 # Changelog
 
+## Unreleased
+
+- **Fixed (`watch --print-service`):** the generated systemd unit now sets
+  `WorkingDirectory=`. A systemd *user* unit starts in `$HOME`, so a `--run` action holding a
+  relative path — `mv {path} "archive/$(date +%Y-%m)"`, the shape the v0.4.1 entry advertises —
+  filed every processed document into `~/archive/` instead of the inbox, silently and forever.
+  `_abs()` only ever absolutised the *option* values; the action template was the one relative
+  path left.
+- **Fixed (`watch --print-service systemd`):** a watched directory whose name contains a newline
+  can no longer inject directives into the unit. `Description=` was emitted bare, so everything
+  after the newline became further unit settings in the file the user is told to save and
+  `systemctl --user enable` — an attacker-chosen `[Service]` / `ExecStart=` among them. A name
+  ending in a backslash was the quiet version: systemd's line continuation swallowed the
+  `After=default.target` line that followed. Both are now refused with exit 2, because a unit
+  file cannot represent either. Verified against systemd 259 rather than against a model of it:
+  quoting these settings does **not** work — a quoted `WorkingDirectory=` is rejected as "path
+  is not absolute", and a quoted `Description=` keeps its quotation marks verbatim.
+- **Fixed (`watch --print-service`):** the unit file name, `Description=`, the systemctl hints
+  and the schtasks `/TN` all read the product name from `product.json` instead of hardcoding it,
+  as CLAUDE.md requires. `_launcher_path` compared `argv[0]` against a literal `"carrel"`, so
+  after a rename it silently fell back to `python -m carrel.cli` — a module that no longer
+  exists — and every generated unit died at boot.
+- **Fixed (`watch --print-service`):** an `argv[0]` with no final component (`/`, `.`, or any
+  path ending in a separator) raised `ValueError` out of `pathlib` instead of a clean message;
+  and the launcher path is normalised without being resolved, so an `argv[0]` carrying `..` no
+  longer produces an `ExecStart=` systemd refuses ("Executable path contains special
+  characters") while still naming the Homebrew/Nix symlink rather than the store path behind it.
+- **Fixed (`watch --print-service schtasks`):** the printed line warns when the `/TR` value
+  exceeds the ~261-character limit schtasks truncates or rejects at, and the cmd.exe
+  metacharacter warning now names every part of the line — the watched path, `--done-dir`,
+  `--error-dir` and `--log`, not only `--run`. `C:\R&D\inbox` is enough to split the paste.
+- **Fixed (performance):** the `watch` tracked-file guard prunes `.git` and the
+  `--done-dir`/`--error-dir` subtrees while walking instead of filtering afterwards. On a
+  200-file repository with a 150-file archive the walk went from 425 paths to 200 — 52% of the
+  old set was `.git/objects`, every one of them stat'd, resolved and sent through `git ls-files`
+  for an answer git can never give — and it no longer grows without bound as the archive fills.
+  Hidden *files* stay in the guarded set: `--existing` skips them, but a live event applies only
+  `--glob`, so a committed `.gitkeep` really can be filed away. `core.fsops` also stopped
+  resolving every path twice (~850 realpath walks for 425 files).
+
 ## v0.4.1 — 2026-09-11
 
 - **Changed (behaviour):** `rename --apply`, `organize --apply`, `intake --apply` and

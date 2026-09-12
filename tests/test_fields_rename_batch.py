@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 import os
-import shlex
+import sys
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -666,9 +666,12 @@ def test_watch_print_service_writes_absolute_paths(tmp_path: Path, monkeypatch):
     ).output
 
     exec_start = next(ln for ln in unit.splitlines() if ln.startswith("ExecStart="))
-    # the line was built with shlex.join, so it round-trips through shlex.split;
-    # a bare `in` check would pass on Windows, where every path comes out quoted
-    argv = shlex.split(exec_start.removeprefix("ExecStart="))
+    # `_systemd_split`, not `shlex.split`: the line is built by `_systemd_word`,
+    # which doubles `%` and `$` for systemd's specifier and variable expansion.
+    # shlex does not undo that, so these assertions passed only because pytest's
+    # tmp_path happens to hold neither character — a `--basetemp` under a path
+    # containing `%` failed the test while the product was correct.
+    argv = _systemd_split(exec_start.removeprefix("ExecStart="))
     after = {flag: argv[argv.index(flag) + 1] for flag in ("--root", "--done-dir", "watch")}
 
     assert after["--root"] == str(tmp_path.resolve()), argv
@@ -1104,6 +1107,9 @@ def test_print_service_systemd_round_trips_every_action(tmp_path: Path):
     exec_start = next(ln for ln in unit.splitlines() if ln.startswith("ExecStart="))
     assert _runs(_systemd_split(exec_start.removeprefix("ExecStart="))) == SYSTEMD_ACTIONS
     description = next(ln for ln in unit.splitlines() if ln.startswith("Description="))
+    # Bare, not quoted: systemd 259 does not unquote Description= (quotes show
+    # up verbatim in `systemctl show`) or WorkingDirectory= (a quoted path is
+    # rejected as "not absolute"). Only `%` is doubled.
     assert description == f"Description=carrel watch {str(watched.resolve()).replace('%', '%%')}"
 
 
@@ -1169,3 +1175,173 @@ def test_print_service_carries_the_global_json_flag(tmp_path: Path):
 
     plain = run("watch", str(watched), "--run", "true", "--print-service", "systemd").output
     assert "--json-lines" not in plain
+
+
+# ------------------------------------ regressions from the owed review of #36
+
+
+def test_a_directory_name_cannot_inject_directives_into_the_unit(tmp_path: Path):
+    """`Description=` was unquoted, so a newline in a path ended the line.
+
+    Everything after it became further unit directives in the file the user is
+    told to save and `systemctl --user enable`. The milder variant is a name
+    ending in a backslash: systemd's line continuation then swallowed the
+    `After=` line that followed, dropping the ordering dependency.
+    """
+    hostile = tmp_path / "x\n[Service]\nExecStart=/bin/sh -c touch /tmp/pwned"
+    hostile.mkdir(parents=True)
+    err = run("watch", str(hostile), "--run", "true", "--print-service", "systemd", expect=2).stderr
+    assert "cannot represent" in err and "newline" in err, err
+
+    # A trailing backslash is the quieter version: verified against systemd 259,
+    # `Description=... back\` swallowed the `After=default.target` line that
+    # followed, and After= fell back to its defaults.
+    trailing = tmp_path / "back\\"
+    trailing.mkdir()
+    err = run(
+        "watch", str(trailing), "--run", "true", "--print-service", "systemd", expect=2
+    ).stderr
+    assert "backslash" in err and "continues the line" in err, err
+
+
+def test_the_unit_pins_a_working_directory(tmp_path: Path):
+    """A systemd *user* unit starts in $HOME, so relative `--run` paths moved
+    every processed file into the home directory instead of the inbox."""
+    watched = tmp_path / "inbox"
+    watched.mkdir()
+    unit = run(
+        "watch",
+        str(watched),
+        "--run",
+        'mv {path} "archive/$(date +%Y-%m)"',
+        "--print-service",
+        "systemd",
+    ).output
+    workdir = next(ln for ln in unit.splitlines() if ln.startswith("WorkingDirectory="))
+    assert workdir == f"WorkingDirectory={watched.resolve()}"
+
+
+def test_launcher_path_survives_a_degenerate_argv0():
+    """`with_name` raises ValueError when argv[0] has no final component, and
+    `@handled` only converts CarrelError — so it escaped as a traceback."""
+    from carrel.commands.watch import _launcher_path
+
+    for argv0 in ("/", ".", "..", "C:\\Scripts\\"):
+        assert _launcher_path(argv0, windows=True) is None
+        assert _launcher_path(argv0, windows=False) is None
+
+
+def test_launcher_path_normalises_dot_dot(tmp_path: Path, monkeypatch):
+    """systemd refuses an ExecStart whose executable path is not normalised.
+
+    `absolute()` prepends the cwd without resolving `..`; `resolve()` would
+    follow the Homebrew/Nix symlink into a store the next upgrade deletes.
+    """
+    from carrel.commands.watch import _launcher_path
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    launcher = bin_dir / "carrel"
+    launcher.write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    found = _launcher_path("bin/../bin/carrel", windows=False)
+    assert found is not None
+    assert ".." not in found.parts, found
+    assert found == launcher
+
+
+def test_the_guard_walk_skips_git_internals_and_the_archive(tmp_path: Path):
+    """`.git/objects` can never be tracked, and the archive grows without bound.
+
+    Hidden *files* stay in the set: `--existing` skips them, but a live event
+    reaches `_Watcher.seed`, which applies only `--glob`.
+    """
+    from carrel.commands.watch import _guard_candidates
+
+    root = tmp_path / "inbox"
+    (root / ".git" / "objects").mkdir(parents=True)
+    (root / ".git" / "objects" / "abc").write_text("x", encoding="utf-8")
+    (root / "sub").mkdir()
+    done = root / "done"
+    done.mkdir()
+    (done / "filed.pdf").write_text("x", encoding="utf-8")
+    (root / ".gitkeep").write_text("", encoding="utf-8")
+    (root / "sub" / "a.pdf").write_text("x", encoding="utf-8")
+
+    found = _guard_candidates(root, recursive=True, skip=[done], glob_=None)
+    names = {p.name for p in found}
+    assert names == {".gitkeep", "a.pdf"}, found
+    assert not any(".git" in p.parts for p in found)
+    assert not any(p.is_relative_to(done) for p in found)
+
+    assert {p.name for p in _guard_candidates(root, True, [done], "*.pdf")} == {"a.pdf"}
+    assert {p.name for p in _guard_candidates(root, False, [done], None)} == {".gitkeep"}
+
+
+def test_schtasks_warns_when_the_tr_value_is_over_budget(tmp_path: Path):
+    """schtasks rejects or truncates a /TR past ~261 characters."""
+    watched = tmp_path / ("inbox_" + "x" * 120)
+    watched.mkdir()
+    long_line = run(
+        "watch",
+        str(watched),
+        "--run",
+        "magick {path} {dir}/thumb.png",
+        "--done-dir",
+        str(tmp_path / ("done_" + "y" * 120)),
+        "--print-service",
+        "schtasks",
+    ).output
+    assert "WARNING: the /TR value below is" in long_line, long_line
+
+    short = tmp_path / "in"
+    short.mkdir()
+    ok = run("watch", str(short), "--run", "true", "--print-service", "schtasks").output
+    assert "WARNING" not in ok, ok
+
+
+def test_the_schtasks_warning_names_every_part_of_the_line(tmp_path: Path):
+    """`C:\\R&D\\inbox` splits the pasted line just as a `--run` action would."""
+    watched = tmp_path / "inbox"
+    watched.mkdir()
+    out = run("watch", str(watched), "--run", "true", "--print-service", "schtasks").output
+    assert "--done-dir" in out and "--log" in out and "--run action" in out
+    assert "ANY part of the line" in out
+
+
+def test_generated_service_text_comes_from_product_json(tmp_path: Path, monkeypatch):
+    """CLAUDE.md: the product name lives only in product.json, and anything
+    generated must read it. `_launcher_path` compared `argv[0]` against a
+    literal "carrel", and the unit file name, Description and schtasks /TN were
+    hardcoded too — so after `scripts/finalize.sh` renamed the product, every
+    generated unit named a module that no longer exists and died at boot.
+
+    Asserted by renaming the product and reading the output, not by grepping
+    the source: prose in docstrings legitimately says "carrel".
+    """
+    from carrel.commands import watch as watch_mod
+
+    watched = tmp_path / "inbox"
+    watched.mkdir()
+    monkeypatch.setitem(watch_mod.PRODUCT, "cli", "shelf")
+    monkeypatch.setitem(watch_mod.PRODUCT, "package", "shelf")
+
+    unit = run("watch", str(watched), "--run", "true", "--print-service", "systemd").output
+    assert "shelf-watch.service" in unit and "--now shelf-watch" in unit, unit
+    assert "Description=shelf watch " in unit, unit
+    # the ExecStart path is this checkout's interpreter and legitimately says
+    # "carrel"; the generated *text* must not.
+    generated = [ln for ln in unit.splitlines() if not ln.startswith("ExecStart=")]
+    assert not any("carrel" in ln for ln in generated), generated
+
+    task = run("watch", str(watched), "--run", "true", "--print-service", "schtasks").output
+    assert '/TN "shelf watch"' in task, task
+    assert not any(
+        "carrel" in ln for ln in task.splitlines() if not ln.startswith("schtasks /Create")
+    ), task
+
+    # and the module fallback, used when argv[0] is not a product launcher
+    monkeypatch.setattr(sys, "argv", ["pytest"])
+    unit = run("watch", str(watched), "--run", "true", "--print-service", "systemd").output
+    assert '"-m" "shelf.cli"' in unit, unit
