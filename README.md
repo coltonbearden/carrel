@@ -11,9 +11,9 @@
 
 <br><br>
 
-<img src="assets/demo/desk-tour.gif" alt="carrel desk TUI tour" width="100%">
+**Read, index, pack and file your documents — from the terminal, for you and your agents.**
 
-*`carrel desk` — browse the tree, inspect a file, run an action, search the index.*
+<br>
 
 <img src="assets/demo/pack.gif" alt="carrel pack token stats" width="100%">
 
@@ -25,9 +25,87 @@
 
 </div>
 
-A *carrel* is a private study desk in a library: your materials close at hand, organized your way. **carrel** is that desk for your local files — pdf, docx, odt, epub, rtf, xlsx, md, html, txt, json, xml, csv, eml/mbox email, and png/jpg/ico images — with 33 commands to convert, OCR, inspect, diff, index, search, pack, watch, file an inbox, and more. And it treats AI agents as first-class users of the desk: every data-producing command speaks `--json` with stable exit codes, `carrel pack` turns file trees into LLM-ready context, and the repo doubles as a [Claude Code plugin marketplace](#the-marketplace) whose plugins drive the same CLI.
+**carrel** turns the documents on your disk — PDFs, Word and OpenDocument files, ebooks, spreadsheets, email, scans — into text you can search, fields you can query, and context you can hand to an LLM. One CLI; every data command speaks `--json` with stable exit codes; dry-run by default; nothing overwritten without `--force`. It ships an MCP server and a [Claude Code plugin marketplace](#the-marketplace) that drive the same commands, so Claude can read your `.docx`, pack the five relevant files out of five hundred, and file an invoice inbox by what the invoices say. Missing pandoc or tesseract? `carrel doctor` tells you what works today and how to unlock the rest.
 
-## What can it do
+A *carrel* is a private study desk in a library: your materials close at hand, organized your way.
+
+## Install
+
+Requires Python ≥ 3.12 and [uv](https://docs.astral.sh/uv/). No checkout needed:
+
+```sh
+uv tool install 'carrel[all]'   # or: pipx install 'carrel[all]' — puts `carrel` on your PATH
+                                # plain `carrel` skips the TUI and office/token extras (see INSTALL)
+carrel doctor                   # what can your desk do today? (+ install hints for the rest)
+```
+
+(Contributing or hacking on it? `uv tool install .` from a checkout does the same thing.)
+
+## Three things to try
+
+### Give Claude the right context
+
+Index a folder once, then let the desk's own ranking choose what to send. `--since` does the
+same job from git history instead of a query.
+
+```sh
+carrel index ~/papers
+carrel pack ~/papers --query "attention is all you need" --stats
+carrel pack . --since HEAD~5 --stats     # what changed, packed
+```
+
+The MCP server (`carrel mcp`, shipped by the `carrel-agent` plugin) exposes the same thing as a
+tool, confined to the directory it starts in.
+
+*Limitation:* query terms must appear in the text — FTS5 AND-s them, so a natural-language
+question often matches nothing. Under `--json` an empty pack exits non-zero rather than handing
+you a valid, empty document.
+
+### Read what the agent can't
+
+```sh
+claude plugin marketplace add coltonbearden/carrel
+claude plugin install carrel-guard@carrel
+```
+
+Office, ebook, email and spreadsheet files become text automatically before Claude's `Read`
+sees them; PDFs become cheap text; images stay pictures for Claude's own vision.
+
+*Limitation:* layout-heavy PDFs and diagrams still want the visual `Read` — the guard's note
+tells Claude where the original is and when to prefer it (`CARREL_GUARD_PDF_TEXT=0`).
+
+### Turn an inbox into an archive
+
+Read what each document says, then file it by that. The dry run is the default; nothing moves
+until `--apply`.
+
+```sh
+carrel fields ~/inbox/invoice.pdf              # vendor, dates, totals, with confidence
+carrel intake ~/inbox --to ~/archive           # dry run: shows every planned move
+carrel intake ~/inbox --to ~/archive --apply   # files into YYYY/MM, indexes, records fields
+carrel --root ~/archive meta find 'total>1000' 'due<2026-11'
+```
+
+*Limitation:* field extraction is English-label heuristics with a confidence column — read it
+before `--apply`. Originals are always kept.
+
+## Status and support
+
+A solo-maintainer project, used daily by its author.
+
+**Stable:** `convert`, `inspect`, `index`/`search`, `pack`, the `carrel-guard` hook, and the
+MCP read tools. **Experimental:** the accuracy of `fields`, `refs` and `intake` (heuristics, not
+models — check the confidence column), and the desk TUI. Linux and macOS are covered by
+required CI checks; Windows CI is advisory until it has been green long enough to promote.
+
+Security reports: see [SECURITY.md](SECURITY.md) — acknowledged within 7 days, fixed or
+explicitly declined within 30.
+
+Two things carrel is **not**: a cloud document system (nothing leaves your disk, and there is no
+account), and a substitute for reading redaction or financial output before you rely on it.
+
+## Everything on the desk
+
 
 | Domain | Command | What it does |
 |---|---|---|
@@ -61,25 +139,13 @@ A *carrel* is a private study desk in a library: your materials close at hand, o
 | | `carrel redact` | Pattern/PII redaction for text formats; true raster redaction for PDFs |
 | | `carrel sign` | Visible PDF stamps, sha256 manifests, gpg-backed verify |
 | | `carrel form` | Build html/pdf forms from JSON specs; list and fill AcroForm PDFs |
-| **The desk itself** | `carrel desk` | The flagship TUI — see [below](#the-desk-tui); needs the `tui` extra |
+| **The desk itself** | `carrel desk` | A companion TUI — see [below](#the-desk-tui); needs the `tui` extra |
 | | `carrel doctor` | What your environment enables today, with install hints for the rest |
 | | `carrel completion` | Tab-completion scripts for bash, zsh, and fish |
 
 carrel wraps the masters — pandoc, poppler, qpdf, tesseract/ocrmypdf, ImageMagick, exiftool, ffmpeg… — behind one adapter layer with capability detection. Missing binary? Commands degrade with an install hint (exit 3), never a crash. Several copies of a tool on `PATH`? Pin one with `CARREL_BIN_<NAME>` ([docs/CONFIGURATION.md](docs/CONFIGURATION.md#pinning-a-binary-carrel_bin_name)).
 
-## Quickstart
-
-Requires Python ≥ 3.12 and [uv](https://docs.astral.sh/uv/). No checkout needed:
-
-```sh
-uv tool install 'carrel[all]'   # or: pipx install 'carrel[all]' — puts `carrel` on your PATH
-                                # plain `carrel` skips the TUI and office/token extras (see INSTALL)
-carrel doctor         # what can your desk do today? (+ apt hints for the rest)
-```
-
-(Contributing or hacking on it? `uv tool install .` from a checkout does the same thing.)
-
-A first taste:
+### A first taste
 
 ```sh
 carrel inspect paper.pdf                              # pages, sha256, producer, form fields…
@@ -127,20 +193,22 @@ The full validated flow (with real output) is in [docs/TEST_REPORT.md](docs/TEST
 carrel desk
 ```
 
-<div align="center"><img src="assets/logo.svg" alt="carrel mark" width="96"></div>
+<img src="assets/demo/desk-tour.gif" alt="carrel desk TUI tour" width="100%">
 
-The flagship: a three-pane [Textual](https://textual.textualize.io/) desk. A file tree on the left, an inspector in the middle (metadata, preview, tags, notes), an action palette on the right (convert, ocr, pack, thumbnail…) — all driving the same core library as the CLI, with full-text search along the bottom. Theme: warm lamplight on dark wood, per [docs/BRAND.md](docs/BRAND.md).
+*`carrel desk` — browse the tree, inspect a file, run an action, search the index.*
+
+A companion to the CLI: a three-pane [Textual](https://textual.textualize.io/) desk. A file tree on the left, an inspector in the middle (metadata, preview, tags, notes), an action palette on the right (convert, ocr, pack, thumbnail…) — all driving the same core library as the CLI, with full-text search along the bottom. Theme: warm lamplight on dark wood, per [docs/BRAND.md](docs/BRAND.md).
 
 ## Learn more
 
 - **[The docs site](https://coltonbearden.github.io/carrel/)** — everything below, browsable
-- [docs/HOW_THIS_WAS_BUILT.md](docs/HOW_THIS_WAS_BUILT.md) — the autonomous single-day build, from the primary sources
 - [docs/VISION.md](docs/VISION.md) — why a library desk, and the product principles
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — the adapter layer, the index, the plugin design
 - [docs/FEATURES.md](docs/FEATURES.md) — the capability × strategy matrix
 - [docs/TEST_REPORT.md](docs/TEST_REPORT.md) — everything above, executed for real (the v0.1.0 record: cookbook runs, office and `pack --query` proofs)
 - [examples/cookbook/](examples/cookbook/) — end-to-end recipes, from scan→searchable-notes to pack-what-matters
 - [docs/BRAND.md](docs/BRAND.md) — palette, typography, logo usage, voice
+- [docs/HOW_THIS_WAS_BUILT.md](docs/HOW_THIS_WAS_BUILT.md) — how this was built
 
 ## License
 

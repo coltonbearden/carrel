@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- **Changed (docs):** the README leads with what carrel does, not with a tour of the TUI. The
+  first screen was a `desk-tour.gif` and a paragraph about study carrels; the people arriving are
+  Claude Code users with a folder of PDFs. It now opens with the functional line — **Read, index,
+  pack and file your documents — from the terminal, for you and your agents** — then `pack.gif`
+  and `redact-proof.gif`, one paragraph, install, and **three things to try**: give Claude the
+  right context, read what the agent can't, turn an inbox into an archive. Each has a command
+  block that was actually run and one honest limitation. A **Status and support** section says
+  what is stable, what is experimental, which platforms CI really covers, and two things carrel
+  is not. `desk-tour.gif` moves to "The desk TUI", where "the flagship" becomes "a companion to
+  the CLI". Nothing was removed — all 33 command rows, all 9 plugin rows and every link stay,
+  checked as a set diff rather than by eye; the one difference is a link *added* to
+  `SECURITY.md`. `docs/index.md` gets the same first screen, and `product.json`'s description
+  starts with the functional line, so it reaches `pyproject.toml`, `CITATION.cff`, every plugin
+  manifest and the PyPI summary (D-024).
+
 - **Changed (stderr format):** under `--json`, an error is now itself one line of JSON on
   stderr — `{"error": "...", "exit_code": N}` — instead of `error: ...`. stdout is unchanged
   and still the data channel. A caller that pipes `--json` had to parse English out of stderr

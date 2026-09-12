@@ -122,3 +122,22 @@ block.
   labeled estimates; degraded capabilities say what to install). Never claim
   an unshipped feature.
 - Tagline, verbatim: *"A library desk for your files — and your agents."*
+
+## Message architecture
+
+Three layers, in this order, wherever carrel introduces itself (D-024):
+
+| Layer | Text | Where it belongs |
+|---|---|---|
+| **Motto** | *A library desk for your files — and your agents.* | `product.json` `tagline`; the banner; the docs-site subtitle |
+| **Functional line** | **Read, index, pack and file your documents — from the terminal, for you and your agents.** | first line of `README.md` and `docs/index.md`; the GitHub description; the start of the PyPI summary |
+| **Three use cases** | give Claude the right context · read what the agent can't · turn an inbox into an archive | the README's "Three things to try", in that order |
+
+The motto says what carrel *is* and is the only line allowed to be evocative. The functional
+line says what it *does*, in verbs, to a reader who has never heard of it — it is the one that
+has to survive being read alone in a search result. The use cases are ordered by why people
+arrive, not by how impressive they are: context-for-an-agent first, the accounting inbox last.
+
+Each use case gets two sentences, a command block that has been run, and one honest limitation.
+The limitation is not a disclaimer to be minimised — it is what makes the other two sentences
+believable.

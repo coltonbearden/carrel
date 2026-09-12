@@ -179,3 +179,21 @@ The rule from here: **if an invocation that succeeded before can now exit non-ze
 This wave has four such changes — MCP confinement, the `--json` empty-pack exit, image `Read`s passing through, and the JSON error shape on stderr — so it is **0.5.0**, and MCP v3 (`specs/30-mcp-v3.md`) moves from that number to v0.6.0.
 
 Consequence: `docs/RELEASING.md` states the rule where the version is bumped. Still undecided, and left in `STATE.md`: whether `publish.yml` should *refuse* a patch tag whose CHANGELOG entry contains a "Changed (behaviour)" bullet. The rule is worth having before the enforcement, and enforcing it needs a CHANGELOG convention stricter than the one in use.
+
+## D-024 (2026-09-12) — The README leads with the document workflow; the TUI is a companion
+
+The first screen answered "what is this?" with a TUI tour and a paragraph about a study carrel. The people arriving are Claude Code users with a folder of PDFs, and what they needed to see was that carrel reads documents their agent cannot, packs the relevant few out of hundreds, and files an inbox by what the invoices say. The desk TUI is a fine thing and is nobody's reason to install a CLI.
+
+The order is now: the functional line — **Read, index, pack and file your documents — from the terminal, for you and your agents** — then `pack.gif` and `redact-proof.gif`, then one paragraph, then install, then **three things to try**, each with a command block that has actually been run and one honest limitation. `desk-tour.gif` moves to "The desk TUI" and "the flagship" becomes "a companion to the CLI".
+
+Nothing was removed. All 33 command rows, all 9 plugin rows and every link stay — checked as a set diff before and after, not by eye: the only difference is one link *added* (`SECURITY.md`, from the new Status and support section).
+
+Three layers, and the next README edit should keep them apart:
+
+1. **The motto** — *A library desk for your files — and your agents.* Identity. It is in `product.json` and does not move.
+2. **The functional line** — what the tool does, in verbs, for someone who has never heard of it. It leads the README and `docs/index.md`, it is the GitHub description, and it leads the PyPI summary.
+3. **The three use cases** — context for an agent, reading what an agent cannot, an inbox into an archive. In that order: the first is why most readers arrive, the third is the most impressive and the least believed on sight.
+
+A "Status and support" section states what is stable, what is experimental, which platforms CI actually covers, the security response window, and two things carrel is not. Every claim there is one somebody could hold the project to.
+
+Consequence: `docs/BRAND.md` carries this layering so it survives the next rewrite, and `product.json`'s `description` starts with the functional line, so `sync_product.py` carries it into `pyproject.toml`, `CITATION.cff` and every plugin manifest.

@@ -258,7 +258,14 @@ def test_the_prose_lists_would_notice_a_deletion():
 
     gutted = re.sub(r"\(([^)]*)\)", "()", surface)  # drop the parenthesised list
     absent = [n for n in names if not re.search(rf"\b{re.escape(n)}\b", gutted)]
-    assert len(absent) >= 10, f"removing the list left {len(absent)} names missing; expected most"
+    # A majority, not a fixed count: `search`, `pack`, `index`, `fields` and
+    # `refs` are ordinary words that legitimately appear in prose on the same
+    # lines, and a README that says more about what carrel does will name more of
+    # them. What must stay true is that deleting the list is *visible*.
+    assert len(absent) > len(names) // 2, (
+        f"removing the list left only {len(absent)} of {len(names)} names missing — "
+        "the MCP surface has grown broad enough that a deleted tool could hide in it"
+    )
 
 
 @pytest.mark.parametrize("doc", ["REPO_SETTINGS.md", "RELEASING.md"])
