@@ -247,6 +247,36 @@ def would_move_tracked(paths: Iterable[Path]) -> dict[Path, list[str]]:
     return {root: names for root, names in hits.items() if names}
 
 
+class OutsideRootError(CarrelUsageError):
+    """A path landed outside the boundary its caller declared.
+
+    Lives here rather than in `commands/mcp.py` because both halves of the rule
+    raise it: `Desk.resolve` for a path the client named, `confined_dest` for one
+    a writer derived.
+    """
+
+
+def confined_dest(dest: Path, confine_to: Path | None) -> Path:
+    """`dest`, refused when it resolves outside `confine_to`. `None` confines nothing.
+
+    A write **follows a symlink**. A link planted at the destination — inside the
+    boundary, pointing out of it — makes an ordinary write a write outside the
+    boundary, and a *dangling* link creates the outside file with no existing
+    file to force past. Neither is reachable through the path the client named,
+    so the read-side check cannot see it: a caller that derives a destination
+    checks it here, after deriving it.
+
+    Returns `dest` unchanged rather than its resolved form, so the caller writes
+    to the path it computed and its output records say what the user asked for.
+    """
+    if within(dest, confine_to):
+        return dest
+    raise OutsideRootError(
+        f"{dest} resolves outside {confine_to} — carrel refuses to write there; "
+        "a symlink at the destination is the usual cause"
+    )
+
+
 def within(path: Path, root: Path | None) -> bool:
     """True when `path`, symlinks resolved, is inside `root`. `root=None` confines nothing.
 
@@ -257,16 +287,17 @@ def within(path: Path, root: Path | None) -> bool:
     links, because a desk that symlinks documents in from elsewhere is a
     legitimate layout.
 
-    **Both sides are resolved.** Comparing a resolved path against a raw `root`
-    is false for every entry when the root is relative, or reached through a
-    symlinked parent — `/tmp` on macOS, `/home` under some WSL layouts — and the
-    walk would then yield nothing with no error at all. `ancestor_ignores`
-    resolves its own `stop_at` for the same reason.
+    **`root` must already be resolved** — `Desk.root` and `Desk.walk_boundary`
+    are, and every caller takes its boundary from one of them. Comparing against
+    a raw `root` is false for every entry when it is relative or reached through
+    a symlinked parent (`/tmp` on macOS, `/home` under some WSL layouts), and the
+    walk would then yield nothing with no error at all; resolving it *here*
+    instead would pay a realpath per walked entry for a value that never changes.
     """
     if root is None:
         return True
     try:
-        return path.resolve().is_relative_to(root.resolve())
+        return path.resolve().is_relative_to(root)
     except OSError:
         # Not symlink loops — `resolve()` is non-strict and returns those
         # unchanged. `os.getcwd()` behind a relative path when the cwd has been

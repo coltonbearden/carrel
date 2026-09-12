@@ -31,11 +31,7 @@ from typing import Any
 
 import click
 
-from carrel.commands._guard_flags import (
-    allow_tracked_options,
-    normalise_guard_flags,
-    warn_if_deprecated_spelling,
-)
+from carrel.commands._guard_flags import allow_tracked_options, warn_if_deprecated_spelling
 from carrel.commands.fields import extract_fields, save_fields
 from carrel.commands.refs import tag_for
 from carrel.commands.rename import (
@@ -587,7 +583,6 @@ def cmd(
         raise click.UsageError(
             "INBOX and --to must be separate directories, neither inside the other"
         )
-    allow_tracked = normalise_guard_flags(ctx)
     if apply_:
         warn_if_deprecated_spelling(ctx)  # after the INBOX/--to checks, at the guard
         # before the mkdir below: a refused run must leave the disk untouched.

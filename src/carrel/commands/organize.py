@@ -24,11 +24,7 @@ from typing import Any
 
 import click
 
-from carrel.commands._guard_flags import (
-    allow_tracked_options,
-    normalise_guard_flags,
-    warn_if_deprecated_spelling,
-)
+from carrel.commands._guard_flags import allow_tracked_options, warn_if_deprecated_spelling
 from carrel.core.filetypes import FileType, detect
 from carrel.core.fsops import guard_worktree, move_file, uncollide
 from carrel.core.output import CarrelInputError, emit, handled, root_of
@@ -181,7 +177,6 @@ def cmd(
     new path breaks imports, tests and history; --allow-tracked overrides. Untracked
     files inside a repository are fine.
     """
-    allow_tracked = normalise_guard_flags(ctx)
     directory = directory.resolve()
     if not directory.is_dir():
         raise CarrelInputError(f"no such directory: {directory}")

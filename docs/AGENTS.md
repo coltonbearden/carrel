@@ -128,7 +128,7 @@ every tool accepts `root` per call. Failures arrive as `isError: true` carrying 
 message the CLI prints — including the install hint for a missing binary — never a crash.
 
 The server is **confined to that root** (D-021). Every path a client names — a tool's
-`path`/`paths`/`out`, a per-call `root`, and both `carrel://` resource URIs — is resolved
+`path`/`paths`/`out_dir`, a per-call `root`, and both `carrel://` resource URIs — is resolved
 with symlinks followed and refused if it lands outside: `isError: true` with exit code 2
 for tools, resource-not-found for resources. So a per-call `root` can narrow the desk but
 never leave it. Start the server with `carrel mcp --allow-outside-root` when a client

@@ -15,8 +15,9 @@ concern from end to end.
 
 from __future__ import annotations
 
+import functools
 from collections.abc import Callable
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 import click
 
@@ -36,12 +37,22 @@ def allow_tracked_options(help_text: str) -> Callable[[F], F]:
     """
 
     def decorate(func: F) -> F:
-        func = click.option(
+        @functools.wraps(func)
+        def fold(*args: Any, **kwargs: Any) -> Any:
+            # the fold is structural, not a line each command has to remember:
+            # forgetting it made `--force` parse fine, set nothing, and let the
+            # guard refuse the very run the user had overridden
+            ctx = click.get_current_context()
+            kwargs["allow_tracked"] = normalise_guard_flags(ctx)
+            kwargs["force"] = False
+            return func(*args, **kwargs)
+
+        wrapped = click.option(
             "--force",
             is_flag=True,
             help="Deprecated spelling of --allow-tracked; warns when it bypasses the guard.",
-        )(func)
-        return click.option("--allow-tracked", is_flag=True, help=help_text)(func)
+        )(fold)
+        return cast("F", click.option("--allow-tracked", is_flag=True, help=help_text)(wrapped))
 
     return decorate
 

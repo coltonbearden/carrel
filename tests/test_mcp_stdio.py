@@ -624,5 +624,112 @@ def test_no_tool_reads_through_a_symlink_planted_in_the_desk(tmp_path, name, act
     assert "hunter2" not in proc.stdout, f"{name} read through the symlink"
 
 
+@pytest.mark.skipif(os.name == "nt", reason="symlink creation needs privileges on Windows")
+@pytest.mark.parametrize(
+    ("tool", "args"),
+    [
+        ("carrel_convert", {"path": "note.md", "to": "txt", "force": True}),
+        (
+            "carrel_mail",
+            {"action": "attachments", "path": "mail.eml", "out_dir": ".", "force": True},
+        ),
+    ],
+)
+def test_no_tool_writes_through_a_symlink_at_its_destination(tmp_path, tool, args):
+    """The read side's twin. A write *follows* a symlink, and the destination is derived.
+
+    `Desk.resolve` sees only the paths a client names, and neither the converted
+    file's name nor an attachment's is one of them — so a link planted at the
+    destination sent the confined server's writes outside the root, and a
+    *dangling* link created the outside file with nothing to force past.
+    `test_no_tool_reads_through_a_symlink_planted_in_the_desk` aims everything at
+    `"."`, so both tools failed input detection before they ever reached a write.
+    """
+    desk = tmp_path / "desk"
+    desk.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "victim.txt").write_text("ORIGINAL\n")
+    (desk / "note.md").write_text("hello\n\nsome markdown\n")
+    _write_eml(desk / "mail.eml")
+    # the destination each tool derives, pre-planted as a link out of the desk
+    (desk / "note.txt").symlink_to(outside / "victim.txt")
+    (desk / "report.txt").symlink_to(outside / "victim.txt")
+
+    proc = run_server([tool_call(1, tool, args)], desk)
+
+    assert proc.returncode == 0, proc.stderr
+    is_error, payload = tool_payload(parse_lines(proc.stdout)[0])
+    assert is_error is True, payload
+    assert "resolves outside" in payload["error"], payload
+    assert (outside / "victim.txt").read_text() == "ORIGINAL\n", "wrote through the link"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="symlink creation needs privileges on Windows")
+def test_a_dangling_symlink_destination_creates_nothing_outside(tmp_path):
+    """No existing file means no overwrite to force past — the quiet half of the same hole."""
+    desk = tmp_path / "desk"
+    desk.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (desk / "note.md").write_text("hello\n\nsome markdown\n")
+    (desk / "note.txt").symlink_to(outside / "created.txt")
+
+    proc = run_server([tool_call(1, "carrel_convert", {"path": "note.md", "to": "txt"})], desk)
+
+    is_error, payload = tool_payload(parse_lines(proc.stdout)[0])
+    assert is_error is True, payload
+    assert not (outside / "created.txt").exists(), "created a file outside the root"
+
+
+@needs("git")
+@pytest.mark.skipif(os.name == "nt", reason="symlink creation needs privileges on Windows")
+def test_stored_rows_pointing_outside_the_root_are_not_served(tmp_path):
+    """Confining the walk stops the server *writing* such rows; it cannot unwrite them.
+
+    The CLI follows symlinks by design (D-021), so a desk indexed from the shell
+    can hold rows pointing anywhere — and `--prune` keeps them, because the target
+    still exists. Every tool that returns stored paths filters them.
+    """
+    desk = tmp_path / "desk"
+    desk.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secret.txt").write_text("the passphrase is hunter2\n")
+    (desk / "inside.txt").write_text("ordinary desk note about passphrase policy\n")
+    (desk / "leak.txt").symlink_to(outside / "secret.txt")
+    subprocess.run(
+        [sys.executable, "-m", "carrel.cli", "--root", str(desk), "index", str(desk)],
+        check=True,
+        capture_output=True,
+        timeout=TIMEOUT,
+    )
+
+    proc = run_server([tool_call(1, "carrel_search", {"query": "passphrase"})], desk)
+    _, payload = tool_payload(parse_lines(proc.stdout)[0])
+    assert [h["path"] for h in payload["results"]] == ["inside.txt"], payload
+    assert "hunter2" not in proc.stdout
+
+    # ...and the escape hatch still reaches them, or it would not be one
+    proc = run_server(
+        [tool_call(1, "carrel_search", {"query": "passphrase"})],
+        desk,
+        args=("--allow-outside-root",),
+    )
+    _, payload = tool_payload(parse_lines(proc.stdout)[0])
+    assert len(payload["results"]) == 2, payload
+
+
+def _write_eml(path: Path) -> None:
+    from email.message import EmailMessage
+
+    msg = EmailMessage()
+    msg["From"] = "a@b.c"
+    msg["Subject"] = "s"
+    msg.set_content("body")
+    msg.add_attachment(b"ATTACKER BYTES", maintype="text", subtype="plain", filename="report.txt")
+    path.write_bytes(bytes(msg))
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))

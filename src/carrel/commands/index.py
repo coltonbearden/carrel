@@ -155,6 +155,9 @@ def index_paths(
     with DeskDB(root) as db:
         if update:
             for f in targets:
+                if not within(f, confine_to):
+                    counts["skipped"] += 1
+                    continue
                 if not f.is_file() or not _candidate(f):
                     counts["skipped"] += 1  # hook mode: never fail on odd files
                     continue
@@ -163,6 +166,8 @@ def index_paths(
             for top in targets:
                 if not top.exists():
                     raise CarrelInputError(f"no such path: {top}")
+                if not within(top, confine_to):
+                    continue  # `_walk`'s symlink fast path assumes an inside top
                 seed = ancestor_ignores(top, root) if gitignore else ()
                 for f in _walk(top, seed, use_gitignore=gitignore, confine_to=confine_to):
                     if not _candidate(f):

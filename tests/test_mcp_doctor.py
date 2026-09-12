@@ -255,8 +255,37 @@ class TestMcpProtocol:
         assert responses[1]["result"] == {}
 
     def test_non_object_message_is_invalid_request(self):
-        (resp,) = rpc(["[1, 2, 3]"])
+        (resp,) = rpc(["5"])
         assert resp["error"]["code"] == -32600
+
+    def test_a_batch_answers_each_member(self):
+        """JSON-RPC batches: legal in the 2024-11-05 and 2025-03-26 revisions we advertise.
+
+        `[1, 2, 3]` used to be one -32600 because a top-level list was simply not
+        an object; it is three invalid requests inside a valid batch.
+        """
+        (resp,) = rpc(["[1, 2, 3]"])
+        assert [r["error"]["code"] for r in resp] == [-32600] * 3
+
+        (resp,) = rpc(
+            [
+                [
+                    {"jsonrpc": "2.0", "id": 1, "method": "ping"},
+                    {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+                ]
+            ]
+        )
+        assert [r["id"] for r in resp] == [1, 2]
+        assert resp[0]["result"] == {}
+        assert len(resp[1]["result"]["tools"]) == 14
+
+    def test_an_all_notification_batch_gets_no_reply(self):
+        assert rpc([[{"jsonrpc": "2.0", "method": "notifications/initialized"}]]) == []
+
+    def test_an_empty_batch_is_an_invalid_request(self):
+        (resp,) = rpc(["[]"])
+        assert resp["error"]["code"] == -32600
+        assert "empty batch" in resp["error"]["message"]
 
     def test_unknown_tool_errors(self):
         (resp,) = rpc(

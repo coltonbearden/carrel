@@ -26,11 +26,7 @@ from typing import Any
 
 import click
 
-from carrel.commands._guard_flags import (
-    allow_tracked_options,
-    normalise_guard_flags,
-    warn_if_deprecated_spelling,
-)
+from carrel.commands._guard_flags import allow_tracked_options, warn_if_deprecated_spelling
 from carrel.core import patterns as pat
 from carrel.core.db import DeskDB
 from carrel.core.filetypes import detect
@@ -360,7 +356,6 @@ def cmd(
     """
     if not _PLACEHOLDER.search(template):
         raise click.UsageError(f"--template has no placeholders: {template!r}")
-    allow_tracked = normalise_guard_flags(ctx)
     if apply_:
         warn_if_deprecated_spelling(ctx)  # after the template check, at the guard
         # every PATH, not just directories: a shell glob (`rename src/*.py --apply`)

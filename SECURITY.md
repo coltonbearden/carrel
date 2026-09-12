@@ -31,9 +31,14 @@ one adapter layer (`src/carrel/core/adapters.py`). Reports we care about most:
   confined to the directory it was started in (`--root`, else the working
   directory): every tool path, every client-supplied `root` and both
   `carrel://` resource URIs are resolved — symlinks first — and refused when
-  they land outside it. `--allow-outside-root` lifts the confinement for the
-  session, so a report about that flag's own behaviour is not a vulnerability;
-  a path escaping it without the flag is,
+  they land outside it, as is every destination a tool *derives* (a symlink
+  planted where a conversion or an attachment lands would otherwise carry the
+  write out of the root, and a dangling one would create the outside file). A
+  desk indexed from the CLI can still hold rows pointing outside — the CLI
+  follows links by design — so the tools that return stored paths filter them.
+  `--allow-outside-root` lifts the confinement for the session, so a report
+  about that flag's own behaviour is not a vulnerability; a path escaping it
+  without the flag is,
 - redaction (`carrel redact`) leaving matched data behind.
 
 ## Supply chain

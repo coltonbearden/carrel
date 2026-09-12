@@ -35,11 +35,7 @@ from typing import Any
 import click
 
 from carrel._product import PRODUCT
-from carrel.commands._guard_flags import (
-    allow_tracked_options,
-    normalise_guard_flags,
-    warn_if_deprecated_spelling,
-)
+from carrel.commands._guard_flags import allow_tracked_options, warn_if_deprecated_spelling
 from carrel.core.actions import PLACEHOLDERS, kill_tree, quote, render, run_action
 from carrel.core.fsops import guard_worktree, move_file, uncollide
 from carrel.core.output import CarrelInputError, CarrelUsageError, handled, root_of
@@ -704,7 +700,6 @@ def cmd(
     git is tracking; --allow-tracked overrides. Actions themselves are never guarded —
     what a --run command does is the user's business.
     """
-    allow_tracked = normalise_guard_flags(ctx)
     json_lines = json_lines or bool(ctx.obj and ctx.obj.get("json"))
     directory = directory.resolve()
     if not directory.is_dir():
@@ -719,11 +714,12 @@ def cmd(
         raise click.UsageError("--stable-timeout needs --stable")
     # The guard is only consulted when something would be moved, so that is the
     # only place the deprecated spelling is worth a warning.
-    # The guard is only consulted when something would be moved, so that is the
-    # only place the deprecated spelling is worth a warning.
-    if done_dir is not None or error_dir is not None:
+    moves_files = done_dir is not None or error_dir is not None
+    if moves_files:
+        # the guard is only consulted when something would be moved, so that is
+        # the only place the deprecated spelling is worth a warning
         warn_if_deprecated_spelling(ctx)
-    if not allow_tracked and (done_dir is not None or error_dir is not None):
+    if not allow_tracked and moves_files:
         # the fourth bulk mover (spec 29), and the only one with no dry-run to
         # fall back on: --done-dir empties the watched directory as it goes.
         # Checked before --print-service returns, so carrel never hands back a

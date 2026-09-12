@@ -23,7 +23,7 @@ import click
 
 from carrel.core import adapters, mail
 from carrel.core.filetypes import FileType, detect, detect_or_die
-from carrel.core.fsops import uncollide, within
+from carrel.core.fsops import confined_dest, uncollide, within
 from carrel.core.output import (
     CarrelError,
     CarrelInputError,
@@ -82,7 +82,11 @@ def _mail_files(
 
 
 def attachments_of(
-    paths: Sequence[Path | str], out_dir: Path | str, *, force: bool = False
+    paths: Sequence[Path | str],
+    out_dir: Path | str,
+    *,
+    force: bool = False,
+    confine_to: Path | None = None,
 ) -> list[dict[str, Any]]:
     """Save every attachment of the given eml/mbox files into `out_dir`.
 
@@ -105,6 +109,9 @@ def attachments_of(
                 # `taken` alone when forcing: pre-existing files may be replaced,
                 # but this run's own outputs must never collide with each other
                 dest = uncollide(dest, taken) if not force else _unplanned(dest, taken)
+                # `safe_filename` strips separators out of the name; it cannot see
+                # that the path it lands on is a symlink out of the desk
+                dest = confined_dest(dest, confine_to)
                 taken.add(dest)
                 dest.write_bytes(data)
                 saved.append(

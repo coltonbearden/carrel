@@ -266,6 +266,22 @@
   `audiobook`. `--force` stays on all four as a deprecated alias that warns once when the
   guard is actually consulted; it is not removed and no removal date is set.
 
+- **Deferred from PR #43:** the MCP boundary is threaded as a `confine_to` flag into
+  five separate walkers (`index._walk`, `pack._walk_dir`, `refs._candidates`,
+  `mail._mail_files`, `fields.fields_for`) plus `confined_dest` at two writers,
+  rather than fixed once in a confined filesystem accessor. Four review rounds
+  each found "one more caller also does this" — four walkers, then `mail`, then
+  the write side, then the stored index rows — which is the argument for one
+  `iter_files(top, confine_to=...)` every walker uses. Not done here: it is a
+  cross-module refactor of five walkers with different ignore-stack shapes, in a
+  PR that is already 37 files, and the regression risk lands on `pack` and
+  `index`, the two most-used commands. The registry-driven tests
+  (`test_no_tool_reads_through_a_symlink_planted_in_the_desk`,
+  `test_every_tool_refuses_a_root_outside_the_server_root`, and their write-side
+  twin) drive every (tool, action) pair from `mcp.TOOLS`, so a sixth caller fails
+  rather than ships while the flag remains. Do the unification in the MCP v3 wave
+  (v0.6.0), which adds mutating tools to the same surface.
+
 - **Considered and declined in PR #43:** a per-call MCP `root` bounds the ancestor
   `.gitignore` walk at that root, not at the server's launch root, so
   `carrel_refs {"path": ".", "root": "sub"}` does not apply `<desk>/.gitignore`.

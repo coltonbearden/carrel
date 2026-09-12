@@ -16,7 +16,8 @@ CLI would print (CarrelError text, install hints included) — never a crash.
 
 Every path the client names — tool arguments, a client-supplied `root`, and both
 `carrel://` resource URIs — is confined to the directory the server was started
-in (`Desk`, below). `--allow-outside-root` lifts it for the session.
+in (`Desk`, below), as is every destination a tool *derives* (`confined_dest`).
+`--allow-outside-root` lifts it for the session.
 """
 
 from __future__ import annotations
@@ -37,16 +38,18 @@ import click
 from carrel._product import PRODUCT
 from carrel.core.db import DeskDB
 from carrel.core.filetypes import FileType, detect_or_die
-from carrel.core.fsops import within
-from carrel.core.output import CarrelError, CarrelInputError, CarrelUsageError
+from carrel.core.fsops import OutsideRootError, confined_dest, within
+from carrel.core.output import CarrelError, CarrelInputError
 from carrel.core.patterns import PATTERNS
 from carrel.core.textextract import extract_text
 
-#: Newest first. The JSON-RPC surface this server exposes — `initialize`,
-#: `tools/list`, `tools/call` and the two `resources/*` methods — is identical
-#: across all three revisions, so any of them can be spoken verbatim. A version
-#: outside this tuple is answered with the newest we support; the MCP spec has
-#: the server name a version it actually speaks and lets the client decide.
+#: Newest first. The methods this server exposes — `initialize`, `tools/list`,
+#: `tools/call` and the two `resources/*` — are identical across all three
+#: revisions. The one wire difference is JSON-RPC **batching**, which the older
+#: two allow and 2025-06-18 removed: `_handle_batch` implements it, because
+#: advertising a revision means speaking it. A version outside this tuple is
+#: answered with the newest we support; the MCP spec has the server name a
+#: version it actually speaks and lets the client decide.
 SUPPORTED_PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 DEFAULT_PROTOCOL_VERSION = SUPPORTED_PROTOCOL_VERSIONS[0]
 CONVERT_CONTENT_CAP = 1024 * 1024  # bytes of converted text returned inline
@@ -414,10 +417,6 @@ _SCHEMA_BY_NAME = {t["name"]: t["inputSchema"] for t in TOOLS}
 # ---------------------------------------------------------------------------
 
 
-class OutsideRootError(CarrelUsageError):
-    """A client named a path outside the directory the server was started in."""
-
-
 @dataclass(frozen=True, slots=True)
 class Desk:
     """The server's launch root and whether paths are confined to it.
@@ -455,8 +454,11 @@ class Desk:
             path = (base if base is not None else self.root) / path
         real = path.resolve()
         if not within(real, self.walk_boundary):
+            # `raw`, not `real`: naming where a symlink points would let a client
+            # enumerate link targets across the desk, which is the existence
+            # oracle `_read_resource` refuses to become two screens below.
             raise OutsideRootError(
-                f"{real} is outside the server root {self.root} — "
+                f"{raw} is outside the server root {self.root} — "
                 "carrel mcp only reads and writes under the directory it was "
                 "started in; restart it with --allow-outside-root to lift this"
             )
@@ -466,6 +468,28 @@ class Desk:
 def _root(args: dict[str, Any], desk: Desk) -> Path:
     """The desk root for one call: the client's `root` argument, confined."""
     return desk.resolve(args.get("root") or ".")
+
+
+def _inside(rows: list[Any], desk: Desk, root: Path, key: str | None = None) -> list[Any]:
+    """Drop stored rows whose file lies outside the boundary.
+
+    The desk index is written by whoever ran `carrel index`, and the CLI follows
+    symlinks by design (D-021) — so a desk indexed from the shell can hold rows
+    pointing anywhere, and a confined server would serve their paths and their
+    text. Confining the *walk* stops the server writing such rows; it cannot
+    unwrite the ones already there, and `--prune` keeps them because the target
+    still exists. Every tool that returns stored paths filters through here.
+
+    Paths are stored root-relative, so they are joined to `root` before the test.
+    """
+    if not desk.confined:
+        return rows
+
+    def keep(row: Any) -> bool:
+        raw = row if key is None else row[key]
+        return within(root / str(raw), desk.walk_boundary)
+
+    return [row for row in rows if keep(row)]
 
 
 def _str_list(args: dict[str, Any], key: str) -> list[str]:
@@ -517,8 +541,13 @@ def _tool_search(args: dict[str, Any], desk: Desk) -> dict[str, Any]:
     types = set(_str_list(args, "types")) or None
     tags = _str_list(args, "tags") or None
     meta = _str_list(args, "meta") or None
-    hits = search_index(
-        root, query, limit=int(args.get("limit") or 20), types=types, tags=tags, meta=meta
+    hits = _inside(
+        search_index(
+            root, query, limit=int(args.get("limit") or 20), types=types, tags=tags, meta=meta
+        ),
+        desk,
+        root,
+        "path",
     )
     return {"query": query, "root": str(root), "count": len(hits), "results": hits}
 
@@ -608,7 +637,8 @@ def _tool_tag(args: dict[str, Any], desk: Desk) -> dict[str, Any]:
         if not DeskDB.exists(root):
             return {"root": str(root), "tags": tags, "paths": []}
         with DeskDB(root) as db:
-            return {"root": str(root), "tags": tags, "paths": db.find_by_tags(tags)}
+            found = _inside(db.find_by_tags(tags), desk, root)
+            return {"root": str(root), "tags": tags, "paths": found}
 
     if not args.get("path"):
         raise CarrelInputError(f"carrel_tag {action} requires `path`")
@@ -687,7 +717,11 @@ def _tool_convert(args: dict[str, Any], desk: Desk) -> dict[str, Any]:
         known = sorted(t.value for t in FileType if t is not FileType.UNKNOWN)
         raise CarrelInputError(f"unknown target type '{to}' (choose from: {', '.join(known)})")
     out_dir = desk.resolve(args["out_dir"], root) if args.get("out_dir") else src.parent
-    dest = (out_dir / src.name).with_suffix(f".{dest_type.value}")
+    # the client names `path` and `out_dir`; `dest` is ours, and a symlink sitting
+    # at it writes through to wherever it points (a dangling one creates it)
+    dest = confined_dest(
+        (out_dir / src.name).with_suffix(f".{dest_type.value}"), desk.walk_boundary
+    )
     info = convert_file(src, dest, force=bool(args.get("force") or False))
 
     payload: dict[str, Any] = {
@@ -784,7 +818,7 @@ def _tool_meta(args: dict[str, Any], desk: Desk) -> dict[str, Any]:
         if not DeskDB.exists(root):
             return {"root": str(root), "conditions": conditions, "files": []}
         with DeskDB(root) as db:
-            paths = db.find_by_meta(conditions)
+            paths = _inside(db.find_by_meta(conditions), desk, root)
             by_path = db.meta_for_paths(paths)
             files = [{"path": p, "meta": by_path[p]} for p in paths]
         return {"root": str(root), "conditions": conditions, "files": files}
@@ -908,7 +942,12 @@ def _tool_mail(args: dict[str, Any], desk: Desk) -> dict[str, Any]:
     if not args.get("out_dir"):
         raise CarrelInputError("carrel_mail attachments requires `out_dir`")
     out_dir = desk.resolve(args["out_dir"], root)
-    records = attachments_of([path], out_dir, force=bool(args.get("force") or False))
+    records = attachments_of(
+        [path],
+        out_dir,
+        force=bool(args.get("force") or False),
+        confine_to=desk.walk_boundary,
+    )
     return {"root": str(root), "path": str(path), "out_dir": str(out_dir), "messages": records}
 
 
@@ -1019,6 +1058,20 @@ def _negotiate(requested: Any) -> str:
     return str(requested) if requested in SUPPORTED_PROTOCOL_VERSIONS else DEFAULT_PROTOCOL_VERSION
 
 
+def _handle_batch(batch: list[Any], desk: Desk) -> list[dict[str, Any]] | dict[str, Any] | None:
+    """One JSON-RPC batch → an array of the replies its requests earned.
+
+    Legal in the 2024-11-05 and 2025-03-26 revisions this server advertises;
+    removed in 2025-06-18, which is why it is accepted rather than required. A
+    batch of nothing but notifications earns no reply at all, per JSON-RPC 2.0 —
+    and an empty array is itself an invalid request.
+    """
+    if not batch:
+        return _error(None, -32600, "invalid request: empty batch")
+    replies = [reply for reply in (_handle(m, desk) for m in batch) if reply is not None]
+    return replies or None
+
+
 def _handle(msg: Any, desk: Desk) -> dict[str, Any] | None:
     """Handle one decoded message; None means no response (notification)."""
     if not isinstance(msg, dict):
@@ -1105,9 +1158,11 @@ def serve(
         try:
             msg = json.loads(line)
         except json.JSONDecodeError as e:
-            response: dict[str, Any] | None = _error(None, -32700, f"parse error: {e}")
+            response: list[dict[str, Any]] | dict[str, Any] | None = _error(
+                None, -32700, f"parse error: {e}"
+            )
         else:
-            response = _handle(msg, desk)
+            response = _handle_batch(msg, desk) if isinstance(msg, list) else _handle(msg, desk)
         if response is not None:
             stdout.write(json.dumps(response, ensure_ascii=False, default=str) + "\n")
             stdout.flush()

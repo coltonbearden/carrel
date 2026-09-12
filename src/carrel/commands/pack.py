@@ -827,6 +827,8 @@ def pack_paths(
             _add(f)
 
     for t in tops:
+        if not within(t, confine_to):
+            continue  # `_walk_dir`'s symlink fast path assumes an inside top
         if t.is_file():
             _add(t)  # explicitly named files are always packed
         else:
