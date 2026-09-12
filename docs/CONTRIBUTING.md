@@ -5,8 +5,8 @@
 ```bash
 git clone https://github.com/coltonbearden/carrel.git ~/projects/carrel && cd ~/projects/carrel
 uv sync                 # creates .venv from pyproject.toml + uv.lock
-uv run carrel doctor    # which optional binaries you have + apt install hints
-uv run pytest           # 501 tests; binary-gated tests skip (with reason) when a binary is absent
+uv run carrel doctor    # which optional binaries you have + install hints for your platform
+uv run pytest           # binary-gated tests skip (with reason) when a binary is absent
 ```
 
 Python ≥3.12, managed by [uv](https://docs.astral.sh/uv/). Optional external binaries

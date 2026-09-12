@@ -5,13 +5,15 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import sys
 from pathlib import Path
+from unittest import mock
 
 import pytest
 from conftest import needs
 
 from carrel.core import adapters
-from carrel.core.adapters import ADAPTERS, Adapter, MissingDependencyError
+from carrel.core.adapters import ADAPTERS, Adapter, Hints, MissingDependencyError
 from carrel.core.output import ExitCode
 
 # spec 00-core registry, minus the unwired entries spec 19 removed, plus `git`
@@ -87,7 +89,7 @@ def test_require_missing_binary_raises_with_hint(monkeypatch):
         name="frobnicator",
         binaries=("definitely-not-a-real-binary-xyz",),
         version_args=("--version",),
-        install_hint="sudo apt install frobnicator",
+        hints=Hints(apt="frobnicator", brew="frobnicator", winget="Frob.Nicator"),
         purpose="frobnicates test expectations",
     )
     monkeypatch.setitem(ADAPTERS, "frobnicator", fake)
@@ -285,3 +287,65 @@ def test_doctor_adapter_list_matches_registry():
     assert not (REMOVED_ADAPTERS & set(names))
     for row in build_report()["adapters"]:
         assert "override" in row  # key always present (None when unset)
+
+
+# ------------------------------------------------- platform-aware install hints
+
+
+def _hint(adapter: str, platform: str, on_path: str | None) -> str:
+    """`adapter`'s hint as rendered on `platform` with only `on_path` installed."""
+    with (
+        mock.patch.object(sys, "platform", platform),
+        mock.patch.object(adapters.shutil, "which", lambda b: b if b == on_path else None),
+    ):
+        return ADAPTERS[adapter].install_hint
+
+
+@pytest.mark.parametrize(
+    ("platform", "manager", "expected"),
+    [
+        ("linux", "apt", "sudo apt install pandoc"),
+        ("darwin", "brew", "brew install pandoc"),
+        ("win32", "winget", "winget install --id JohnMacFarlane.Pandoc"),
+    ],
+)
+def test_the_hint_names_this_platforms_package_manager(platform, manager, expected):
+    """`sudo apt install pandoc` is useless on a Mac, and was all carrel ever said."""
+    assert _hint("pandoc", platform, manager) == expected
+
+
+def test_a_manager_actually_on_path_wins_over_the_platform_default():
+    """A WSL box with Homebrew, a Mac with a port tree: name what can be run now."""
+    assert _hint("pandoc", "linux", "brew") == "brew install pandoc"
+
+
+def test_the_platforms_own_manager_is_named_even_when_absent():
+    """ "Install Homebrew, then this" beats silence; the package name is the point."""
+    assert _hint("pandoc", "darwin", None) == "brew install pandoc"
+
+
+def test_the_fallback_never_crosses_platforms():
+    """`brew install icoutils` on Windows is worse than admitting there is no package."""
+    hint = _hint("icotool", "win32", "winget")
+    assert "brew" not in hint and "apt" not in hint
+    assert "https://www.nongnu.org/icoutils/" in hint
+
+
+def test_a_python_package_falls_back_to_pipx_only_where_nothing_native_exists():
+    """weasyprint is in Debian and Homebrew; pipx is the answer on Windows alone."""
+    assert _hint("weasyprint", "linux", "apt") == "sudo apt install weasyprint"
+    assert _hint("weasyprint", "darwin", "brew") == "brew install weasyprint"
+    assert _hint("weasyprint", "win32", "winget") == "pipx install weasyprint"
+
+
+def test_a_cross_platform_only_tool_says_the_same_thing_everywhere():
+    for platform, manager in (("linux", "apt"), ("darwin", "brew"), ("win32", "winget")):
+        assert _hint("piper", platform, manager) == "pipx install piper-tts"
+
+
+def test_every_adapter_has_a_hint_on_every_platform():
+    """A missing binary must never degrade to a bare name with no way forward."""
+    for name in ADAPTERS:
+        for platform, manager in (("linux", "apt"), ("darwin", "brew"), ("win32", "winget")):
+            hint = _hint(name, platform, manager)
+            assert hint and not hint.endswith("ensure it is on PATH"), (name, platform, hint)

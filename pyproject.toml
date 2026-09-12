@@ -6,6 +6,36 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [{ name = "Colton Bearden" }]
+# Not written by scripts/sync_product.py — it rewrites only `version`,
+# `description` and `[project.urls]`, so these stay hand-maintained.
+# `Operating System :: Microsoft :: Windows` is deliberately absent until
+# `test-minimal (windows)` is a required check (STATE.md, dated 2026-09-24):
+# a trove classifier is a support claim, and that one is not backed yet.
+keywords = [
+    "pdf",
+    "ocr",
+    "documents",
+    "cli",
+    "mcp",
+    "claude-code",
+    "llm-context",
+    "context-packing",
+    "invoices",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Text Processing",
+    "Topic :: Utilities",
+]
 dependencies = [
     "click>=8.1",
     "rich>=13.0",

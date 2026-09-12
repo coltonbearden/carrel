@@ -146,7 +146,7 @@ def test_missing_tesseract_exits_3_with_hint(fixtures, tmp_path: Path, monkeypat
         "tesseract",
         ("definitely-not-a-real-binary-xyz",),
         real.version_args,
-        real.install_hint,
+        real.hints,
         real.purpose,
     )
     monkeypatch.setitem(adapters.ADAPTERS, "tesseract", broken)
@@ -163,7 +163,7 @@ def test_missing_ocrmypdf_exits_3_with_hint(fixtures, tmp_path: Path, monkeypatc
         "ocrmypdf",
         ("definitely-not-a-real-binary-xyz",),
         real.version_args,
-        real.install_hint,
+        real.hints,
         real.purpose,
     )
     monkeypatch.setitem(adapters.ADAPTERS, "ocrmypdf", broken)

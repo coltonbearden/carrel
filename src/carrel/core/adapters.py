@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -49,13 +50,82 @@ class ToolTimeoutError(CarrelError):
         )
 
 
+#: How to install a package on each platform, most specific first. `apt`, `brew`
+#: and `winget` hold the *package name* for that manager; `anywhere` is one
+#: cross-platform command (pipx) that makes the other three moot; `url` is the
+#: vendor page for a binary no manager on any platform packages.
+#:
+#: Every name here was resolved against the real registry before it was written
+#: down — `formulae.brew.sh/api/formula/<n>.json` for brew, `winget search` for
+#: winget — because a confidently wrong package name costs a user more than no
+#: hint at all: `apt install poppler` and `brew install poppler-utils` both fail,
+#: and neither says why.
+@dataclass(frozen=True, slots=True)
+class Hints:
+    apt: str | None = None
+    brew: str | None = None
+    winget: str | None = None
+    anywhere: str | None = None
+    url: str | None = None
+
+
+#: the binary that proves a package manager is usable here
+_MANAGER_BIN = {"apt": "apt", "brew": "brew", "winget": "winget"}
+#: which manager to name first, by platform
+_MANAGER_ORDER = {
+    "darwin": ("brew", "winget", "apt"),
+    "win32": ("winget", "brew", "apt"),
+}
+_DEFAULT_ORDER = ("apt", "brew", "winget")
+_INSTALL_CMD = {
+    "apt": "sudo apt install {}",
+    "brew": "brew install {}",
+    "winget": "winget install --id {}",
+}
+
+
+def render_hint(hints: Hints, name: str) -> str:
+    """The install line to show *here*: this platform's manager, then any usable one.
+
+    Picked at render time rather than baked in, so one wheel serves every
+    platform. A manager actually on PATH wins; failing that the platform's
+    conventional one is still named, because "install Homebrew, then this" is a
+    better answer than silence.
+    """
+    order = _MANAGER_ORDER.get(sys.platform, _DEFAULT_ORDER)
+    # a manager actually on PATH first — a WSL box with brew, a Mac with apt via
+    # a port tree — since that is a command the user can run right now
+    for manager in order:
+        if getattr(hints, manager) and shutil.which(_MANAGER_BIN[manager]):
+            return _INSTALL_CMD[manager].format(getattr(hints, manager))
+    # else the platform's *own* manager, if it packages this at all: "install
+    # Homebrew, then this" is a good answer on a Mac, and `brew install` is a
+    # useless one on Windows, so the fallback never crosses platforms.
+    primary = order[0]
+    if getattr(hints, primary):
+        return _INSTALL_CMD[primary].format(getattr(hints, primary))
+    # `anywhere` is the fallback, not the first choice: `weasyprint` has a Debian
+    # package and a pipx one, and on Debian `apt` is the better answer — pipx is
+    # what to say on the platform where nothing native exists.
+    if hints.anywhere:
+        return hints.anywhere
+    if hints.url:
+        return f"no package for {sys.platform} — build or download from {hints.url}"
+    return f"install '{name}' and ensure it is on PATH"
+
+
 @dataclass(frozen=True)
 class Adapter:
     name: str
     binaries: tuple[str, ...]
     version_args: tuple[str, ...]
-    install_hint: str
+    hints: Hints
     purpose: str
+
+    @property
+    def install_hint(self) -> str:
+        """This platform's install line (see `render_hint`)."""
+        return render_hint(self.hints, self.name)
 
     @property
     def env_var(self) -> str:
@@ -101,78 +171,99 @@ def _is_executable(path: Path) -> bool:
 def _a(
     name: str,
     purpose: str,
-    hint: str,
+    hints: Hints,
     *,
     binaries: tuple[str, ...] | None = None,
     version_args: tuple[str, ...] = ("--version",),
 ) -> Adapter:
-    return Adapter(name, binaries or (name,), version_args, hint, purpose)
+    return Adapter(name, binaries or (name,), version_args, hints, purpose)
 
+
+#: poppler ships pdftotext, pdftoppm and pdfimages as one package everywhere.
+_POPPLER = Hints(apt="poppler-utils", brew="poppler", winget="oschwartz10612.Poppler")
+_FFMPEG = Hints(apt="ffmpeg", brew="ffmpeg", winget="Gyan.FFmpeg")
 
 ADAPTERS: dict[str, Adapter] = {
     a.name: a
     for a in [
-        _a("pandoc", "document conversion hub (md/html/txt…)", "sudo apt install pandoc"),
         _a(
-            "pdftotext",
-            "PDF text extraction",
-            "sudo apt install poppler-utils",
-            version_args=("-v",),
+            "pandoc",
+            "document conversion hub (md/html/txt…)",
+            Hints(apt="pandoc", brew="pandoc", winget="JohnMacFarlane.Pandoc"),
+        ),
+        _a("pdftotext", "PDF text extraction", _POPPLER, version_args=("-v",)),
+        _a("pdftoppm", "PDF page rasterization / thumbnails", _POPPLER, version_args=("-v",)),
+        _a("pdfimages", "extract embedded PDF images", _POPPLER, version_args=("-v",)),
+        _a(
+            "qpdf",
+            "PDF surgery (linearize/decrypt)",
+            Hints(apt="qpdf", brew="qpdf", winget="QPDF.QPDF"),
+        ),
+        # a Python package: pipx serves every platform and no winget entry exists
+        _a(
+            "weasyprint",
+            "HTML/CSS → PDF rendering",
+            Hints(apt="weasyprint", brew="weasyprint", anywhere="pipx install weasyprint"),
         ),
         _a(
-            "pdftoppm",
-            "PDF page rasterization / thumbnails",
-            "sudo apt install poppler-utils",
-            version_args=("-v",),
+            "tesseract",
+            "OCR engine",
+            Hints(apt="tesseract-ocr", brew="tesseract", winget="UB-Mannheim.TesseractOCR"),
         ),
         _a(
-            "pdfimages",
-            "extract embedded PDF images",
-            "sudo apt install poppler-utils",
-            version_args=("-v",),
+            "ocrmypdf",
+            "add OCR text layer to PDFs",
+            Hints(apt="ocrmypdf", brew="ocrmypdf", anywhere="pipx install ocrmypdf"),
         ),
-        _a("qpdf", "PDF surgery (linearize/decrypt)", "sudo apt install qpdf"),
-        _a("weasyprint", "HTML/CSS → PDF rendering", "sudo apt install weasyprint"),
-        _a("tesseract", "OCR engine", "sudo apt install tesseract-ocr"),
-        _a("ocrmypdf", "add OCR text layer to PDFs", "sudo apt install ocrmypdf"),
         _a(
             "magick",
             "ImageMagick image operations",
-            "sudo apt install imagemagick",
+            Hints(apt="imagemagick", brew="imagemagick", winget="ImageMagick.ImageMagick"),
             binaries=("magick", "convert"),
         ),
         _a(
             "exiftool",
             "deep metadata inspection",
-            "sudo apt install libimage-exiftool-perl",
+            Hints(apt="libimage-exiftool-perl", brew="exiftool", winget="OliverBetz.ExifTool"),
             version_args=("-ver",),
         ),
+        _a("ffmpeg", "audio encoding (audiobooks)", _FFMPEG, version_args=("-version",)),
+        _a("ffprobe", "media metadata (durations)", _FFMPEG, version_args=("-version",)),
+        # no winget package: the vendor page is the honest answer
         _a(
-            "ffmpeg",
-            "audio encoding (audiobooks)",
-            "sudo apt install ffmpeg",
-            version_args=("-version",),
+            "icotool",
+            ".ico build/extract",
+            Hints(apt="icoutils", brew="icoutils", url="https://www.nongnu.org/icoutils/"),
         ),
         _a(
-            "ffprobe",
-            "media metadata (durations)",
-            "sudo apt install ffmpeg",
-            version_args=("-version",),
+            "espeak-ng",
+            "text-to-speech (baseline voice)",
+            Hints(apt="espeak-ng", brew="espeak-ng", winget="eSpeak-NG.eSpeak-NG"),
         ),
-        _a("icotool", ".ico build/extract", "sudo apt install icoutils"),
-        _a("espeak-ng", "text-to-speech (baseline voice)", "sudo apt install espeak-ng"),
         _a(
             "piper",
             "text-to-speech (natural voice, preferred if present)",
-            "pipx install piper-tts",
+            Hints(anywhere="pipx install piper-tts"),
         ),
-        _a("edge-tts", "text-to-speech (cloud, preferred if present)", "pipx install edge-tts"),
-        _a("gpg", "detached signatures for manifests", "sudo apt install gnupg"),
-        _a("git", "changed-file lists for pack --since/--changed", "sudo apt install git"),
+        _a(
+            "edge-tts",
+            "text-to-speech (cloud, preferred if present)",
+            Hints(anywhere="pipx install edge-tts"),
+        ),
+        _a(
+            "gpg",
+            "detached signatures for manifests",
+            Hints(apt="gnupg", brew="gnupg", winget="GnuPG.Gpg4win"),
+        ),
+        _a(
+            "git",
+            "changed-file lists for pack --since/--changed",
+            Hints(apt="git", brew="git", winget="Git.Git"),
+        ),
         _a(
             "readpst",
             "Outlook .pst/.ost export → eml or mbox (mail pst)",
-            "sudo apt install pst-utils",
+            Hints(apt="pst-utils", brew="libpst", url="https://www.five-ten-sg.com/libpst/"),
             version_args=("-V",),
         ),
     ]
@@ -181,9 +272,7 @@ ADAPTERS: dict[str, Adapter] = {
 
 def _lookup(name: str) -> Adapter:
     """Registered adapter, or an ad-hoc one so unknown names still fail with a hint."""
-    return ADAPTERS.get(name) or _a(
-        name, "unregistered tool", f"install '{name}' and ensure it is on PATH"
-    )
+    return ADAPTERS.get(name) or _a(name, "unregistered tool", Hints())
 
 
 def have(name: str) -> bool:

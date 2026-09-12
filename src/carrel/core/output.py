@@ -61,7 +61,18 @@ def emit(ctx: click.Context | None, data: Any, human: Callable[[Any], None] | No
 
 
 def fail(msg: str, code: ExitCode = ExitCode.ERROR) -> NoReturn:
-    click.echo(f"error: {msg}", err=True)
+    """Report an error and exit; under `--json` the report is itself JSON.
+
+    stdout stays exactly as it was — the data channel is never mixed with the
+    error channel — but a caller piping `--json` had to parse English out of
+    stderr to learn anything more than the exit code, and the exit code is what
+    a *shell* sees, not what an MCP client or a `subprocess` reading stderr does.
+    """
+    ctx = click.get_current_context(silent=True)
+    if ctx is not None and ctx.obj and ctx.obj.get("json"):
+        click.echo(json.dumps({"error": msg, "exit_code": int(code)}), err=True)
+    else:
+        click.echo(f"error: {msg}", err=True)
     sys.exit(int(code))
 
 

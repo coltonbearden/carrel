@@ -138,8 +138,8 @@ The flagship: a three-pane [Textual](https://textual.textualize.io/) desk. A fil
 - [docs/VISION.md](docs/VISION.md) — why a library desk, and the product principles
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — the adapter layer, the index, the plugin design
 - [docs/FEATURES.md](docs/FEATURES.md) — the capability × strategy matrix
-- [docs/TEST_REPORT.md](docs/TEST_REPORT.md) — everything above, executed for real (855 tests; cookbook runs; office and `pack --query` proofs)
-- [examples/cookbook/](examples/cookbook/) — ten end-to-end recipes, from scan→searchable-notes to pack-what-matters
+- [docs/TEST_REPORT.md](docs/TEST_REPORT.md) — everything above, executed for real (the v0.1.0 record: cookbook runs, office and `pack --query` proofs)
+- [examples/cookbook/](examples/cookbook/) — end-to-end recipes, from scan→searchable-notes to pack-what-matters
 - [docs/BRAND.md](docs/BRAND.md) — palette, typography, logo usage, voice
 
 ## License

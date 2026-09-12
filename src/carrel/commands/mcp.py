@@ -789,7 +789,7 @@ def _tool_redact(args: dict[str, Any], desk: Desk) -> dict[str, Any]:
     if not ftype.is_text:
         raise CarrelInputError(f"redact supports text files and PDFs, got {ftype.value}: {src}")
     try:
-        rules = _compile_rules(patterns, ",".join(builtin) if builtin else None)
+        rules = _compile_rules(patterns, tuple(builtin))
     except click.UsageError as e:
         raise CarrelInputError(e.message) from e
     try:

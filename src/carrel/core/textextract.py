@@ -30,7 +30,9 @@ OPENPYXL = adapters.Adapter(
     name="openpyxl",
     binaries=("openpyxl",),
     version_args=(),
-    install_hint="uv tool install 'carrel[office]'  (from a checkout: uv sync --extra office)",
+    hints=adapters.Hints(
+        anywhere="uv tool install 'carrel[office]'  (from a checkout: uv sync --extra office)"
+    ),
     purpose="read .xlsx workbooks (xlsx → text/csv/json, inspect)",
 )
 

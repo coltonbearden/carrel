@@ -65,16 +65,31 @@ class Rule:
         return self.pattern.span(m) if self.pattern is not None else m.span()
 
 
-def _compile_rules(patterns: tuple[str, ...], builtin_csv: str | None) -> list[Rule]:
+def _builtin_names(values: tuple[str, ...]) -> list[str]:
+    """Every `--builtin` split on commas, lowercased, deduplicated in first-seen order.
+
+    `--builtin` used to take one comma list, so a second one silently replaced the
+    first — `--builtin email --builtin iban` redacted only IBANs, which is the
+    failure mode a redaction tool can least afford. It is repeatable like
+    `--pattern` now, and `--builtin a,b --builtin c` means the same as
+    `--builtin a,b,c`.
+    """
+    seen: dict[str, None] = {}
+    for value in values:
+        for name in (n.strip().lower() for n in value.split(",") if n.strip()):
+            seen.setdefault(name, None)
+    return list(seen)
+
+
+def _compile_rules(patterns: tuple[str, ...], builtin_csv: tuple[str, ...]) -> list[Rule]:
     rules: list[Rule] = []
-    if builtin_csv:
-        for name in (n.strip().lower() for n in builtin_csv.split(",") if n.strip()):
-            if name not in BUILTINS:
-                raise click.UsageError(
-                    f"unknown --builtin {name!r} (choose from: {', '.join(BUILTINS)})"
-                )
-            builtin = BUILTINS[name]
-            rules.append(Rule(name, builtin.compiled(), builtin))
+    for name in _builtin_names(builtin_csv):
+        if name not in BUILTINS:
+            raise click.UsageError(
+                f"unknown --builtin {name!r} (choose from: {', '.join(BUILTINS)})"
+            )
+        builtin = BUILTINS[name]
+        rules.append(Rule(name, builtin.compiled(), builtin))
     for pattern in patterns:
         try:
             rules.append(Rule(pattern, re.compile(pattern)))
@@ -268,8 +283,10 @@ def _human(record: dict[str, Any]) -> None:
     "--builtin",
     "builtin_csv",
     metavar="LIST",
-    help=f"Comma-separated builtins: {', '.join(BUILTINS)} "
-    "(label-driven kinds like invoice keep the label and replace the value).",
+    multiple=True,
+    help=f"Builtins to redact: {', '.join(BUILTINS)}. Comma-separated, and "
+    "repeatable like --pattern (label-driven kinds like invoice keep the label "
+    "and replace the value).",
 )
 @click.option(
     "--replacement",
@@ -288,7 +305,7 @@ def cmd(
     ctx: click.Context,
     src: Path,
     patterns: tuple[str, ...],
-    builtin_csv: str | None,
+    builtin_csv: tuple[str, ...],
     replacement: str,
     out: Path | None,
     fail_empty: bool,

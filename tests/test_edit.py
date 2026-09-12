@@ -168,7 +168,7 @@ def test_pdf_qpdf_missing_degrades_to_exit_3(tmp_path: Path, monkeypatch):
         "qpdf",
         ("definitely-not-a-real-binary-xyz",),
         ("--version",),
-        ad.ADAPTERS["qpdf"].install_hint,
+        ad.ADAPTERS["qpdf"].hints,
         ad.ADAPTERS["qpdf"].purpose,
     )
     monkeypatch.setitem(ad.ADAPTERS, "qpdf", broken)
