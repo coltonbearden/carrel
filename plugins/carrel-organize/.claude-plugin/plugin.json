@@ -1,7 +1,7 @@
 {
   "name": "carrel-organize",
   "description": "Organize, dedupe, tag, annotate, record typed fields, rename from document fields, and batch-process local files with the carrel CLI: /organize, /dedupe, /tag, /note-file, /meta, /rename, /batch.",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "author": { "name": "Colton Bearden" },
   "license": "MIT",
   "keywords": ["files", "organize", "dedupe", "tags", "notes", "metadata"]

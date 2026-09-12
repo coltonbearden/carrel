@@ -2,8 +2,8 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 type: software
 title: "carrel"
-version: "0.4.1"
-date-released: "2026-09-11"
+version: "0.5.0"
+date-released: "2026-09-12"
 authors:
   - family-names: "Bearden"
     given-names: "Colton"

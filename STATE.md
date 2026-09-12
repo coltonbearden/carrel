@@ -10,18 +10,21 @@
   9 marketplace plugins, desk schema v2. Repo `coltonbearden/carrel`, docs at
   https://coltonbearden.github.io/carrel/, PyPI package `carrel`.
 - **In flight:** v0.5.0 "the first five minutes" — the defect/boundary/positioning wave.
-  Landed so far: #38 (permissions for autonomous sessions), #39 (the gate itself).
+  Landed: #38 (permissions), #39 (the gate), #40 (the owed review's findings), #41 (pack
+  `.gitignore`, loud empty `--query`), #42 (guard honesty), #43 (MCP confinement,
+  `--allow-tracked`), #44 (platform install hints, counts, PyPI metadata, JSON errors),
+  #45 (README positioning), #46 (the release itself). The full record lands in the
+  post-release `docs(state)` PR.
 - **Next:** MCP v3 (`specs/30-mcp-v3.md`): 11 new tools, 14 → 25, with `rename` and `intake`
   first so the accounting-inbox pipeline stops being CLI-only. `batch` is cut from that wave —
   it is the single `shell=True` site (D-013) — and `audiobook`, `color` and `proof` are
-  deferred; the spec says why. Do the owed review below first.
+  deferred; the spec says why. **First**, replace the `confine_to` flag threaded through five
+  walkers with one confined filesystem accessor (see Open issues) — that wave adds mutating
+  tools to the same surface.
 - **Also pending:**
-  - **A review is owed.** The fixes for the v0.4.1 release PR's second review shipped verified
-    but unreviewed: systemd `ExecStart` quoting and the schtasks `/TR` escaping in
-    `commands/watch.py`, and the guard's symlink handling, `--literal-pathspecs` and
-    per-repository lookup in `core/fsops.py`. GitHub keeps that commit as the PR head:
-    `git fetch origin pull/36/head:pr36 && git diff pr36~1 pr36`. Review it before MCP v3
-    builds on those modules.
+  - ~~**A review is owed.**~~ **Done 2026-09-12.** The v0.4.1 second-review fixes
+    (`refs/pull/36/head`, `5b88c7a`) were reviewed; the eleven confirmed findings shipped as
+    #40. Do not re-run it.
   - **Owner's step, on or after 2026-09-24:** promote `test-minimal (windows)` to required once
     it has been green on `main` for two consecutive weeks. That changes branch protection, so it
     needs the owner's go-ahead in that session: drop `continue-on-error` in
@@ -265,6 +268,24 @@
   meaning `--force` keeps on `mail`, `edit`, `sign`, `form`, `catalog`, `meta` and
   `audiobook`. `--force` stays on all four as a deprecated alias that warns once when the
   guard is actually consulted; it is not removed and no removal date is set.
+
+- **`docs/QUICKSTART.md` §6's captured output cannot be re-captured.** The block shows a
+  tutorial `docs/` tree (5 files, 661 B, 186 tokens) that nothing in the repo builds, so a
+  release can only update its `generated-by:` version line by hand — which
+  `docs/RELEASING.md` explicitly forbids ("never hand-edit the numbers in real output"). At
+  v0.5.0 that one line was changed after verifying by execution that the header renders
+  `generated-by: carrel 0.5.0`; the counts were left untouched and are still that tree's.
+  Reconstructing the tree from the documented byte sizes gets within a token (187 vs 186) but
+  is a fabrication, which is worse. Fix: commit the tutorial tree as a fixture with a capture
+  script, so §6 is regenerated like `docs/REFERENCE.md` rather than transcribed.
+
+- **`pack --json --no-fail-empty` prints a plain-text `warning:` on stderr**, the one `--json`
+  path that does not emit JSON there — and the v0.5.0 CHANGELOG points script authors straight
+  at that flag. In spec as written (the stderr contract covers *errors*, and this is a warning)
+  but inconsistent in practice. Not changed in the release PR: altering the stderr shape again
+  inside the release that introduces the contract is worse than documenting it. Fix: route
+  warnings through `core/output.error_line`'s sibling, or say in the contract that warnings stay
+  plain.
 
 - **Deferred from PR #43:** the MCP boundary is threaded as a `confine_to` flag into
   five separate walkers (`index._walk`, `pack._walk_dir`, `refs._candidates`,
