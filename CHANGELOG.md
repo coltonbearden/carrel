@@ -112,8 +112,9 @@
   printed. A test fails on any `apt|brew|winget|dnf|yum|pacman|…` install command in shipped
   code or a plugin doc.
 - **Fixed:** `README.md` claimed 855 tests and ten cookbook recipes, `docs/CONTRIBUTING.md`
-  claimed 501 tests; the live numbers are 1062 and 12. Counts nobody regenerates are wrong
-  within a week, so the live docs no longer state them, and
+  claimed 501 tests; both were wrong by hundreds. A count nobody regenerates is wrong within a
+  week — this bullet first stated one of its own and got it wrong, which is the argument — so the
+  live docs no longer carry them, and
   `tests/test_docs_drift.py` fails on any `N tests` or `N recipes` claim outside the dated
   records in `HISTORY`.
 - **Fixed:** `docs/index.md` listed the supported types without eml/mbox while `README.md`

@@ -58,3 +58,11 @@ def test_no_stale_repository_owner():
                 if match.group(1).lower() != owner.lower():
                     stale.append(f"{path.relative_to(REPO_ROOT)}:{lineno}: {match.group(0)}")
     assert not stale, "\n".join(stale)
+
+
+# `uv.lock` also carries the version, but no test here can gate it: pytest runs
+# under `uv run`, which relocks before it starts and so repairs the exact
+# staleness it would be asked to detect (checked — a planted 0.4.1 was silently
+# rewritten to 0.5.0 before the assertion ran). The gate is the `uv-lock-current`
+# pre-commit hook, which shells `uv lock --check` — read-only, and the same
+# condition CI's `UV_LOCKED=1` sync trips on.

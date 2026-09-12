@@ -15,18 +15,24 @@ that shipped as a patch and could start failing a cron job; neither is the test.
 
 ```sh
 # edit product.json → "version": "X.Y.Z"
-uv run python scripts/sync_product.py   # regenerates every derived copy
-uv lock                                 # uv.lock pins carrel's own version too
+uv run python scripts/sync_product.py   # _product.py, pyproject, manifests, CITATION
+uv lock                                 # uv.lock pins carrel's own version, and sync_product does not write it
 ```
 
 **`uv.lock` is one of the derived copies, and `sync_product.py` does not write
 it.** CI runs `uv sync` under `UV_LOCKED=1`, so a stale lock fails *every* job
 before a single test runs; locally `uv run` relocks silently and hides it. Check
-the way CI does before pushing a version bump:
+before pushing a version bump — read-only, no venv churn:
 
 ```sh
-UV_LOCKED=1 uv sync --group dev --group docs --all-extras
+uv lock --check      # not `uv run …` — that relocks first and hides the answer
 ```
+
+The `uv-lock-current` pre-commit hook runs the same command, so the usual failure
+— the lock updated on disk by a local `uv run`, then never staged — is caught at
+commit time by a real git hook. Note that invoking pre-commit *through* `uv run`
+(as CLAUDE.md's gate does) relocks before the hook runs and so cannot catch it;
+CI's `UV_LOCKED=1` sync is the backstop, and it fails every job in seconds.
 
 `sync_product.py` rewrites `src/carrel/_product.py`, `pyproject.toml`
 (version, description, `[project.urls]`), every plugin manifest under

@@ -66,3 +66,16 @@ repos:
         language: system
         pass_filenames: false
         files: ^(product\.json|pyproject\.toml|CITATION\.cff|CHANGELOG\.md|src/carrel/_product\.py|\.claude-plugin/.*|plugins/.*/plugin\.json)$
+      - id: uv-lock-current
+        name: uv.lock ↔ pyproject
+        # Read-only on purpose: `uv run` and `uv sync` relock silently, so any
+        # check reached *through* them repairs the staleness it should report.
+        # That includes running pre-commit itself as `uv run pre-commit …`, which
+        # is why the gate in CLAUDE.md cannot catch this and CI has to: CI syncs
+        # with UV_LOCKED=1, where a stale lock fails every job in seconds before
+        # a test runs. v0.5.0's first push did exactly that. Invoke this hook via
+        # a real git hook or `uvx pre-commit` to see it fire.
+        entry: uv lock --check
+        language: system
+        pass_filenames: false
+        files: ^(pyproject\.toml|uv\.lock|product\.json)$
