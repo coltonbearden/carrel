@@ -1022,6 +1022,56 @@ def test_allow_tracked_is_silent(tmp_path: Path, command: str) -> None:
     assert "deprecated" not in result.stderr, result.stderr
 
 
+@needs("git")
+def test_force_is_silent_when_no_guard_is_consulted(tmp_path: Path) -> None:
+    """A dry run is never guarded, so saying a guard was bypassed would be false.
+
+    It would also add stderr noise to scripted dry runs that were silent before.
+    """
+    repo = make_repo(tmp_path / "repo")
+    inside = docs(repo / "src")
+    commit_all(repo)
+
+    dry = run("rename", str(inside), "--force", "--template", "r_{stem}{ext}")
+    assert "deprecated" not in dry.stderr, dry.stderr
+
+    # ...and a watch with no --done-dir/--error-dir never asks the question either
+    unguarded = run("watch", str(inside), "--run", "true", "--force", "--print-service", "systemd")
+    assert "deprecated" not in unguarded.stderr, unguarded.stderr
+
+
+@needs("git")
+@pytest.mark.parametrize("kind", ["systemd", "schtasks"])
+def test_print_service_never_bakes_the_deprecated_spelling_into_a_unit(
+    tmp_path: Path, kind: str
+) -> None:
+    """The unit is installed once and started forever; it must not carry an alias.
+
+    `_watch_command_line` rebuilds argv from `ctx.params`, so folding `--force`
+    into a local variable left the generated unit spelling it the old way — a
+    deprecation warning in journalctl on every boot, and a hard break on the day
+    the alias goes.
+    """
+    repo = make_repo(tmp_path / "repo")
+    watched = docs(repo / "src")
+    commit_all(repo)
+
+    result = run(
+        "watch",
+        str(watched),
+        "--run",
+        "true",
+        "--done-dir",
+        str(tmp_path / "done"),
+        "--force",
+        "--print-service",
+        kind,
+    )
+
+    assert "--allow-tracked" in result.stdout, result.stdout
+    assert "--force" not in result.stdout, result.stdout
+
+
 def _override_invocation(command: str, inside: Path, tmp_path: Path, flag: str) -> tuple[str, ...]:
     """The shortest run of each guarded command that reaches the override."""
     if command == "rename":

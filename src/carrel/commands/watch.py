@@ -35,8 +35,9 @@ from typing import Any
 import click
 
 from carrel._product import PRODUCT
+from carrel.commands._guard_flags import allow_tracked_options, resolve_allow_tracked
 from carrel.core.actions import PLACEHOLDERS, kill_tree, quote, render, run_action
-from carrel.core.fsops import allow_tracked_from, guard_worktree, move_file, uncollide
+from carrel.core.fsops import guard_worktree, move_file, uncollide
 from carrel.core.output import CarrelInputError, CarrelUsageError, handled, root_of
 
 # private aliases: tests and older callers reach the shared implementations by these names
@@ -621,16 +622,7 @@ def _make_handler(watcher: _Watcher) -> Any:
     type=click.Path(dir_okay=False, path_type=Path),
     help="Append one JSON record per action (and per move) to FILE.",
 )
-@click.option(
-    "--allow-tracked",
-    is_flag=True,
-    help="With --done-dir/--error-dir: move files even when git tracks them.",
-)
-@click.option(
-    "--force",
-    is_flag=True,
-    help="Deprecated spelling of --allow-tracked; warns and behaves identically.",
-)
+@allow_tracked_options("With --done-dir/--error-dir: move files even when git tracks them.")
 @click.option(
     "--print-service",
     type=click.Choice(["systemd", "schtasks"]),
@@ -708,7 +700,6 @@ def cmd(
     git is tracking; --allow-tracked overrides. Actions themselves are never guarded —
     what a --run command does is the user's business.
     """
-    allow_tracked = allow_tracked_from(allow_tracked=allow_tracked, force=force)
     json_lines = json_lines or bool(ctx.obj and ctx.obj.get("json"))
     directory = directory.resolve()
     if not directory.is_dir():
@@ -721,6 +712,11 @@ def cmd(
         )
     if stable_timeout is not None and stable is None:
         raise click.UsageError("--stable-timeout needs --stable")
+    # The guard is only consulted when something would be moved, so that is the
+    # only place the deprecated spelling is worth a warning.
+    allow_tracked = resolve_allow_tracked(
+        ctx, consulted=done_dir is not None or error_dir is not None
+    )
     if not allow_tracked and (done_dir is not None or error_dir is not None):
         # the fourth bulk mover (spec 29), and the only one with no dry-run to
         # fall back on: --done-dir empties the watched directory as it goes.

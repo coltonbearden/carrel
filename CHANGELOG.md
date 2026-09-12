@@ -14,6 +14,17 @@
   restores the old behaviour for a session, and `carrel --root / mcp` is unconfined by
   construction because `/` is then the desk you named. `plugins/carrel-agent/.mcp.json` is
   unchanged — Claude Code starts the server in the project directory, which is the desk (D-021).
+  The tools that *walk* a tree — `carrel_pack`, `carrel_index`, `carrel_refs`, `carrel_fields` —
+  are confined too, and that took more than checking the path the client named: the walkers
+  skipped symlinked directories but still read symlinked **files**, so a link planted in a
+  desk was a way out of it, and `carrel_index` then stored the contents where `carrel_search`
+  would serve them. A walk started by the server now drops any entry that resolves outside the
+  root. The CLI is unchanged and still follows links, because a desk that symlinks documents in
+  from elsewhere is a legitimate layout.
+- **Fixed (`carrel mcp`):** a JSON-RPC message whose `params` is an array — legal per JSON-RPC
+  2.0 — took the whole server down mid-session with an `AttributeError`, because every handler
+  reads `params` with `.get()`. It is now a `-32602` error like any other bad request and the
+  session continues, which is what the module has always promised.
 - **Changed (behaviour):** the tracked-files guard on `rename`, `organize`, `intake` and `watch`
   is overridden by **`--allow-tracked`**. `--force` means "overwrite existing output" on seven
   other commands, and those four never overwrite anything — so reaching for it by reflex

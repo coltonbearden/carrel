@@ -10,6 +10,7 @@ clean exit 0 on EOF.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -262,6 +263,7 @@ class TestMcpRootBoundary:
         assert is_error is True
         assert "outside the server root" in payload["error"], payload
 
+    @pytest.mark.skipif(os.name == "nt", reason="symlink creation needs privileges on Windows")
     def test_a_symlink_out_of_the_root_is_refused_not_followed(self, tmp_path):
         desk, secret = self.desk_and_secret(tmp_path)
         (desk / "escape.txt").symlink_to(secret)
@@ -270,6 +272,94 @@ class TestMcpRootBoundary:
         assert is_error is True, payload
         assert "outside the server root" in payload["error"], payload
         assert "hunter2" not in proc.stdout
+
+    @pytest.mark.skipif(os.name == "nt", reason="symlink creation needs privileges on Windows")
+    def test_a_walk_does_not_follow_a_symlinked_file_out_of_the_root(self, tmp_path):
+        """Skipping symlinked *directories* is not enough: the file loop reads links.
+
+        `Desk.resolve` only covers paths the client names. `pack`, `index`,
+        `refs` and `fields` find their own by walking, and every one of those
+        walkers followed a symlinked file — so a link planted in the desk read
+        a file outside it, and `index` then stored the contents where
+        `carrel_search` would serve them.
+        """
+        desk, secret = self.desk_and_secret(tmp_path)
+        (desk / "sub" / "leak.txt").symlink_to(secret)
+
+        proc = run_server(
+            [
+                tool_call(1, "carrel_pack", {"path": "."}),
+                tool_call(2, "carrel_index", {}),
+                # "passphrase", not "hunter2": the query is echoed in the reply,
+                # so searching for the marker would defeat the stdout assertion
+                tool_call(3, "carrel_search", {"query": "passphrase"}),
+                tool_call(4, "carrel_refs", {"path": "."}),
+                tool_call(5, "carrel_fields", {"path": "."}),
+            ],
+            desk,
+        )
+        assert proc.returncode == 0, proc.stderr
+        responses = parse_lines(proc.stdout)
+        assert "hunter2" not in proc.stdout
+
+        _, pack = tool_payload(responses[0])
+        assert "sub/leak.txt" not in {e["path"] for e in pack["entries"]}
+        assert "sub/deep.txt" in {e["path"] for e in pack["entries"]}, "the real file still packs"
+        _, search = tool_payload(responses[2])
+        assert search["count"] == 0, search
+        for resp in (responses[3], responses[4]):
+            _, payload = tool_payload(resp)
+            assert not any("leak.txt" in f["path"] for f in payload["files"]), payload
+
+    @pytest.mark.skipif(os.name == "nt", reason="symlink creation needs privileges on Windows")
+    def test_allow_outside_root_also_lifts_the_walk_boundary(self, tmp_path):
+        """The flag means one thing, so it must lift the walk too, not only named paths."""
+        desk, secret = self.desk_and_secret(tmp_path)
+        (desk / "sub" / "leak.txt").symlink_to(secret)
+
+        proc = run_server(
+            [tool_call(1, "carrel_pack", {"path": "."})], desk, args=("--allow-outside-root",)
+        )
+        _, pack = tool_payload(parse_lines(proc.stdout)[0])
+        assert "sub/leak.txt" in {e["path"] for e in pack["entries"]}
+
+    def test_write_arguments_outside_the_root_are_refused(self, tmp_path):
+        """`out_dir` and the `paths` array are the write surface; they need the boundary too."""
+        desk, _ = self.desk_and_secret(tmp_path)
+        (desk / "note.md").write_text("# hi\n")
+        outside = tmp_path / "escape"
+
+        proc = run_server(
+            [
+                tool_call(2, "carrel_index", {"paths": [str(tmp_path / "secret.txt")]}),
+                tool_call(
+                    1, "carrel_convert", {"path": "note.md", "to": "txt", "out_dir": str(outside)}
+                ),
+            ],
+            desk,
+        )
+        for resp in parse_lines(proc.stdout):
+            is_error, payload = tool_payload(resp)
+            assert is_error is True, payload
+            assert "outside the server root" in payload["error"], payload
+        assert not outside.exists(), "a refused write must create nothing"
+
+    def test_a_non_object_params_is_an_error_not_a_crash(self, tmp_path):
+        """JSON-RPC 2.0 allows an array here; every handler reads it with .get()."""
+        proc = run_server(
+            [
+                {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": [1, 2]},
+                {"jsonrpc": "2.0", "id": 2, "method": "resources/read", "params": "nope"},
+                {"jsonrpc": "2.0", "id": 3, "method": "ping"},
+            ],
+            tmp_path,
+        )
+        assert proc.returncode == 0, proc.stderr
+        responses = parse_lines(proc.stdout)
+        assert [r["id"] for r in responses] == [1, 2, 3]
+        for resp in responses[:2]:
+            assert resp["error"]["code"] == -32602, resp
+        assert responses[2]["result"] == {}, "the server kept serving"
 
     def test_resources_outside_the_root_are_not_found(self, tmp_path):
         desk, secret = self.desk_and_secret(tmp_path)

@@ -48,7 +48,9 @@ def tag_for(ref: dict[str, Any]) -> str:
     return f"ref:{ref['kind']}:{value}".lower()
 
 
-def _candidates(paths: Sequence[Path], *, ocr: bool, root: Path | None) -> list[Path]:
+def _candidates(
+    paths: Sequence[Path], *, ocr: bool, root: Path | None, confine_to: Path | None = None
+) -> list[Path]:
     """Explicit files as given; directories walked like `index` (hidden/ignored skipped).
 
     Every path is checked before anything is scanned, so a typo in the last
@@ -66,7 +68,7 @@ def _candidates(paths: Sequence[Path], *, ocr: bool, root: Path | None) -> list[
         if p.is_file():
             out.append(p)
             continue
-        for f in _walk(p, ancestor_ignores(p.resolve(), root)):
+        for f in _walk(p, ancestor_ignores(p.resolve(), root), confine_to=confine_to):
             ftype = detect(f)
             if ftype is FileType.UNKNOWN or (ftype.is_image and not ocr):
                 continue
@@ -92,6 +94,7 @@ def scan_refs(
     ocr: bool = False,
     tag_root: Path | str | None = None,
     root: Path | str | None = None,
+    confine_to: Path | None = None,
 ) -> list[dict[str, Any]]:
     """One record per scanned file: {path, refs: [...]}, plus `tags` when tagging.
 
@@ -108,7 +111,7 @@ def scan_refs(
     """
     chosen = pat.resolve_kinds(kinds) + [pat.parse_extra(e) for e in extra]
     bound = Path(root).resolve() if root is not None else None
-    targets = _candidates([Path(p) for p in paths], ocr=ocr, root=bound)
+    targets = _candidates([Path(p) for p in paths], ocr=ocr, root=bound, confine_to=confine_to)
     ctx = click.get_current_context(silent=True)
     records: list[dict[str, Any]] = []
     for f in targets:

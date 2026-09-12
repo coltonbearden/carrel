@@ -349,13 +349,17 @@ def fields_for(
     ocr: bool = False,
     overrides: Sequence[str] = (),
     save_root: Path | str | None = None,
+    confine_to: Path | None = None,
 ) -> list[dict[str, Any]]:
     """One record per file (directories walked like `refs`); failures are per-file records."""
     from carrel.commands.refs import candidate_files
 
     parse_overrides(overrides)  # a bad --set fails before any file is read
     targets = candidate_files(
-        [Path(p) for p in paths], ocr=ocr, root=Path(save_root).resolve() if save_root else None
+        [Path(p) for p in paths],
+        ocr=ocr,
+        root=Path(save_root).resolve() if save_root else None,
+        confine_to=confine_to,
     )
     ctx = click.get_current_context(silent=True)
     records: list[dict[str, Any]] = []

@@ -222,9 +222,10 @@
   **patch** bump. The release review argued for 0.5.0: a `carrel~=0.4.0` pin or a routine
   `uv tool upgrade` pulls it in, and a cron `intake --apply` whose `--to` sits under a
   dotfiles repo could start exiting 2. Kept at 0.4.1 because the session brief named that
-  version; the guard only bites on *tracked* files, and `--force` is the documented way
-  through. Owner call whether the next behaviour change bumps minor, and whether
-  `publish.yml` should refuse a patch tag when the CHANGELOG entry says "Changed (behaviour)".
+  version; the guard only bites on *tracked* files, and `--allow-tracked` is the documented
+  way through (`--force` until v0.5.0 — D-022). Owner call whether the next behaviour
+  change bumps minor, and whether `publish.yml` should refuse a patch tag when the
+  CHANGELOG entry says "Changed (behaviour)".
 
 - `watch --print-service schtasks` prints a one-line `schtasks /Create … /TR …` for pasting.
   The `/TR` value is now quoted correctly for both of Windows' own parsing passes (a parser
@@ -243,8 +244,8 @@
   `_Watcher.seed`, which applies only `--glob`. So a `--recursive` watch with `--done-dir`
   queues `.git/` internals (or any dotfile) the moment something writes them, and files them
   away after the actions run. The spec-29 guard covers the usual case at start — a tree with
-  tracked files refuses unless `--force` — leaving a repository with nothing tracked yet, or
-  an explicit `--force`, as the exposure. Found probing the v0.4.1 guard; pre-existing since
+  tracked files refuses unless `--allow-tracked` — leaving a repository with nothing tracked
+  yet, or an explicit override, as the exposure. Found probing the v0.4.1 guard; pre-existing since
   watch v2 (v0.4.0). Fix: apply the same hidden-component and skip-subtree test in `seed`,
   with a regression test that writes into `.git/` under a recursive watch.
 
@@ -256,15 +257,12 @@
   constraints — `uv build --build-constraint`), keep it bumped by Dependabot, and let CI's build
   job prove each bump.
 
-- `--force` now carries two unrelated meanings. On `mail`, `edit`, `sign`, `form`, `catalog`,
-  `meta` and `audiobook` it means "overwrite existing output"; on `rename`, `organize`,
-  `intake` and `watch` it means "bypass the tracked-files guard" (spec 29) — and those four
-  never overwrite anything, so the habitual meaning does not apply. Someone who learned
-  `--force` from `mail attachments` and adds it to `intake --apply` expecting overwrite
-  semantics silently disables a safety guard instead. Raised by the spec-29 review; kept as
-  `--force` because the session brief specified that flag by name. A distinct spelling
-  (`--allow-tracked`) would not be reachable by reflex — an owner call, since it is a
-  user-facing rename.
+- ~~`--force` carries two unrelated meanings.~~ **Decided in v0.5.0 (D-022):** the
+  tracked-files guard on `rename`, `organize`, `intake` and `watch` is overridden by
+  `--allow-tracked`, which is not reachable by reflex from the "overwrite existing output"
+  meaning `--force` keeps on `mail`, `edit`, `sign`, `form`, `catalog`, `meta` and
+  `audiobook`. `--force` stays on all four as a deprecated alias that warns once when the
+  guard is actually consulted; it is not removed and no removal date is set.
 
 - The suite cannot run under a non-UTF-8 locale: `LC_ALL=C PYTHONUTF8=0 uv run pytest -q`
   fails 45 tests across 9 files with `UnicodeDecodeError`. Every one is *test-side* —

@@ -460,6 +460,7 @@ def test_index_paths_signature_for_mcp():
         "ocr",
         "source",
         "gitignore",
+        "confine_to",
     ]
     for name in ("update", "prune", "ocr"):
         assert sig.parameters[name].kind is inspect.Parameter.KEYWORD_ONLY
@@ -468,6 +469,9 @@ def test_index_paths_signature_for_mcp():
         assert sig.parameters[name].kind is inspect.Parameter.KEYWORD_ONLY
         assert sig.parameters[name].default is True
     assert sig.parameters["paths"].default is None
+    # D-021: the CLI walks unconfined; only `carrel mcp` passes a boundary
+    assert sig.parameters["confine_to"].kind is inspect.Parameter.KEYWORD_ONLY
+    assert sig.parameters["confine_to"].default is None
 
 
 def test_index_paths_returns_counts_without_click_context(desk: Path):

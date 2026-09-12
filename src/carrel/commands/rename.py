@@ -26,10 +26,11 @@ from typing import Any
 
 import click
 
+from carrel.commands._guard_flags import allow_tracked_options, resolve_allow_tracked
 from carrel.core import patterns as pat
 from carrel.core.db import DeskDB
 from carrel.core.filetypes import detect
-from carrel.core.fsops import allow_tracked_from, guard_worktree, move_file, uncollide
+from carrel.core.fsops import guard_worktree, move_file, uncollide
 from carrel.core.output import (
     CarrelError,
     CarrelInputError,
@@ -321,16 +322,7 @@ def _human_plan(applied: bool) -> Callable[[list[dict[str, Any]]], None]:
     is_flag=True,
     help="OCR images and scanned PDFs to read their fields (needs tesseract / ocrmypdf).",
 )
-@click.option(
-    "--allow-tracked",
-    is_flag=True,
-    help="Rename even when a PATH is a file git tracks (see the description).",
-)
-@click.option(
-    "--force",
-    is_flag=True,
-    help="Deprecated spelling of --allow-tracked; warns and behaves identically.",
-)
+@allow_tracked_options("Rename even when a PATH is a file git tracks (see the description).")
 @click.pass_context
 @handled
 def cmd(
@@ -364,7 +356,7 @@ def cmd(
     """
     if not _PLACEHOLDER.search(template):
         raise click.UsageError(f"--template has no placeholders: {template!r}")
-    allow_tracked = allow_tracked_from(allow_tracked=allow_tracked, force=force)
+    allow_tracked = resolve_allow_tracked(ctx, consulted=apply_)
     if apply_:
         # every PATH, not just directories: a shell glob (`rename src/*.py --apply`)
         # arrives as a list of files and is exactly the 2026-09-10 incident.

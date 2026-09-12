@@ -1,6 +1,6 @@
 # spec: guardrails — a bulk move refuses to rename files git is tracking
 
-**Owns:** `src/carrel/core/fsops.py` (`is_worktree_root`, `dot_git_ancestor`, `repo_root`, `tracked_paths`, `would_move_tracked`, `guard_worktree`), `src/carrel/core/output.py` (`CarrelUsageError`), `src/carrel/core/adapters.py` (`run(drop_env=…)`), `src/carrel/core/ignore.py` (shares the boundary predicate), `src/carrel/commands/rename.py`, `organize.py`, `intake.py`, `watch.py` (each gains `--force`), `pack.py` (`_git_root` delegates), `docs/REFERENCE.md` (regen), `docs/FEATURES.md`, `docs/TROUBLESHOOTING.md`, the `bookkeeper` agent and the plugin command docs, new `tests/test_guardrails.py`.
+**Owns:** `src/carrel/core/fsops.py` (`is_worktree_root`, `dot_git_ancestor`, `repo_root`, `tracked_paths`, `would_move_tracked`, `guard_worktree`), `src/carrel/core/output.py` (`CarrelUsageError`), `src/carrel/core/adapters.py` (`run(drop_env=…)`), `src/carrel/core/ignore.py` (shares the boundary predicate), `src/carrel/commands/rename.py`, `organize.py`, `intake.py`, `watch.py` (each gains `--allow-tracked`, with `--force` kept as a deprecated alias — D-022), `src/carrel/commands/_guard_flags.py` (the flag pair and its fold), `pack.py` (`_git_root` delegates), `docs/REFERENCE.md` (regen), `docs/FEATURES.md`, `docs/TROUBLESHOOTING.md`, the `bookkeeper` agent and the plugin command docs, new `tests/test_guardrails.py`.
 **Wave:** v0.4.1, PR 2.
 
 ## Why
@@ -52,7 +52,7 @@ dot_git_ancestor(start) -> Path | None     # nearest such ancestor
 repo_root(path) -> Path | None             # git's answer, or the walk. Never raises.
 tracked_paths(root, paths) -> list[str]    # repo-relative paths git tracks
 would_move_tracked(paths) -> {root: [paths]}
-guard_worktree(paths, *, force, what)      # CarrelUsageError (exit 2)
+guard_worktree(paths, *, allow_tracked, what)  # CarrelUsageError (exit 2)
 ```
 
 `repo_root` asks git first — `rev-parse --show-toplevel` through the adapter (D-008), which handles a `.git` **file** (submodules, linked worktrees) and `GIT_CEILING_DIRECTORIES`. git saying literally **"not a git repository"** is believed, because that is how a ceiling directory reports itself and it is the one negative meaning "there is nothing here to protect". **Every other git failure falls back to the `.git` walk**: `detected dubious ownership` — the default for a `/mnt/c` checkout under WSL — and a `safe.directory` refusal mean "git could not read this repository", not "there is none", and both must still guard.

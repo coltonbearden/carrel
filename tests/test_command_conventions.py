@@ -26,7 +26,10 @@ from carrel.cli import cli
 from carrel.core.output import CarrelError, CarrelInputError, ExitCode, handled, root_of
 
 COMMANDS_DIR = Path(__file__).resolve().parent.parent / "src" / "carrel" / "commands"
-MODULES = sorted(p for p in COMMANDS_DIR.glob("*.py") if p.name != "__init__.py")
+#: the command modules — one click command each. Underscore-prefixed files are
+#: shared private helpers (`_guard_flags.py`), not commands, so the conventions
+#: below (a `@handled` callback, `root_of`) do not apply to them.
+MODULES = sorted(p for p in COMMANDS_DIR.glob("*.py") if not p.name.startswith("_"))
 
 #: the private names D-016 retired, mapped to their shared replacement
 RETIRED = {"_handled": "carrel.core.output.handled", "_root_of": "carrel.core.output.root_of"}

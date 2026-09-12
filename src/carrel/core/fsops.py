@@ -17,8 +17,6 @@ import subprocess
 from collections.abc import Iterable, Iterator, Sequence
 from pathlib import Path
 
-import click
-
 from carrel.core import adapters
 from carrel.core.ignore import dot_git_ancestor
 from carrel.core.output import CarrelError, CarrelUsageError, ExitCode
@@ -249,21 +247,22 @@ def would_move_tracked(paths: Iterable[Path]) -> dict[Path, list[str]]:
     return {root: names for root, names in hits.items() if names}
 
 
-def allow_tracked_from(*, allow_tracked: bool, force: bool) -> bool:
-    """Fold the deprecated `--force` spelling into `--allow-tracked`, warning once.
+def within(path: Path, root: Path | None) -> bool:
+    """True when `path`, symlinks resolved, is inside `root`. `root=None` confines nothing.
 
-    `--force` means "overwrite existing output" on seven other commands and
-    "bypass the tracked-files guard" on these four, so someone who learned it
-    from `mail attachments` disables a safety guard by reflex. The alias stays
-    — scripts depend on it — but it says what it now means.
+    A directory walk that skips symlinked *directories* still reads symlinked
+    *files*, so a link inside a confined tree is a way out of it. Callers that
+    declare a boundary — `carrel mcp`, which is confined to the directory it was
+    started in (D-021) — pass it here; the CLI passes `None` and keeps following
+    links, because a desk that symlinks documents in from elsewhere is a
+    legitimate layout.
     """
-    if force:
-        click.echo(
-            "warning: --force here means --allow-tracked (bypass the tracked-files "
-            "guard); the --force spelling is deprecated",
-            err=True,
-        )
-    return allow_tracked or force
+    if root is None:
+        return True
+    try:
+        return path.resolve().is_relative_to(root)
+    except OSError:  # a broken or looping link is not inside anything
+        return False
 
 
 def guard_worktree(paths: Iterable[Path], *, what: str, allow_tracked: bool = False) -> None:

@@ -430,6 +430,16 @@ class Desk:
     root: Path
     confined: bool = True
 
+    @property
+    def walk_boundary(self) -> Path | None:
+        """The root a directory walk must not escape, or None when unconfined.
+
+        `Desk.resolve` covers the paths a *client* names. A walk finds its own,
+        and a symlinked file inside the tree resolves outside it — so the tools
+        that walk (`pack`, `index`, `refs`, `fields`) pass this down.
+        """
+        return self.root if self.confined else None
+
     def resolve(self, raw: str | Path, base: Path | None = None) -> Path:
         """Make `raw` absolute against `base` (default: the launch root), then confine it.
 
@@ -523,6 +533,9 @@ def _tool_pack(args: dict[str, Any], desk: Desk) -> dict[str, Any]:
         "exclude": _str_list(args, "exclude"),
         "max_bytes": int(max_bytes) if max_bytes is not None else None,
         "tree_only": tree_only,
+        # the walk finds its own paths; Desk.resolve only covers the ones the
+        # client named, and a symlinked file inside the tree resolves outside it
+        "confine_to": desk.walk_boundary,
     }
     if _PACK_HAS_QUERY and args.get("query"):
         kwargs["query"] = str(args["query"])
@@ -649,6 +662,7 @@ def _tool_index(args: dict[str, Any], desk: Desk) -> dict[str, Any]:
         update=bool(args.get("update") or False),
         prune=bool(args.get("prune") or False),
         ocr=bool(args.get("ocr") or False),
+        confine_to=desk.walk_boundary,
     )
     return {"root": str(root), **result}
 
@@ -841,6 +855,7 @@ def _tool_refs(args: dict[str, Any], desk: Desk) -> dict[str, Any]:
         extra=_str_list(args, "patterns"),
         ocr=bool(args.get("ocr") or False),
         tag_root=root if args.get("tag") else None,
+        confine_to=desk.walk_boundary,
     )
     if args.get("link"):
         groups = link_refs(records, all_=bool(args.get("all") or False))
@@ -859,6 +874,7 @@ def _tool_fields(args: dict[str, Any], desk: Desk) -> dict[str, Any]:
         date_order=_choice(args, "date_order", ("mdy", "dmy"), "mdy"),
         ocr=bool(args.get("ocr") or False),
         save_root=root if args.get("save") else None,
+        confine_to=desk.walk_boundary,
     )
     return {"root": str(root), "path": str(path), "files": records}
 
@@ -992,6 +1008,15 @@ def _handle(msg: Any, desk: Desk) -> dict[str, Any] | None:
     method = msg.get("method")
     mid = msg.get("id")
     params = msg.get("params") or {}
+    if not isinstance(params, dict):
+        # JSON-RPC 2.0 allows an array here. Every handler below reads `params`
+        # with .get(), so an array took the whole server down mid-session with
+        # an AttributeError — the one thing this module promises never to do.
+        return (
+            None
+            if "id" not in msg
+            else _error(mid, -32602, "invalid params: expected a JSON object")
+        )
     is_notification = "id" not in msg
 
     if method == "initialize":

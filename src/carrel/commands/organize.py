@@ -24,8 +24,9 @@ from typing import Any
 
 import click
 
+from carrel.commands._guard_flags import allow_tracked_options, resolve_allow_tracked
 from carrel.core.filetypes import FileType, detect
-from carrel.core.fsops import allow_tracked_from, guard_worktree, move_file, uncollide
+from carrel.core.fsops import guard_worktree, move_file, uncollide
 from carrel.core.output import CarrelInputError, emit, handled, root_of
 
 TYPE_DIRS: dict[FileType, str] = {
@@ -153,16 +154,7 @@ def _human_plan(applied: bool) -> Callable[[list[dict[str, Any]]], None]:
     default=False,
     help="Execute the moves. Default is a dry-run that only prints the plan.",
 )
-@click.option(
-    "--allow-tracked",
-    is_flag=True,
-    help="Move files even when they are tracked by git (see the description).",
-)
-@click.option(
-    "--force",
-    is_flag=True,
-    help="Deprecated spelling of --allow-tracked; warns and behaves identically.",
-)
+@allow_tracked_options("Move files even when they are tracked by git (see the description).")
 @click.pass_context
 @handled
 def cmd(
@@ -185,7 +177,7 @@ def cmd(
     new path breaks imports, tests and history; --allow-tracked overrides. Untracked
     files inside a repository are fine.
     """
-    allow_tracked = allow_tracked_from(allow_tracked=allow_tracked, force=force)
+    allow_tracked = resolve_allow_tracked(ctx, consulted=apply_)
     directory = directory.resolve()
     if not directory.is_dir():
         raise CarrelInputError(f"no such directory: {directory}")

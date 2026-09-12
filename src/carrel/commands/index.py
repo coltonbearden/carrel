@@ -29,6 +29,7 @@ import click
 from carrel.core.adapters import MissingDependencyError
 from carrel.core.db import DeskDB
 from carrel.core.filetypes import FileType, detect
+from carrel.core.fsops import within
 from carrel.core.ignore import IgnoreFile, ancestor_ignores, ignored, load_ignore
 from carrel.core.output import (
     CarrelError,
@@ -44,11 +45,22 @@ from carrel.core.textextract import extract_text
 
 
 def _walk(
-    top: Path, ignores: tuple[IgnoreFile, ...] = (), *, use_gitignore: bool = True
+    top: Path,
+    ignores: tuple[IgnoreFile, ...] = (),
+    *,
+    use_gitignore: bool = True,
+    confine_to: Path | None = None,
 ) -> Iterator[Path]:
     """Yield files under `top`: hidden entries (.carrel, .git, dotfiles),
     symlinked directories and `.gitignore`d paths are skipped; order is
-    deterministic. `ignores` is the inherited rule stack (empty = no filtering)."""
+    deterministic. `ignores` is the inherited rule stack (empty = no filtering).
+
+    `confine_to` additionally drops any entry that *resolves* outside it. Skipping
+    symlinked directories is not enough on its own: a symlinked **file** is still
+    read, so a link inside the tree is a way out of it. Callers with a boundary to
+    keep — `carrel mcp`, confined to its launch root (D-021) — pass it; the CLI
+    passes None and keeps following links, because a desk that symlinks documents
+    in from elsewhere is a legitimate layout."""
     if top.is_file():
         yield top
         return
@@ -63,9 +75,11 @@ def _walk(
     for child in children:
         if child.name.startswith("."):
             continue
+        if not within(child, confine_to):
+            continue
         if child.is_dir():
             if not child.is_symlink() and not ignored(child, True, ignores):
-                yield from _walk(child, ignores, use_gitignore=use_gitignore)
+                yield from _walk(child, ignores, use_gitignore=use_gitignore, confine_to=confine_to)
         elif child.is_file() and not ignored(child, False, ignores):
             yield child
 
@@ -109,6 +123,7 @@ def index_paths(
     ocr: bool = False,
     source: bool = True,
     gitignore: bool = True,
+    confine_to: Path | None = None,
 ) -> dict[str, Any]:
     """Index `paths` (default: `root`) into the desk db under `root`.
 
@@ -145,7 +160,7 @@ def index_paths(
                 if not top.exists():
                     raise CarrelInputError(f"no such path: {top}")
                 seed = ancestor_ignores(top, root) if gitignore else ()
-                for f in _walk(top, seed, use_gitignore=gitignore):
+                for f in _walk(top, seed, use_gitignore=gitignore, confine_to=confine_to):
                     if not _candidate(f):
                         continue  # not a supported type — not a candidate
                     _index_file(db, f, ocr=ocr, counts=counts, errors=errors, ctx=ctx)

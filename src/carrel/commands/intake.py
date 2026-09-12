@@ -31,6 +31,7 @@ from typing import Any
 
 import click
 
+from carrel.commands._guard_flags import allow_tracked_options, resolve_allow_tracked
 from carrel.commands.fields import extract_fields, save_fields
 from carrel.commands.refs import tag_for
 from carrel.commands.rename import (
@@ -43,7 +44,7 @@ from carrel.core import adapters
 from carrel.core import patterns as pat
 from carrel.core.db import DeskDB
 from carrel.core.filetypes import FileType, detect
-from carrel.core.fsops import allow_tracked_from, guard_worktree, move_file, uncollide
+from carrel.core.fsops import guard_worktree, move_file, uncollide
 from carrel.core.output import (
     CarrelError,
     CarrelInputError,
@@ -517,16 +518,7 @@ def _human(applied: bool) -> Callable[[list[dict[str, Any]]], None]:
     help="Use TEXT for a name placeholder that has no value instead of skipping the file.",
 )
 @click.option("--fail-empty", is_flag=True, help="Exit 5 when no file was filed (or planned).")
-@click.option(
-    "--allow-tracked",
-    is_flag=True,
-    help="File even when INBOX or --to holds files git tracks (see the description).",
-)
-@click.option(
-    "--force",
-    is_flag=True,
-    help="Deprecated spelling of --allow-tracked; warns and behaves identically.",
-)
+@allow_tracked_options("File even when INBOX or --to holds files git tracks (see the description).")
 @click.pass_context
 @handled
 def cmd(
@@ -574,7 +566,6 @@ def cmd(
     refusal happens before anything is created or moved, and an untracked inbox
     inside a repository (the usual ~/Downloads-under-dotfiles case) is fine.
     """
-    allow_tracked = allow_tracked_from(allow_tracked=allow_tracked, force=force)
     inbox = inbox.resolve()
     if not inbox.is_dir():
         raise CarrelInputError(f"no such directory: {inbox}")
@@ -594,6 +585,7 @@ def cmd(
         )
     if apply_:
         # before the mkdir below: a refused run must leave the disk untouched.
+        allow_tracked = resolve_allow_tracked(ctx, consulted=True)
         # Both sides count — INBOX is emptied, --to is written into.
         guard_worktree([inbox, dest_root], allow_tracked=allow_tracked, what="intake --apply")
         dest_root.mkdir(parents=True, exist_ok=True)
