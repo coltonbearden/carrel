@@ -111,7 +111,7 @@ claude plugin install carrel-inspect@carrel
 | `carrel-mail` | `/mail` — attachments, mbox split, threads, Outlook .pst via readpst; eml/mbox are desk file types + a mail-archive skill |
 | `carrel-watch` | `/watch-folder`, `/intake` — file an inbox by what the documents say + a watch-automation recipe skill |
 | `carrel-agent` | `/index`, `/doctor`, `/catalog`, `/completion`, a file-librarian agent, the carrel MCP server, and a hook that re-indexes files Claude writes |
-| `carrel-guard` | A `PreToolUse` hook that turns PDFs, Office/ebook files, email and images into text before `Read` sees them, and a `SessionStart` hook that reports what carrel can do here |
+| `carrel-guard` | A `PreToolUse` hook that turns the files `Read` cannot open — Office/ebook/RTF, spreadsheets, email — into text before it sees them, and PDFs into cheap text by default; images are left to Claude's vision. Plus a `SessionStart` hook that reports what carrel can do here |
 
 Install the CLI first (see [Quickstart](#quickstart)) so the plugins can call it. Works headless too:
 

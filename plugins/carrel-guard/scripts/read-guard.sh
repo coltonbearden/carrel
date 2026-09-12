@@ -75,8 +75,26 @@ esac
 ext="$(printf '%s' "${name##*.}" | tr '[:upper:]' '[:lower:]')"
 mode=""
 case "$ext" in
-    pdf|docx|odt|epub|rtf|xlsx|eml|mbox|mbx) mode="convert" ;;
-    png|jpg|jpeg|ico) mode="ocr" ;;
+    # Claude's Read cannot open these at all, so converting is pure gain.
+    docx|odt|epub|rtf|xlsx|eml|mbox|mbx) mode="convert" ;;
+    # Read shows a PDF to Claude as page images. Converting to text is much
+    # cheaper in tokens and is still the default, but it loses the layout, so
+    # CARREL_GUARD_PDF_TEXT=0 hands the file back to the visual Read.
+    pdf)
+        case "${CARREL_GUARD_PDF_TEXT:-1}" in
+            0) exit 0 ;;
+            *) mode="convert" ;;
+        esac
+        ;;
+    # Read shows Claude the image itself. OCR throws that away and returns a
+    # transcription, which is worse for a screenshot, a chart or a photo — so
+    # it is opt-in rather than automatic.
+    png|jpg|jpeg|ico)
+        case "${CARREL_GUARD_OCR_IMAGES:-0}" in
+            1) mode="ocr" ;;
+            *) exit 0 ;;
+        esac
+        ;;
     *) exit 0 ;;
 esac
 
@@ -127,22 +145,49 @@ run_bounded() {
         "$@"
     fi
 }
+timed_out=0
+rc=0
 if [ ! -s "$txt" ] || [ "$abs" -nt "$txt" ]; then
     rm -f -- "$txt" 2>/dev/null
     if [ "$mode" = "convert" ]; then
-        run_bounded "${CARREL_GUARD_TIMEOUT:-5}" carrel convert "$abs" --to txt --out-dir "$cache" --force >/dev/null 2>&1 || true
+        # 15 s, not 5: `carrel convert --to txt` takes 6.7 s on a 68 KB
+        # pandoc-written docx and 13.9 s on a 127 KB one, so the old budget
+        # killed ordinary documents silently. pdftotext is far faster (0.3 s
+        # for 600 pages); this bound exists for the pandoc formats.
+        secs="${CARREL_GUARD_TIMEOUT:-15}"
+        run_bounded "$secs" carrel convert "$abs" --to txt --out-dir "$cache" --force >/dev/null 2>&1 || rc=$?
     else
         # OCR is optional: without tesseract carrel exits 3 and we stay silent.
-        run_bounded "${CARREL_GUARD_OCR_TIMEOUT:-30}" carrel ocr "$abs" --to txt -o "$txt" --force >/dev/null 2>&1 || true
+        secs="${CARREL_GUARD_OCR_TIMEOUT:-30}"
+        run_bounded "$secs" carrel ocr "$abs" --to txt -o "$txt" --force >/dev/null 2>&1 || rc=$?
     fi
+    # coreutils `timeout` exits 124 when it had to kill the command
+    [ "$rc" = "124" ] && timed_out=1
 fi
-[ -s "$txt" ] || exit 0
+if [ ! -s "$txt" ]; then
+    # A PreToolUse hook may return additionalContext *without* updatedInput:
+    # https://code.claude.com/docs/en/hooks lists them as independent decision
+    # fields, and an omitted permissionDecision means "the normal permission
+    # flow applies". So a timeout can say so and still let the Read proceed on
+    # the original. It used to exit 0 in silence, and Claude saw only a Read
+    # that happened to be slow.
+    [ "$timed_out" = "1" ] || exit 0
+    note="carrel-guard: converting $abs to text timed out after ${secs}s; reading the original instead. Raise CARREL_GUARD_TIMEOUT to allow longer."
+    if command -v jq >/dev/null 2>&1; then
+        jq -cn --arg ctx "$note" \
+            '{hookSpecificOutput: {hookEventName: "PreToolUse", additionalContext: $ctx}}' \
+            2>/dev/null || exit 0
+    elif command -v python3 >/dev/null 2>&1; then
+        python3 -c 'import json,sys; print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": sys.argv[1]}}))' "$note" 2>/dev/null || exit 0
+    fi
+    exit 0
+fi
 
 chars="$(wc -m < "$txt" 2>/dev/null | tr -d '[:space:]')"
 case "$chars" in
     ''|*[!0-9]*) chars="$size" ;;
 esac
-ctx="carrel-guard: $abs was converted to text at $txt ($chars chars). Original left untouched."
+ctx="carrel-guard: $abs was converted to text at $txt ($chars chars). The original is untouched at $abs — Read it directly when layout, diagrams or images matter."
 
 # ---- emit the PreToolUse decision (jq, else python3); silence on any failure
 if command -v jq >/dev/null 2>&1; then

@@ -6,18 +6,34 @@ silent no-ops.
 
 ## What it does
 
-**`PreToolUse` on `Read` → `scripts/read-guard.sh`.** Claude's `Read` tool cannot parse
-PDFs, Word/OpenDocument/EPUB/RTF files, spreadsheets, email files or images. When Claude is
-about to `Read` one of those (`.pdf .docx .odt .epub .rtf .xlsx .eml .mbox .mbx`, and `.png .jpg
-.jpeg .ico` when OCR is installed), the guard:
+**`PreToolUse` on `Read` → `scripts/read-guard.sh`.** Claude's `Read` already handles more
+than it gets credit for: per the [tools reference](https://code.claude.com/docs/en/tools-reference),
+images come back as pictures Claude can see, and PDFs are read natively (in `pages` ranges past
+ten pages). What it cannot open are the zip-and-XML and mailbox formats —
+`.docx .odt .epub .rtf .xlsx .eml .mbox .mbx`.
 
-1. converts it to text with `carrel convert --to txt` (images: `carrel ocr --to txt`),
+So the guard converts what `Read` cannot open, and makes a cheaper choice for one thing it can:
+
+| Extension | Default | Why |
+|---|---|---|
+| `.docx .odt .epub .rtf .xlsx .eml .mbox .mbx` | converted to text | `Read` cannot open them at all |
+| `.pdf` | converted to text | page images cost far more tokens than the text; `CARREL_GUARD_PDF_TEXT=0` keeps the visual `Read` when layout or diagrams matter |
+| `.png .jpg .jpeg .ico` | **left alone** | `Read` shows Claude the image; OCR would replace a chart or a screenshot with a worse transcription. `CARREL_GUARD_OCR_IMAGES=1` turns it on |
+
+When the guard does act, it:
+
+1. converts the file with `carrel convert --to txt` (images: `carrel ocr --to txt`),
 2. writes the text into a cache directory (below),
 3. returns a hook decision that lets the Read proceed with `file_path` rewritten to the
    text file (`offset`/`limit` pass through unchanged), plus an `additionalContext` line
-   telling Claude what happened:
+   telling Claude what happened and where the original still is:
 
-   > carrel-guard: /path/report.pdf was converted to text at ~/.cache/carrel-guard/…/report.txt (18432 chars). Original left untouched.
+   > carrel-guard: /path/report.pdf was converted to text at ~/.cache/carrel-guard/…/report.txt (18432 chars). The original is untouched at /path/report.pdf — Read it directly when layout, diagrams or images matter.
+
+If the conversion **times out**, the guard says so and lets the Read proceed on the original —
+`additionalContext` without `updatedInput`, which the
+[hooks reference](https://code.claude.com/docs/en/hooks) allows, since the decision fields are
+independent and an omitted `permissionDecision` means the normal permission flow applies.
 
 If anything is off — not one of those extensions, `carrel` missing, file over 64 MiB,
 conversion failed or timed out, OCR unavailable — the script prints nothing, exits 0, and
@@ -52,8 +68,10 @@ rm -rf "${XDG_CACHE_HOME:-$HOME/.cache}/carrel-guard"
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `CARREL_GUARD_TIMEOUT` | `5` | seconds allowed for `carrel convert` (needs coreutils `timeout`) |
+| `CARREL_GUARD_TIMEOUT` | `15` | seconds allowed for `carrel convert` (needs coreutils `timeout`). A 68 KB docx takes ~6.7 s through pandoc and a 127 KB one ~13.9 s; the old 5 s killed both silently |
 | `CARREL_GUARD_OCR_TIMEOUT` | `30` | seconds allowed for `carrel ocr` on images |
+| `CARREL_GUARD_OCR_IMAGES` | `0` | `1` OCRs `.png/.jpg/.jpeg/.ico` instead of letting Claude see them |
+| `CARREL_GUARD_PDF_TEXT` | `1` | `0` leaves PDFs to the visual `Read` instead of converting them to text |
 | `CARREL_GUARD_MAX_BYTES` | `67108864` | files larger than this (64 MiB) are left to the plain Read |
 | `CARREL_GUARD_DOCTOR_TIMEOUT` | `20` | seconds allowed for `carrel doctor` at session start |
 
