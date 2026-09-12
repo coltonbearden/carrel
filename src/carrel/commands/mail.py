@@ -23,7 +23,7 @@ import click
 
 from carrel.core import adapters, mail
 from carrel.core.filetypes import FileType, detect, detect_or_die
-from carrel.core.fsops import uncollide
+from carrel.core.fsops import uncollide, within
 from carrel.core.output import (
     CarrelError,
     CarrelInputError,
@@ -69,8 +69,10 @@ def _mail_files(
         if not p.exists():
             raise CarrelInputError(f"no such path: {p}")
         if p.is_file():
-            out.append(p)
-        else:
+            if within(p, confine_to):  # mirrors index._walk's own file branch
+                out.append(p)
+        elif within(p, confine_to):
+            # `_walk` checks what it finds; the top it is handed is ours to check
             seed = ancestor_ignores(p.resolve(), root)
             out.extend(f for f in _walk(p, seed, confine_to=confine_to) if detect(f).is_mail)
     return out

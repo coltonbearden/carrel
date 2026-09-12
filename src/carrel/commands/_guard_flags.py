@@ -46,7 +46,13 @@ def allow_tracked_options(help_text: str) -> Callable[[F], F]:
     return decorate
 
 
-def normalise_guard_flags(ctx: click.Context, *, consulted: bool) -> bool:
+#: `ctx.meta` key remembering that the user typed the deprecated spelling, so the
+#: fold can happen early (every command, unconditionally) and the warning late
+#: (only where the guard is actually consulted).
+_TYPED_FORCE = "carrel.guard_flags.typed_force"
+
+
+def normalise_guard_flags(ctx: click.Context) -> bool:
     """Rewrite `--force` to `--allow-tracked` **in `ctx.params`** and return the value.
 
     The name says "normalise" because this mutates: after it runs, a user who
@@ -59,19 +65,30 @@ def normalise_guard_flags(ctx: click.Context, *, consulted: bool) -> bool:
     unit carrying *neither* flag, which refuses at every start. Normalising once,
     here, keeps the warning and writes a unit that runs.
 
-    `consulted` is whether *this* invocation reaches the guard at all. A dry run
-    is never guarded, and a `watch` without `--done-dir`/`--error-dir` never asks
-    the question, so warning there would tell the user a guard was bypassed when
-    none was asked about — and would put stderr noise into scripted dry runs that
-    were silent before. Call it at the point the guard is reached, after the
-    command's own argument validation, so a usage error still reports itself
-    rather than the deprecation.
+    Call it unconditionally, at the top of every guarded command: `ctx.params`
+    must not be left in two different shapes depending on which branch a run
+    takes. The warning is a separate step — see `warn_if_deprecated_spelling`.
     """
-    allow_tracked = bool(ctx.params.get("allow_tracked"))
     force = bool(ctx.params.get("force"))
     if force:
         ctx.params["force"] = False
         ctx.params["allow_tracked"] = True
-        if consulted:
-            click.echo(_DEPRECATION, err=True)
-    return allow_tracked or force
+        ctx.meta[_TYPED_FORCE] = True
+    return bool(ctx.params.get("allow_tracked"))
+
+
+def warn_if_deprecated_spelling(ctx: click.Context) -> None:
+    """Emit the deprecation once, at the point the guard is actually consulted.
+
+    Call it where the guard runs, after the command's own argument validation. A
+    dry run is never guarded, and a `watch` without `--done-dir`/`--error-dir`
+    never asks the question, so warning there would tell the user a safety guard
+    was bypassed when none was asked about, and would put stderr noise into
+    scripted dry runs that were silent before. A bad `--into` should report
+    itself rather than the deprecation, too.
+
+    `pop`, so "once per run" is structural rather than a property of where the
+    call happens to sit.
+    """
+    if ctx.meta.pop(_TYPED_FORCE, False):
+        click.echo(_DEPRECATION, err=True)

@@ -266,6 +266,17 @@
   `audiobook`. `--force` stays on all four as a deprecated alias that warns once when the
   guard is actually consulted; it is not removed and no removal date is set.
 
+- **Considered and declined in PR #43:** a per-call MCP `root` bounds the ancestor
+  `.gitignore` walk at that root, not at the server's launch root, so
+  `carrel_refs {"path": ".", "root": "sub"}` does not apply `<desk>/.gitignore`.
+  A review argued the same file should give the same answer whichever way the
+  client addresses it. Left as is because the tool schema documents `root` as
+  "Desk root (default: server --root / cwd)" — a client naming `sub` is naming a
+  desk, and D-019 fixes the bound at the desk root, so this is the documented
+  semantics rather than a defect. The CLI behaves identically
+  (`carrel --root sub refs .` versus `carrel --root desk refs sub`). Revisit if
+  MCP v3 makes the per-call `root` mean "subtree of the desk" instead.
+
 - The suite cannot run under a non-UTF-8 locale: `LC_ALL=C PYTHONUTF8=0 uv run pytest -q`
   fails 45 tests across 9 files with `UnicodeDecodeError`. Every one is *test-side* —
   `subprocess.run(..., text=True)` and `Path.read_text()` in the harness, not in shipped code,

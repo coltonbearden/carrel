@@ -265,7 +265,15 @@ def within(path: Path, root: Path | None) -> bool:
     """
     if root is None:
         return True
-    return path.resolve().is_relative_to(root.resolve())
+    try:
+        return path.resolve().is_relative_to(root.resolve())
+    except OSError:
+        # Not symlink loops — `resolve()` is non-strict and returns those
+        # unchanged. `os.getcwd()` behind a relative path when the cwd has been
+        # removed, and Windows' `_getfinalpathname` on a reserved name or an
+        # over-long path, both raise here. Outside a boundary we cannot evaluate
+        # is the safe answer, and a walk must not die on one bad entry.
+        return False
 
 
 def guard_worktree(paths: Iterable[Path], *, what: str, allow_tracked: bool = False) -> None:

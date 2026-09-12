@@ -16,8 +16,9 @@ import sys
 from pathlib import Path
 
 import pytest
+from conftest import needs
 
-from carrel.commands.mcp import TOOLS
+from carrel.commands.mcp import DEFAULT_PROTOCOL_VERSION, TOOLS
 
 TIMEOUT = 60
 
@@ -370,6 +371,7 @@ class TestMcpRootBoundary:
         assert "TOPSECRET-SUBJECT" not in proc.stdout
         assert "leaker@example.com" not in proc.stdout
 
+    @needs("git")
     def test_the_walk_is_not_emptied_by_a_gitignore_above_the_root(self, tmp_path):
         """A confined server must not read `.gitignore` files above its own root.
 
@@ -377,8 +379,13 @@ class TestMcpRootBoundary:
         directory up — the v0.3.1 desk-blanking shape (D-019), reached through
         MCP — silently returned zero files. Whether `fields` was bounded at all
         depended on the unrelated `save` flag.
+
+        The `git init` is load-bearing: `ancestor_ignores` only climbs inside a
+        work tree, so without it the unbounded walk returns `()` anyway and this
+        test passes with the fix reverted. Checked by reverting it.
         """
         (tmp_path / ".gitignore").write_text("*\n")
+        subprocess.run(["git", "init", "-q", str(tmp_path)], check=True, timeout=TIMEOUT)
         desk, _ = self.desk_and_secret(tmp_path)
 
         proc = run_server(
@@ -430,8 +437,11 @@ class TestMcpRootBoundary:
             ],
             tmp_path,
         )
-        for resp in parse_lines(proc.stdout):
-            assert resp["result"]["protocolVersion"] == "2025-06-18", resp
+        assert proc.returncode == 0, proc.stderr
+        responses = parse_lines(proc.stdout)
+        assert len(responses) == 2, proc.stdout  # an empty list would pass the loop
+        for resp in responses:
+            assert resp["result"]["protocolVersion"] == DEFAULT_PROTOCOL_VERSION, resp
 
     def test_resources_outside_the_root_are_not_found(self, tmp_path):
         desk, secret = self.desk_and_secret(tmp_path)

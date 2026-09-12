@@ -14,8 +14,9 @@
   restores the old behaviour for a session, and `carrel --root / mcp` is unconfined by
   construction because `/` is then the desk you named. `plugins/carrel-agent/.mcp.json` is
   unchanged — Claude Code starts the server in the project directory, which is the desk (D-021).
-  The tools that *walk* a tree — `carrel_pack`, `carrel_index`, `carrel_refs`, `carrel_fields` —
-  are confined too, and that took more than checking the path the client named: the walkers
+  The tools that *walk* a tree — `carrel_pack`, `carrel_index`, `carrel_refs`, `carrel_fields`
+  and `carrel_mail action=threads` — are confined too, and that took more than checking the
+  path the client named: the walkers
   skipped symlinked directories but still read symlinked **files**, so a link planted in a
   desk was a way out of it, and `carrel_index` then stored the contents where `carrel_search`
   would serve them. A walk started by the server now drops any entry that resolves outside the

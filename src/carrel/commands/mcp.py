@@ -436,8 +436,11 @@ class Desk:
         """The root a directory walk must not escape, or None when unconfined.
 
         `Desk.resolve` covers the paths a *client* names. A walk finds its own,
-        and a symlinked file inside the tree resolves outside it — so the tools
-        that walk (`pack`, `index`, `refs`, `fields`) pass this down.
+        and a symlinked file inside the tree resolves outside it — so every tool
+        that walks passes this down: `carrel_pack`, `carrel_index`, `carrel_refs`,
+        `carrel_fields` and `carrel_mail action=threads`. Adding a sixth means
+        adding it here; `test_no_tool_reads_through_a_symlink_planted_in_the_desk`
+        drives the whole registry so a miss fails rather than ships.
         """
         return self.root if self.confined else None
 
@@ -534,6 +537,11 @@ def _tool_pack(args: dict[str, Any], desk: Desk) -> dict[str, Any]:
         "exclude": _str_list(args, "exclude"),
         "max_bytes": int(max_bytes) if max_bytes is not None else None,
         "tree_only": tree_only,
+        # the desk root bounds the ancestor-.gitignore walk. Without it `pack_paths`
+        # falls back to the packed path itself, so `_ancestor_ignores(t, t)` returns
+        # nothing and the desk's own .gitignore is ignored — the #41 bug, reached
+        # through MCP instead of the CLI (D-019).
+        "desk_root": root,
         # the walk finds its own paths; Desk.resolve only covers the ones the
         # client named, and a symlinked file inside the tree resolves outside it
         "confine_to": desk.walk_boundary,

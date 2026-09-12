@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import subprocess
 import sys
 from datetime import date, datetime
 from decimal import Decimal
@@ -1429,3 +1430,28 @@ def test_the_generated_unit_is_accepted_by_real_systemd(tmp_path: Path):
         if ln.strip() and "Executable" not in ln and "not found" not in ln.lower()
     ]
     assert not complaints, "systemd rejects the generated unit:\n" + "\n".join(complaints)
+
+
+@needs("git")
+def test_fields_is_not_emptied_by_a_gitignore_above_the_directory(tmp_path: Path):
+    """`--save` must not be what decides whether the ancestor walk is bounded (D-019).
+
+    `fields_for` took one `save_root` for both jobs, so `carrel fields DIR`
+    climbed to the work-tree root and a `*` rule above DIR blanked the result —
+    silently, exit 0 — while the identical run with `--save` worked.
+    """
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True, timeout=60)
+    (tmp_path / ".gitignore").write_text("*\n", encoding="utf-8", newline="\n")
+    desk = tmp_path / "desk"
+    desk.mkdir()
+    (desk / "inv.txt").write_text(
+        "Acme Corp\nInvoice Date: 2026-01-05\nTotal Due: $1,234.56\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    result = run("--root", str(desk), "--json", "fields", str(desk))
+
+    assert result.exit_code == 0, result.output
+    records = json.loads(result.stdout)
+    assert [Path(r["path"]).name for r in records] == ["inv.txt"], records

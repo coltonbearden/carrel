@@ -29,6 +29,7 @@ from carrel.core import patterns as pat
 from carrel.core.adapters import MissingDependencyError
 from carrel.core.db import DeskDB
 from carrel.core.filetypes import FileType, detect
+from carrel.core.fsops import within
 from carrel.core.output import (
     CarrelError,
     CarrelInputError,
@@ -66,7 +67,13 @@ def _candidates(
         if not p.exists():
             raise CarrelInputError(f"no such path: {p}")
         if p.is_file():
+            if not within(p, confine_to):
+                continue
             out.append(p)
+            continue
+        if not within(p, confine_to):
+            # `_walk`'s symlink fast path assumes its top is inside the boundary;
+            # this is the call site that can hand it one that is not
             continue
         for f in _walk(p, ancestor_ignores(p.resolve(), root), confine_to=confine_to):
             ftype = detect(f)

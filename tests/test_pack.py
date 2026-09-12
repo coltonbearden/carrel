@@ -1149,3 +1149,32 @@ def test_the_mcp_pack_tool_carries_the_same_reason(tmp_path: Path):
 
     payload = _tool_pack({"path": str(root), "query": "quick fox"}, desk)
     assert "empty_reason" not in payload, payload
+
+
+# ------------------------------------------------------- D-019 on the MCP path
+
+
+@needs("git")
+def test_the_mcp_pack_tool_honours_the_desk_gitignore(tmp_path: Path):
+    """`carrel_pack` passed no desk root, so `ancestor_ignores(t, t)` returned nothing.
+
+    The same defect #41 fixed on the CLI, reached through MCP instead: with no
+    `desk_root`, `pack_paths` bounds the ancestor walk at the *packed* path, and
+    for a single directory argument that path is its own bound — so the desk's
+    own `.gitignore` never applied and MCP packed files the CLI excluded.
+    """
+    from carrel.commands.mcp import Desk, _tool_pack
+
+    desk = tmp_path / "desk"
+    (desk / "sub").mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", str(desk)], check=True, timeout=60)
+    (desk / ".gitignore").write_text("*.log\n", encoding="utf-8", newline="\n")
+    (desk / "sub" / "keep.txt").write_text("keep\n", encoding="utf-8", newline="\n")
+    (desk / "sub" / "drop.log").write_text("noise\n", encoding="utf-8", newline="\n")
+
+    payload = _tool_pack({"path": "sub", "tree_only": True}, Desk(desk.resolve()))
+    assert sorted(e["path"] for e in payload["entries"]) == ["keep.txt"], payload
+
+    # ...and the CLI, which has always passed a desk root, agrees exactly
+    cli = pack_paths([desk / "sub"], tree_only=True, desk_root=desk)
+    assert [e.path for e in cli.entries] == ["keep.txt"], cli.entries

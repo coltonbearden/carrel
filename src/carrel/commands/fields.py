@@ -487,6 +487,10 @@ def cmd(
             ocr=ocr,
             overrides=overrides,
             save_root=root_of(ctx) if save else None,
+            # the desk root bounds the ancestor-.gitignore walk whether or not we
+            # are saving (D-019); tying the two together made `fields DIR` return
+            # nothing whenever a rule above DIR excluded it, and `--save` fix it
+            walk_root=root_of(ctx),
         )
     except CarrelInputError as e:
         if "--set" in str(e):
