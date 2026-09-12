@@ -11,7 +11,7 @@
 - `sample.xml` (3 levels), `sample.csv` (5 cols × 20 rows, header)
 - `sample.png` (400×300 generated art w/ text), `sample.jpg` (same art + EXIF DateTimeOriginal via piexif? no — Pillow exif build), `sample-copy.jpg` (byte-identical copy for dedupe), `sample-resized.jpg` (75% for near-dupe), `sample.ico` (multi-size from art)
 - `scanned.png` (900×1200 white bg, large black text "CARREL OCR FIXTURE 42" — tesseract-friendly)
-- `text+image.pdf` (reportlab: page1 text w/ sentinel "palimpsest harbor", embedded PNG; page2 more text) 
+- `text+image.pdf` (reportlab: page1 text w/ sentinel "palimpsest harbor", embedded PNG; page2 more text)
 - `form.pdf` (AcroForm: text field "name", checkbox "agree" — reportlab acroform)
 - `scanned.pdf` (image-only pdf from scanned.png — Pillow save)
 - `b.pdf` (second small pdf for merge/diff)
