@@ -51,12 +51,17 @@
   that lock covers `uv run` only, and the `hatchling` build backend is still unpinned (Open issues).
 - 2026-09-11 process + settings: `.claude/settings.json` is committed, so an unattended agent
   run never stalls on a permission prompt for the release loop (`uv`, `git switch`/`fetch`/
-  `rebase`/`worktree`, the read-only and PR-opening halves of `gh`, `claude plugin`, `mkdocs`,
-  and `scripts/github-harden.sh`). Rules are prefix matches, so `gh api` is deliberately not
+  `rebase`/`worktree`, `git add`/`commit`/`push`, `git branch -d`/`-D`, the read-only and
+  PR-management halves of `gh`, `claude plugin`, `mkdocs`,
+  and `scripts/github-harden.sh`). `gh api` is deliberately not
   allow-listed — no prefix can express read-only. The deny list names destructive shapes:
-  specific `rm -rf` roots, `git push --force`, `git reset --hard`, `git clean`, the
-  work-destroying `git checkout`/`stash drop`/`branch -D` forms, `gh run delete` and
-  `gh release delete`. The repo's
+  specific `rm -rf` roots, every force-push spelling plus the `+refspec`, `--mirror`,
+  `--delete`, `--receive-pack=`/`--exec=` and `git -C … push` forms, any push that lands on
+  `main`, `git reset --hard`, `git clean`, the
+  work-destroying `git checkout`/`stash drop` forms, `gh run delete` and
+  `gh release delete`. `tests/test_settings_permissions.py` implements the documented
+  wildcard matcher and asserts on real command strings, so the file is verified by execution.
+  The repo's
   own `.gitignore` now excludes `.claude/settings.local.json` — it was only ever excluded by
   this machine's *global* gitignore, so a fresh clone could have committed someone's local
   permissions. CLAUDE.md gains two rules: a PR merges only after its review completes, and
