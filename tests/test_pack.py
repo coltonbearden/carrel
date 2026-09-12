@@ -1084,8 +1084,11 @@ def test_a_pack_that_found_files_but_inlined_none_is_not_empty(tmp_path: Path):
 
 def test_a_since_pack_whose_only_change_was_a_deletion_is_not_empty(repo: Path):
     """`removed` is the answer `--since` was asked for, not an empty result."""
-    assert adapters.run("git", "-C", str(repo), "rm", "-q", "a.txt").returncode == 0
-    assert adapters.run("git", "-C", str(repo), "commit", "-qm", "drop").returncode == 0
+    # `_sh_git`, not `adapters.run`: it supplies the author/committer identity
+    # and `GIT_CONFIG_GLOBAL=/dev/null`. A CI runner has no global identity, so
+    # a bare `git commit` there exits 128.
+    _sh_git(repo, "rm", "-q", "a.txt")
+    _sh_git(repo, "commit", "-q", "-m", "drop")
 
     res = run("--json", "--root", str(repo), "pack", str(repo), "--since", "HEAD~1", "--tree-only")
     assert res.exit_code == 0, res.stderr
