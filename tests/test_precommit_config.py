@@ -24,10 +24,8 @@ second line of defence in place.
 
 from __future__ import annotations
 
-import os
 import re
 import shlex
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -49,13 +47,17 @@ NOT_GENERATED = "src/carrel/cli.py"
 THE_GENERATOR = "tests/fixtures/generate.py"
 
 
-#: How every hook that runs a locked tool must start. `--locked` never writes
-#: uv.lock and fails loudly when it is stale; plain `uv run` relocks silently,
+#: How every local hook must start. `--locked` never writes uv.lock and fails
+#: when it is stale (uv's documented contract); plain `uv run` relocks silently,
 #: and `--frozen` runs a stale lock quietly and overrides an exported UV_LOCKED.
 LOCKED_RUN = ["uv", "run", "--locked"]
 
 #: The lock check's exact entry: read-only, never reached through `uv run`.
 LOCK_CHECK = ["uv", "lock", "--check"]
+
+#: The only hook repos allowed to pin their own versions: none of their tools
+#: is in uv.lock. Everything else is a local hook that runs from the lock.
+REMOTE_REPOS = {"https://github.com/pre-commit/pre-commit-hooks"}
 
 
 def _config() -> dict:
@@ -70,14 +72,13 @@ def _ordered_hooks() -> list[dict]:
 def _hooks() -> dict[str, dict]:
     """Every hook by id. Ids are unique except where a test says otherwise."""
     found: dict[str, dict] = {}
-    for repo in _config()["repos"]:
-        for hook in repo["hooks"]:
-            found.setdefault(hook["id"], hook)
+    for hook in _ordered_hooks():
+        found.setdefault(hook["id"], hook)
     return found
 
 
 def _all_check_yaml() -> list[dict]:
-    return [h for r in _config()["repos"] for h in r["hooks"] if h["id"] == "check-yaml"]
+    return [h for h in _ordered_hooks() if h["id"] == "check-yaml"]
 
 
 # --------------------------------------------------------------- the outcome
@@ -112,7 +113,7 @@ def test_ruff_leaves_markdown_alone():
 
 def test_the_config_defines_every_hook_these_tests_index():
     """Guard the guard: a renamed id must fail here, not as a KeyError below."""
-    indexed = {*MUTATING, "check-yaml"}
+    indexed = {*MUTATING, "check-yaml", "mypy", "uv-lock-current"}
     missing = sorted(indexed - set(_hooks()))
     assert not missing, f".pre-commit-config.yaml no longer defines: {missing}"
 
@@ -177,27 +178,47 @@ def test_check_yaml_reads_mkdocs_without_going_unsafe_everywhere():
 # ------------------------------------------------------------ the locked toolchain
 
 
-def test_every_hook_that_invokes_uv_uses_an_approved_shape():
-    """Fail closed: a uv spelling this module does not know is refused, not skipped.
+def test_no_hook_repo_pins_its_own_version_of_a_locked_tool():
+    """A remote `repo:` with a `rev` is a second copy of a version uv.lock owns.
 
-    The relock probe below runs the `uv run` prefix these hooks use. A hook
-    spelled any other way — a flag before `run` (`uv --no-progress run`), an
-    option that takes a value (`uv run --group dev`), `uv sync`, or `uv` inside
-    `bash -c` — would not be probed, so it has to fail here instead.
+    ruff-pre-commit was one: every Dependabot bump of ruff in uv.lock left the
+    hook a version behind the ruff CI's lint job runs.
+    """
+    remote = sorted({r["repo"] for r in _config()["repos"]} - {"local"} - REMOTE_REPOS)
+    assert not remote, (
+        f"remote hook repos outside the allowlist: {remote}. Run the tool as a local "
+        f"`{shlex.join(LOCKED_RUN)} <tool>` hook, or add the repo to REMOTE_REPOS if "
+        "nothing in uv.lock provides it"
+    )
+
+
+def test_every_local_hook_runs_from_the_lock():
+    """Fail closed: every local hook matches one of two shapes, or it is refused.
+
+    Refusing everything else is what catches the spellings that dodge a narrower
+    check — a flag before `run` (`uv --no-progress run`), an option that takes a
+    value (`uv run --group dev`), `uv sync`, `uvx ruff@0.15.0`, `bash -c`, or a
+    `language: python` hook installing its own `additional_dependencies`.
+    `args` are appended because pre-commit appends them: that is what runs.
     """
     offenders = []
-    for hook in _ordered_hooks():
-        entry = hook.get("entry", "")
-        if not re.search(r"\buv\b", entry):
+    for repo in _config()["repos"]:
+        if repo["repo"] != "local":
             continue
-        argv = shlex.split(entry)
-        if argv == LOCK_CHECK:
-            continue
-        if argv[: len(LOCKED_RUN)] == LOCKED_RUN and not argv[len(LOCKED_RUN)].startswith("-"):
-            continue
-        offenders.append(f"{hook['id']}: {entry}")
+        for hook in repo["hooks"]:
+            argv = [*shlex.split(hook["entry"]), *hook.get("args", [])]
+            tool = argv[len(LOCKED_RUN) : len(LOCKED_RUN) + 1]
+            locked_run = (
+                argv[: len(LOCKED_RUN)] == LOCKED_RUN and tool and not tool[0].startswith("-")
+            )
+            if (
+                hook.get("language") != "system"
+                or hook.get("additional_dependencies")
+                or not (argv == LOCK_CHECK or locked_run)
+            ):
+                offenders.append(f"{hook['id']}: {shlex.join(argv)}")
     assert not offenders, (
-        f"hooks must invoke uv as `{shlex.join(LOCK_CHECK)}` or "
+        f"local hooks must be `language: system` and run `{shlex.join(LOCK_CHECK)}` or "
         f"`{shlex.join(LOCKED_RUN)} <tool> …`: {offenders}"
     )
 
@@ -206,17 +227,9 @@ def test_every_hook_that_invokes_uv_uses_an_approved_shape():
     ("hook_id", "command"),
     [("ruff-check", ["ruff", "check"]), ("ruff-format", ["ruff", "format"]), ("mypy", ["mypy"])],
 )
-def test_locked_tools_run_from_the_lock(hook_id: str, command: list[str]):
-    """One version per tool: the hook runs what uv.lock pins, as CI's lint job does.
-
-    A remote `repo:` hook with its own `rev` is a second copy of the version that
-    every Dependabot bump of uv.lock leaves behind.
-    """
-    remote = [r["repo"] for r in _config()["repos"] if r["repo"] != "local"]
-    assert not any("ruff-pre-commit" in url or "mirrors-mypy" in url for url in remote), (
-        f"a remote hook repo pins its own version of a locked tool: {remote}"
-    )
-    argv = shlex.split(_hooks()[hook_id]["entry"])
+def test_the_linters_are_the_locked_ones_ci_runs(hook_id: str, command: list[str]):
+    hook = _hooks()[hook_id]
+    argv = [*shlex.split(hook.get("entry", "")), *hook.get("args", [])]
     assert argv[: len(LOCKED_RUN) + len(command)] == [*LOCKED_RUN, *command], (
         f"{hook_id} must run `{shlex.join([*LOCKED_RUN, *command])}`, got {argv}"
     )
@@ -226,78 +239,19 @@ def test_locked_tools_run_from_the_lock(hook_id: str, command: list[str]):
         assert "--force-exclude" in argv, f"{hook_id} ignores pyproject's exclude: {argv}"
 
 
-def test_the_lock_check_is_read_only_and_runs_before_any_other_uv_hook():
-    """`uv-lock-current` is what reports a stale lock locally; CI would fail every job."""
-    hooks = _ordered_hooks()
-    ids = [h["id"] for h in hooks]
+def test_the_lock_check_is_read_only_and_runs_first():
+    """`uv-lock-current` is what reports a stale lock locally; CI would fail every job.
+
+    It runs before every other local hook so its failure is the first thing a
+    committer reads, not a `--locked` error from whichever tool happened to run.
+    """
+    local = [h for r in _config()["repos"] if r["repo"] == "local" for h in r["hooks"]]
+    ids = [h["id"] for h in local]
     assert "uv-lock-current" in ids, ".pre-commit-config.yaml no longer checks uv.lock"
-    hook = hooks[ids.index("uv-lock-current")]
+    hook = local[ids.index("uv-lock-current")]
     assert shlex.split(hook["entry"]) == LOCK_CHECK, f"not the read-only check: {hook['entry']}"
+    assert not hook.get("args"), f"`uv lock --check` takes no args: {hook['args']}"
     assert hook.get("pass_filenames") is False, "`uv lock --check` takes no filenames"
     for path in ("pyproject.toml", "uv.lock"):
         assert re.search(hook["files"], path), f"uv-lock-current does not fire on {path}"
-    first_uv = next(i for i, h in enumerate(hooks) if re.search(r"\buv\b", h.get("entry", "")))
-    assert ids[first_uv] == "uv-lock-current", (
-        f"{ids[first_uv]} runs uv before the lock check; put uv-lock-current first"
-    )
-
-
-@pytest.mark.skipif(shutil.which("uv") is None, reason="uv is not on PATH")
-def test_the_hooks_uv_prefix_cannot_repair_a_stale_lock(tmp_path: Path):
-    """`uv run` repairs a stale uv.lock silently; the hooks' prefix must not.
-
-    In v0.5.0 `mypy` and `product-sync` ran first as plain `uv run …`, relocked,
-    and `uv-lock-current` then reported "Passed" on a lock that CI rejected. The
-    prefix is taken from the config and run against a throwaway project with a
-    stale lock. A control run of plain `uv run` has to relock that same project
-    first, so an interpreter or network failure cannot pass for "left it alone".
-    """
-    prefixes = {
-        tuple(shlex.split(h["entry"])[: len(LOCKED_RUN)])
-        for h in _ordered_hooks()
-        if shlex.split(h.get("entry", ""))[:2] == ["uv", "run"]
-    }
-    assert prefixes, "no hook runs through `uv run`; this test no longer checks anything"
-
-    project = tmp_path / "stale"
-    project.mkdir()
-    pyproject = project / "pyproject.toml"
-    lock = project / "uv.lock"
-    pyproject.write_text(
-        '[project]\nname = "stale-probe"\nversion = "0.1.0"\nrequires-python = ">=3.12"\n'
-        "[tool.uv]\npackage = false\n",
-        encoding="utf-8",
-    )
-    # CI exports UV_LOCKED=1, under which a plain `uv run` errors instead of
-    # relocking — the control below would fail rather than prove anything.
-    # Only the two lock-policy variables go: CI's UV_PYTHON still picks the
-    # interpreter, which offline mode cannot download.
-    env = {k: v for k, v in os.environ.items() if k not in ("UV_LOCKED", "UV_FROZEN")}
-    env["UV_OFFLINE"] = "1"  # a version-only relock resolves nothing
-
-    def run(*argv: str) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            argv, cwd=project, env=env, capture_output=True, text=True, encoding="utf-8"
-        )
-
-    locked = run("uv", "lock")
-    assert locked.returncode == 0, locked.stderr
-    pyproject.write_text(
-        pyproject.read_text(encoding="utf-8").replace("0.1.0", "0.1.1"), encoding="utf-8"
-    )
-    stale = lock.read_bytes()
-    check = run(*LOCK_CHECK)
-    assert "needs to be updated" in check.stderr, f"the probe lock is not stale: {check.stderr}"
-
-    control = run("uv", "run", "python", "-c", "pass")
-    assert control.returncode == 0 and lock.read_bytes() != stale, (
-        f"plain `uv run` did not relock the probe, so this test proves nothing: {control.stderr}"
-    )
-
-    for prefix in sorted(prefixes):
-        lock.write_bytes(stale)
-        probe = run(*prefix, "python", "-c", "pass")
-        assert lock.read_bytes() == stale, f"`{shlex.join(prefix)}` rewrote a stale uv.lock"
-        assert probe.returncode == 0 or "needs to be updated" in probe.stderr, (
-            f"`{shlex.join(prefix)}` failed for a reason other than the stale lock: {probe.stderr}"
-        )
+    assert ids[0] == "uv-lock-current", f"{ids[0]} runs before the lock check; put it first"

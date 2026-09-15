@@ -7,15 +7,15 @@ Run after editing product.json; finalize.sh runs it during rename. Writes:
 - src/<package>/_product.py          (runtime copy; the wheel never ships product.json)
 - pyproject.toml                     (version, description, [project.urls])
 - context7.json                      (projectTitle, description)
-
-It does NOT write `uv.lock`, which also carries the version — run `uv lock`
-after a bump. `tests/test_product_sync.py` fails when the two disagree, and
-the `product-sync` pre-commit hook watches `uv.lock` so a stale one cannot be
-committed: CI syncs under `UV_LOCKED=1`, where a stale lock kills every job
-before a test runs.
 - .claude-plugin/marketplace.json    (each plugin entry's version)
 - plugins/*/.claude-plugin/plugin.json (version)
 - CITATION.cff                       (version, date-released, repository URLs)
+
+It does NOT write `uv.lock`, which also carries the version — run `uv lock`
+after a bump. `tests/test_product_sync.py` fails when the two disagree, and
+the `uv-lock-current` pre-commit hook (`uv lock --check`) refuses a commit
+whose lock is stale: CI syncs under `UV_LOCKED=1`, where a stale lock kills
+every job before a test runs.
 
 tests/test_product_sync.py and tests/test_marketplace.py assert all of these
 agree with product.json, so a version bump that skips this script fails CI.

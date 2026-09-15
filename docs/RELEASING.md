@@ -30,9 +30,10 @@ uv lock --check      # not `uv run …` — that relocks first and hides the ans
 
 The `uv-lock-current` pre-commit hook runs the same command, so the usual failure
 — the lock updated on disk by a local `uv run`, then never staged — is caught at
-commit time by a real git hook. Note that invoking pre-commit *through* `uv run`
-(as CLAUDE.md's gate does) relocks before the hook runs and so cannot catch it;
-CI's `UV_LOCKED=1` sync is the backstop, and it fails every job in seconds.
+commit time by a real git hook. Run pre-commit as `uvx pre-commit` or through
+the installed git hook: invoking it *through* `uv run` relocks before any hook
+runs and so cannot catch it. CI's `UV_LOCKED=1` sync is the backstop, and it
+fails every job in seconds.
 
 `sync_product.py` rewrites `src/carrel/_product.py`, `pyproject.toml`
 (version, description, `[project.urls]`), every plugin manifest under
