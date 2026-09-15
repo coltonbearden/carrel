@@ -10,12 +10,15 @@
   defaults rather than adding to them, so the defaults worth keeping are re-listed — and the
   default `*archive*` folder pattern is deliberately dropped, because it was excluding the
   shipped `plugins/carrel-mail/skills/mail-archive`. `projectTitle` and `description` follow
-  `product.json` through `scripts/sync_product.py`, with tests and the `product-sync` hook
-  (D-025).
+  `product.json` through `scripts/sync_product.py`, with tests and the `product-sync` hook.
+  The rules are tested against the real CLI: every command and flag a rule names must appear in
+  its `--help`, and only commands that call the tracked-files guard may be said to have it — the
+  first draft claimed `dedupe` did, and it does not (D-025).
 - **Added:** `.github/workflows/context7-refresh.yml` asks Context7 to re-index after the
   documentation changes. Written from the published OpenAPI spec — `POST /api/v1/refresh`,
-  bearer auth, `{"libraryName": "/coltonbearden/carrel"}` — not from guesswork; it logs the
-  HTTP status and the documented response fields only, never the raw body. Green and skipped
+  bearer auth, `libraryName` derived from the repository — not from guesswork. It logs the HTTP
+  status and the documented `message` field only, never the raw body or an `error` field, which
+  is where an authenticated endpoint would echo a credential. Green and skipped
   until `CONTEXT7_API_KEY` exists, so there is nothing to disable in the meantime.
 
 ## v0.5.0 — 2026-09-12

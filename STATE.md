@@ -9,16 +9,15 @@
   verification record is the v0.5.0 entry under Done. 33 commands, 14 MCP tools, 19 adapters,
   9 marketplace plugins, desk schema v2. Repo `coltonbearden/carrel`, docs at
   https://coltonbearden.github.io/carrel/, PyPI package `carrel`.
-- **In flight:** the Context7 configuration PR is the last of the wave; everything else has
-  landed. (Written in the release's own `docs(state)` PR — if you are reading this from `main`,
-  that PR merged.)
+- **In flight:** nothing from the v0.5.0 wave — #48 (Context7) was its last PR. Two Dependabot
+  PRs that opened afterwards (#49 `setup-uv`, #50 python deps) are awaiting their own review.
 - **Next:** MCP v3 (`specs/30-mcp-v3.md`) as **v0.6.0**: 11 new tools, 14 → 25, with `rename`,
   `intake`, `organize` and `ocr` first. That ordering is this wave's brief, not spec 30, which
   states none: `rename`/`intake`/`organize` are what stop the accounting-inbox pipeline being
   CLI-only, and `ocr` rides along on their entry points. The Open-issue entry below still names
-  the older headline set (`rename`, `batch`, `intake`); `batch` is cut as the `shell=True` site.
-  `batch` is cut from that wave — it is the single `shell=True` site (D-013) — and `audiobook`,
-  `color` and `proof` are deferred; the spec says why. Every mutating tool is dry-run by
+  the older headline set (`rename`, `batch`, `intake`). `batch` is cut from the wave — it is the
+  single `shell=True` site (D-013) — and `audiobook`, `color` and `proof` are deferred; the spec
+  says why. Every mutating tool is dry-run by
   default, and confinement is settled by **D-021** rather than re-opened.
   **Do this first, before any mutating tool lands:** replace the `confine_to` flag threaded
   through five walkers and two writers with one confined filesystem accessor (Open issues).
@@ -28,7 +27,8 @@
   - **Owner's step, on or after 2026-09-24:** promote `test-minimal (windows)` to required once
     it has been green on `main` for two consecutive weeks. Note what the evidence so far is:
     green on every v0.5.0 *PR* check, which runs a merge simulation, not `main`'s post-merge
-    runs — check those before promoting. That changes branch protection, so it needs the owner's go-ahead in that session: drop
+    runs — check those before promoting. That changes branch protection, so it needs the
+    owner's go-ahead in that session: drop
     `continue-on-error` in `.github/workflows/test.yml`, add the check to `REQUIRED_CHECKS`,
     then run `scripts/github-harden.sh`. (`test-minimal (macos)` was added on 2026-09-11 under
     the owner's authorisation in the v0.4.1 brief.)
@@ -366,6 +366,14 @@
   (also in `test_refs.py`, `test_desk_db_cmds.py`, `test_watch_org_dedupe.py`,
   `test_redact_sign_form.py` and others). `tests/conftest.py` is the shared-plumbing home;
   hoisting it is a whole-suite edit, deliberately not bundled into a behaviour PR.
+
+- **CI's drift gates do not diff `context7.json`.** `scripts/sync_product.py` writes it since
+  #48, but the `git diff --exit-code` pathspecs in `.github/workflows/test.yml` and
+  `publish.yml` were not extended, so if the sync ever mangled the file the lint job would
+  repair it on disk and report green. Not changed in #48 because the v0.5.0 brief puts both
+  workflow files out of scope. The practical risk is covered meanwhile —
+  `test_context7_sync_rewrites_identity_only` runs the sync against a stale copy in the `test`
+  job — but the pathspec is the right home for it. Add `context7.json` to both.
 
 ### Owner's call: `.claude/settings.json`
 

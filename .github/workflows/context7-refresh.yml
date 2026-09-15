@@ -6,7 +6,7 @@ name: context7-refresh
 # (https://context7.com/openapi.json, "Context7 Public API" 2.0.0):
 #   POST https://context7.com/api/v1/refresh
 #   bearerAuth; body {"libraryName": "/owner/repo"} (required), optional branch
-#   200 -> {"message": "..."}; 401/403/404/429 are the ones worth reading
+#   200 -> {"message": "..."}; 401/403/404/429 carry no documented body
 #
 # Until CONTEXT7_API_KEY exists the job is green and skipped rather than red:
 # HAS_KEY is decided at job level, and the only step is gated on it. Nothing to
@@ -18,7 +18,10 @@ on:
     paths:
       - "docs/**"
       - "plugins/**"
+      # root-level markdown is indexed regardless of `folders`; these are the
+      # two that context7.json does not exclude
       - "README.md"
+      - "SECURITY.md"
       - "context7.json"
       - ".github/workflows/context7-refresh.yml"
   workflow_dispatch:
@@ -33,6 +36,7 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     env:
       HAS_KEY: ${{ secrets.CONTEXT7_API_KEY != '' }}
     steps:
@@ -40,18 +44,25 @@ jobs:
         if: env.HAS_KEY == 'true'
         env:
           CONTEXT7_API_KEY: ${{ secrets.CONTEXT7_API_KEY }}
+          # `owner/repo` of wherever this runs — the repository has already moved
+          # once (D-025), and a hardcoded name 404s forever after the next move
+          REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
+          body=$(python3 -c 'import json, os; print(json.dumps({"libraryName": "/" + os.environ["REPOSITORY"]}))')
           code=$(curl -sS -o response.json -w '%{http_code}' \
-            --max-time 60 --retry 2 --retry-connrefused \
+            --max-time 60 --retry 2 --retry-max-time 120 --retry-connrefused \
             -X POST https://context7.com/api/v1/refresh \
             -H "Authorization: Bearer $CONTEXT7_API_KEY" \
             -H 'Content-Type: application/json' \
-            -d '{"libraryName": "/coltonbearden/carrel"}')
+            -d "$body")
           echo "HTTP $code"
-          # Only the documented fields are echoed. The raw body is never printed:
-          # an error response from an authenticated endpoint is exactly where a
-          # token or an internal path ends up, and this log is public.
+          # Only `message`, the one field the published contract documents
+          # (200 -> {"message": string}), is echoed. Not the raw body, and not an
+          # `error` field either: an error from an authenticated endpoint is exactly
+          # where a credential or an internal path ends up, GitHub masks only the
+          # registered secret, and this log is public. The status code is enough to
+          # act on — 401/403 is the key, 404 the library name, 429 a rate limit.
           python3 - "$code" <<'PY'
           import json, sys, pathlib
           code = sys.argv[1]
@@ -60,10 +71,8 @@ jobs:
           except Exception:
               print("response was not JSON")
               body = {}
-          if isinstance(body, dict):
-              for key in ("message", "status", "jobId", "error"):
-                  if key in body:
-                      print(f"{key}: {str(body[key])[:200]}")
+          if code.startswith("2") and isinstance(body, dict) and "message" in body:
+              print(f"message: {str(body['message'])[:200]}")
           sys.exit(0 if code.startswith("2") else 1)
           PY
 

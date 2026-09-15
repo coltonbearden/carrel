@@ -25,13 +25,14 @@
     "TEST_REPORT.md",
     "REPO_SETTINGS.md",
     "HOW_THIS_WAS_BUILT.md",
-    "BRAND.md"
+    "BRAND.md",
+    "DECISIONS.md"
   ],
   "rules": [
-    "Every data-producing command accepts --json; exit codes are stable (0 ok, 1 error, 2 usage, 3 missing optional binary, 4 bad input, 5 empty result) — branch on the code, not on the message.",
-    "Run `carrel doctor` (or `carrel doctor --json`) before relying on a capability: optional binaries are detected at runtime and a missing one exits 3 with an install hint for that platform.",
+    "Every data-producing command accepts --json; exit codes are stable (0 ok, 1 error, 2 usage, 3 missing optional binary, 4 bad input, 5 empty result) — branch on the code, not the message, with one exception: `carrel diff` exits 1 when the inputs differ, which is a result, not a failure.",
+    "Run `carrel doctor --json` before relying on a capability: optional binaries are detected at runtime, and a missing one exits 3 with an install hint for the platform it ran on.",
     "Use `carrel pack --query` for bounded LLM context rather than packing a whole tree; FTS5 AND-s the query terms, and under --json a pack that matched nothing exits 5 instead of returning an empty document.",
     "`carrel mcp` is confined to the directory it was started in — every tool path, client-supplied root and carrel:// URI outside it is refused — unless it was started with --allow-outside-root.",
-    "`rename`, `organize`, `intake` and `dedupe` dry-run by default and refuse to move files git is tracking; --apply performs the move and --allow-tracked overrides the guard."
+    "`carrel rename`, `carrel organize` and `carrel intake` only plan until given --apply, and even then refuse to move files git is tracking unless given --allow-tracked; `carrel dedupe` also only plans until --apply, but it deletes rather than moves, needs --delete newest|oldest, and has no tracked-files guard."
   ]
 }

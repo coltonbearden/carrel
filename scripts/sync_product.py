@@ -120,7 +120,7 @@ def sync_context7(product: dict[str, str]) -> None:
     behind would be the one stale copy nobody looks at.
     """
     path = ROOT / "context7.json"
-    if not path.exists():
+    if not path.is_file():  # as sync_citation does: a directory here must not crash mid-sync
         return
     data = json.loads(path.read_text(encoding="utf-8"))
     data["projectTitle"] = product["displayName"]
