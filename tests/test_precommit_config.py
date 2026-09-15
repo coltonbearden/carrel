@@ -154,3 +154,23 @@ def test_check_yaml_reads_mkdocs_without_going_unsafe_everywhere():
     assert not re.search(unsafe[0]["files"], ".github/workflows/test.yml"), (
         "`--unsafe` must not reach the workflows: it stops catching duplicate keys"
     )
+
+
+def test_the_ruff_hook_runs_the_locked_ruff():
+    """The gate runs ruff twice — `uv run ruff` (from uv.lock) and the pre-commit hook.
+
+    Dependabot updates `uv` and `github-actions`, not pre-commit revs, so every ruff
+    bump it opens moves the lock and leaves the hook behind; #50 moved the lock to
+    0.16.7 with the hook still on 0.16.6. Two formatters a patch apart can disagree
+    about a file, and then the gate fails in one place and passes in the other.
+    This makes the next ruff bump fail until the rev follows, instead of drifting.
+    """
+    lock = (REPO_ROOT / "uv.lock").read_text(encoding="utf-8")
+    locked = re.search(r'^name = "ruff"\nversion = "([^"]+)"', lock, re.M)
+    assert locked, "uv.lock has no ruff package"
+    config = yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
+    (rev,) = [r["rev"] for r in config["repos"] if r["repo"].endswith("/ruff-pre-commit")]
+    assert rev == f"v{locked.group(1)}", (
+        f".pre-commit-config.yaml pins ruff-pre-commit {rev}, uv.lock has ruff "
+        f"{locked.group(1)} — bump the rev with the lock"
+    )
