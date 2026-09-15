@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import importlib
-import json
 import logging
 import sys
+from typing import NoReturn
 
 import click
 
 from carrel._product import PRODUCT
-from carrel.core.output import CarrelError
+from carrel.core.output import CarrelError, ExitCode, error_line, pdf_refusal
 
 # command name -> module under carrel.commands (lazy: a broken optional import
 # only breaks its own command, and --help stays fast)
@@ -148,26 +148,29 @@ def main() -> None:
     except CarrelError as e:
         if debug:
             raise
-        _last_resort(str(e), int(e.exit_code))
+        _last_resort(str(e), e.exit_code)
     except BrokenPipeError:
         sys.exit(0)
     except Exception as e:
         if debug:
             raise
-        _last_resort(f"unexpected error: {e} (re-run with --debug for details)", 1)
+        if (refused := pdf_refusal(e)) is not None:  # a command without `handled`
+            _last_resort(*refused)
+        msg = f"unexpected error: {e} (re-run with --debug for details)"
+        _last_resort(msg, ExitCode.ERROR, plain=msg)
 
 
-def _last_resort(msg: str, code: int) -> None:
-    """An error that escaped every command's own handling.
+def _last_resort(msg: str, code: ExitCode, *, plain: str | None = None) -> NoReturn:
+    """Report an error that escaped every command's own handling, and exit.
 
-    click's context is gone by now, so `error_line` cannot see --json; the flag
-    is read from argv the way `--debug` always has been.
+    click's context is gone by now, so `--json` is read from argv the way
+    `--debug` always has been. `plain` keeps the historical `unexpected error:`
+    line, which has never carried the `error: ` prefix.
     """
-    if "--json" in sys.argv:
-        click.echo(json.dumps({"error": msg, "exit_code": code}), err=True)
-    else:
-        click.echo(msg if msg.startswith("unexpected error") else f"error: {msg}", err=True)
-    sys.exit(code)
+    as_json = "--json" in sys.argv
+    line = plain if plain is not None and not as_json else error_line(msg, code, as_json=as_json)
+    click.echo(line, err=True)
+    sys.exit(int(code))
 
 
 if __name__ == "__main__":

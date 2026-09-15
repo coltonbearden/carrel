@@ -416,14 +416,18 @@
   honest file; `--debug` restores them. A counted summary ("pypdf: 50,000 warnings suppressed")
   would keep the signal. Not done yet.
 
-- **A pypdf refusal does not name the file.** `edit pdf a.pdf --merge b.pdf` on a hostile `b.pdf`
-  prints `error: unreadable PDF: Maximum Root object recovery limit reached.` — which input is
-  left to the user, and the `--json` object has no path field. pypdf's exception carries no path,
-  so the fix is a shared PDF-opening helper that converts `PyPdfError` into
-  `CarrelInputError(path, …)` where the path is known; `handled` and the MCP server already
-  share the classification (`pdf_refusal`). Deferred from the pypdf-floor PR because it touches
-  every pypdf call site in seven commands, which is the same surface v0.6.0's confined accessor
-  rewrites.
+- **carrel has no shared PDF-opening helper, so hostile-PDF handling stops at pypdf's own
+  errors.** `core.output.pdf_refusal` maps pypdf's `PyPdfError`s to exit 4 by type. Three gaps
+  remain, all found reviewing the pypdf-floor PR: (1) a malformed structure that makes pypdf
+  raise a plain `ValueError` (`/MediaBox [ 0 ]` in `sign stamp`) or carrel's own loops raise a
+  `TypeError` (`/Annots 9` in `note pdf`) is still exit 1 "unexpected error"; (2) the message
+  does not say which file — `edit pdf a.pdf --merge b.pdf` on a hostile `b.pdf` leaves the user
+  to guess (only `note` names it); (3) a pypdf error on a PDF carrel generated itself (`sign`'s
+  reportlab overlay, `note pdf-add`'s read-back) is reported as the user's bad input. The fix
+  for all three is one helper that opens *user input*, touches `.pages`, and converts pypdf's
+  refusals and structural `ValueError`/`TypeError`s into `CarrelInputError(path, …)` where the
+  path is known. Deferred because it touches every pypdf call site in seven commands — the same
+  surface v0.6.0's confined accessor rewrites.
 
 - **`main` reads `--json` and `--debug` from raw argv.** Its last-resort error handler and the
   pypdf log switch run where click's context is gone, so a literal `--json` or `--debug` passed as

@@ -60,7 +60,7 @@ def emit(ctx: click.Context | None, data: Any, human: Callable[[Any], None] | No
         rprint(data)
 
 
-def error_line(msg: str, code: ExitCode = ExitCode.ERROR) -> str:
+def error_line(msg: str, code: ExitCode = ExitCode.ERROR, *, as_json: bool | None = None) -> str:
     """One stderr line for an error — JSON under `--json`, `error: ...` otherwise.
 
     stdout is never touched: the data channel and the error channel stay apart.
@@ -72,9 +72,14 @@ def error_line(msg: str, code: ExitCode = ExitCode.ERROR) -> str:
     in `convert` and `thumb` that report an error per source and keep going. The
     one exception is `click.UsageError` (a malformed command line), which click
     renders itself with the `Usage:` banner that is the answer to it.
+
+    `as_json` overrides the context for the one caller that has none left:
+    `carrel.cli.main`'s last-resort handler.
     """
-    ctx = click.get_current_context(silent=True)
-    if ctx is not None and ctx.obj and ctx.obj.get("json"):
+    if as_json is None:
+        ctx = click.get_current_context(silent=True)
+        as_json = bool(ctx is not None and ctx.obj and ctx.obj.get("json"))
+    if as_json:
         return json.dumps({"error": msg, "exit_code": int(code)})
     return f"error: {msg}"
 
@@ -129,17 +134,21 @@ def handled[**P, R](fn: Callable[P, R]) -> Callable[P, R | None]:
 
 
 def pdf_refusal(exc: Exception) -> tuple[str, ExitCode] | None:
-    """The message and exit code for an error pypdf raised about its input, else None.
+    """The message and exit code for one of pypdf's own errors, else None.
 
-    Every refusal of a file derives from `pypdf.errors.PyPdfError` — including
-    `LimitReachedError`, which pypdf 6 raises for decompression bombs and
-    oversized structures and which is a sibling of `PdfReadError`, not a
-    subclass, so catching `PdfReadError` alone let hostile files exit 1 as
-    "unexpected error". Three cases are split out: an encrypted file gets the
-    way to decrypt it, pypdf's `DependencyError` (AES needs `cryptography`, which
-    carrel does not depend on) is exit 3 like any missing optional dependency,
-    and the two `PyPdfError`s pypdf raises for API misuse rather than bad input
-    stay unexpected, because they mean a carrel bug.
+    Classified by type alone, so it answers "which exit code", not "whose fault":
+    a `PyPdfError` is reported as bad input (exit 4) even in the rare case it came
+    from a PDF carrel generated. `LimitReachedError` is why this exists — pypdf 6
+    raises it for decompression bombs and oversized structures, and it is a
+    sibling of `PdfReadError`, not a subclass, so catching `PdfReadError` alone
+    let hostile files exit 1 as "unexpected error". Malformed files that make
+    pypdf raise a plain `ValueError` or `TypeError` are not covered (STATE.md).
+
+    Split out: an encrypted file names the decrypt command; pypdf's
+    `DependencyError` — AES without `cryptography`, JBIG2 without `jbig2dec` — is
+    exit 3 with pypdf's own message, which names what is missing; and
+    `PageSizeNotDefinedError`/`XmpDocumentError`, raised for API misuse, stay
+    unexpected.
 
     Looked up in `sys.modules` rather than imported: if pypdf was never imported,
     the exception cannot be one of its errors, and importing it costs ~0.2 s.
@@ -148,11 +157,11 @@ def pdf_refusal(exc: Exception) -> tuple[str, ExitCode] | None:
     if errors is None:
         return None
     if isinstance(exc, errors.DependencyError):
-        package = str(exc).split(">", 1)[0].split(" ", 1)[0] or "the package it names"
-        hint = f"`uv tool install carrel --with {package}` or `pipx inject carrel {package}`"
-        return f"{exc} — install {package} into carrel's environment ({hint})", ExitCode.MISSING_DEP
+        return f"pypdf needs something that is not installed: {exc}", ExitCode.MISSING_DEP
     if isinstance(exc, errors.FileNotDecryptedError):
-        hint = "`carrel edit pdf FILE --decrypt PASSWORD -o OUT`"
+        from carrel._product import PRODUCT
+
+        hint = f"`{PRODUCT['cli']} edit pdf FILE --decrypt PASSWORD -o OUT`"
         return f"encrypted PDF: {exc} — decrypt it first with {hint}", ExitCode.BAD_INPUT
     if isinstance(exc, (errors.PageSizeNotDefinedError, errors.XmpDocumentError)):
         return None
