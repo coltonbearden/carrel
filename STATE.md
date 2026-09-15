@@ -12,8 +12,8 @@
 - **In flight:** nothing. #48 (Context7) was the v0.5.0 wave's last PR. Of the two Dependabot
   PRs that opened after it, #49 (`setup-uv` 10.1.0) merged as `d4619cf`; #50 (pypdf 6.18.1,
   ruff 0.16.7, and the pre-commit hooks now run from `uv.lock`) is the change that wrote this
-  line. Their reviews' follow-ups were each their own PR: CI's uv cache and pin, the pypdf floor
-  (D-026) and the `.claude/settings.json` owner items. What is still open is under Open issues.
+  line. Their reviews' follow-ups: CI's uv cache and uv pin are fixed; the pypdf floor is under
+  Open issues and the `.claude/settings.json` owner items under Also pending.
 - **Next:** MCP v3 (`specs/30-mcp-v3.md`) as **v0.6.0**: 11 new tools, 14 → 25, with `rename`,
   `intake`, `organize` and `ocr` first. That ordering is this wave's brief, not spec 30, which
   states none: `rename`/`intake`/`organize` are what stop the accounting-inbox pipeline being
