@@ -32,6 +32,9 @@ RENAME_GLOBS = [
     "tests/**/*.py",
     "README.md",
     "CHANGELOG.md",
+    # its `rules` name the CLI in backticks, and they are hand-maintained, so
+    # sync_product.py (which rewrites only projectTitle/description) cannot fix them
+    "context7.json",
     ".claude-plugin/marketplace.json",
     ".claude/agents/*.md",
     "specs/*.md",

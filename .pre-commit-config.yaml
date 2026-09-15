@@ -65,7 +65,7 @@ repos:
         entry: uv run pytest -q tests/test_product_sync.py
         language: system
         pass_filenames: false
-        files: ^(product\.json|pyproject\.toml|CITATION\.cff|CHANGELOG\.md|src/carrel/_product\.py|\.claude-plugin/.*|plugins/.*/plugin\.json)$
+        files: ^(product\.json|pyproject\.toml|CITATION\.cff|CHANGELOG\.md|context7\.json|src/carrel/_product\.py|\.claude-plugin/.*|plugins/.*/plugin\.json)$
       - id: uv-lock-current
         name: uv.lock ↔ pyproject
         # Read-only on purpose: `uv run` and `uv sync` relock silently, so any
