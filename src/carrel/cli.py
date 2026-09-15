@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import importlib
+import json
+import logging
 import sys
 
 import click
@@ -128,6 +130,11 @@ def cli(ctx: click.Context, as_json: bool, debug: bool, root: str) -> None:
 
 def main() -> None:
     debug = "--debug" in sys.argv
+    if not debug:
+        # pypdf logs a warning per broken object; a 156-byte PDF with no /Root
+        # produced 50,000 stderr lines before its error, flooding MCP client logs
+        # and anything reading stderr for the --json error object
+        logging.getLogger("pypdf").setLevel(logging.ERROR)
     try:
         cli(standalone_mode=False)
     except click.exceptions.Exit as e:
@@ -146,7 +153,11 @@ def main() -> None:
     except Exception as e:
         if debug:
             raise
-        click.echo(f"unexpected error: {e} (re-run with --debug for details)", err=True)
+        # click's context is gone by now, so `error_line` cannot see --json
+        msg = f"unexpected error: {e} (re-run with --debug for details)"
+        if "--json" in sys.argv:
+            msg = json.dumps({"error": msg, "exit_code": 1})
+        click.echo(msg, err=True)
         sys.exit(1)
 
 

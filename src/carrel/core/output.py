@@ -97,7 +97,9 @@ def debugging(ctx: click.Context | None) -> bool:
 
 
 def handled[**P, R](fn: Callable[P, R]) -> Callable[P, R | None]:
-    """Convert CarrelError into a clean message + exit code (unless --debug).
+    """Convert CarrelError — and a PDF pypdf refuses — into a clean message + exit code.
+
+    Under --debug both propagate with their tracebacks instead.
 
     Most command callbacks wear this (D-016); the exit-code convention in
     CLAUDE.md is only honoured because the mapping lives here, once. The
@@ -117,8 +119,27 @@ def handled[**P, R](fn: Callable[P, R]) -> Callable[P, R | None]:
             if debugging(ctx):
                 raise
             fail(str(e), e.exit_code)
+        except Exception as e:
+            if debugging(ctx) or not _is_unreadable_pdf(e):
+                raise
+            fail(f"unreadable PDF: {e}", ExitCode.BAD_INPUT)
 
     return wrapper
+
+
+def _is_unreadable_pdf(exc: Exception) -> bool:
+    """pypdf refused the file: malformed, encrypted, or over one of its hardening limits.
+
+    Every such error derives from `pypdf.errors.PyPdfError` — including
+    `LimitReachedError`, which pypdf 6 raises for decompression bombs and
+    oversized structures and which is a sibling of `PdfReadError`, not a
+    subclass, so catching `PdfReadError` alone let hostile files exit 1 as
+    "unexpected error". pypdf's `DependencyError` and `DeprecationError` are
+    not `PyPdfError`s and still surface as the bugs they are.
+    """
+    from pypdf.errors import PyPdfError
+
+    return isinstance(exc, PyPdfError)
 
 
 def root_of(ctx: click.Context) -> Path:

@@ -232,3 +232,75 @@ def test_an_error_without_json_is_still_the_plain_line():
 
     assert result.exit_code == int(ExitCode.BAD_INPUT)
     assert result.stderr.strip() == "error: no such file: /nope"
+
+
+# ------------------------------------------- a PDF pypdf refuses to read
+
+#: 156 bytes: a cross-reference table claiming 200,000 objects and a trailer
+#: with no /Root. pypdf 6 walks for the root, logs one warning per missing
+#: object, and gives up with `LimitReachedError` — a sibling of `PdfReadError`.
+NO_ROOT_PDF = (
+    b"%PDF-1.7\n1 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n"
+    b"xref\n0 2\n0000000000 65535 f \n0000000009 00000 n \n"
+    b"trailer\n<< /Size 200000 >>\nstartxref\n66\n%%EOF\n"
+)
+
+
+def test_handled_maps_a_pypdf_limit_onto_exit_4() -> None:
+    from pypdf.errors import LimitReachedError, PdfReadError
+
+    assert not issubclass(LimitReachedError, PdfReadError), "the premise of this test changed"
+    result = CliRunner().invoke(_one_shot(LimitReachedError("too many objects")), ["boom"])
+
+    assert result.exit_code == int(ExitCode.BAD_INPUT), result.output
+    assert result.stderr.strip() == "error: unreadable PDF: too many objects"
+
+
+def test_handled_still_lets_a_real_bug_through() -> None:
+    """Only pypdf's refusals are input errors; anything else stays unexpected."""
+    sentinel = RuntimeError("a carrel bug")
+    result = CliRunner().invoke(_one_shot(sentinel), ["boom"])
+
+    assert result.exception is sentinel
+
+
+def test_a_hostile_pdf_is_one_clean_json_error_not_a_stderr_flood(tmp_path: Path) -> None:
+    """Through the real entry point, which is where the logging and exit live."""
+    import subprocess
+    import sys
+
+    pdf = tmp_path / "noroot.pdf"
+    pdf.write_bytes(NO_ROOT_PDF)
+    proc = subprocess.run(
+        [sys.executable, "-m", "carrel.cli", "--json", "note", "pdf", str(pdf)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+
+    assert proc.returncode == int(ExitCode.BAD_INPUT), proc.stderr[-500:]
+    lines = proc.stderr.splitlines()
+    assert len(lines) == 1, f"{len(lines)} stderr lines; pypdf's warnings are leaking"
+    payload = json.loads(lines[0])
+    assert payload["exit_code"] == int(ExitCode.BAD_INPUT)
+    assert payload["error"].startswith("unreadable PDF: ")
+
+
+def test_an_unexpected_error_under_json_is_json_too(monkeypatch, capsys) -> None:
+    """`main`'s last-resort handler runs after click's context is gone."""
+    import sys
+
+    import carrel.cli as cli_module
+
+    def explode(**_kwargs):
+        raise RuntimeError("a carrel bug")
+
+    monkeypatch.setattr(cli_module, "cli", explode)
+    monkeypatch.setattr(sys, "argv", ["carrel", "--json", "inspect", "x"])
+    with pytest.raises(SystemExit) as exit_info:
+        cli_module.main()
+
+    assert exit_info.value.code == 1
+    payload = json.loads(capsys.readouterr().err)
+    assert payload["exit_code"] == 1
+    assert payload["error"].startswith("unexpected error: a carrel bug")

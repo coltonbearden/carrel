@@ -12,9 +12,8 @@
 - **In flight:** nothing. #48 (Context7) was the v0.5.0 wave's last PR. Of the two Dependabot
   PRs that opened after it, #49 (`setup-uv` 10.1.0) merged as `d4619cf`; #50 (pypdf 6.18.1,
   ruff 0.16.7, and the pre-commit hooks now run from `uv.lock`) is the change that wrote this
-  line. The pypdf floor #50's review raised is now `>=6.18.1`; what else the reviews found that
-  is not fixed is under Open issues (CI's uv cache, `form fill`'s and `note pdf-add`'s
-  appearance output).
+  line. Their reviews' follow-ups were each their own PR: CI's uv cache and pin, the pypdf floor
+  (D-026) and the `.claude/settings.json` owner items. What is still open is under Open issues.
 - **Next:** MCP v3 (`specs/30-mcp-v3.md`) as **v0.6.0**: 11 new tools, 14 → 25, with `rename`,
   `intake`, `organize` and `ocr` first. That ordering is this wave's brief, not spec 30, which
   states none: `rename`/`intake`/`organize` are what stop the accounting-inbox pipeline being
@@ -397,6 +396,25 @@
   `cache-suffix: ${{ github.job }}-${{ matrix.python }}` elsewhere; pin uv; then a local
   composite action so the next change is one edit.
 
+- **Pillow's floor is `>=10.0`, below its ImageCms fix.** Found reviewing the pypdf floor
+  (D-026). `color` and `proof` pass untrusted images to `ImageCms`, and Pillow 10.3.0 fixed a
+  buffer overflow there (CVE-2024-28219); `pip install carrel` keeps an older Pillow. Deferred
+  to the next release under the D-026 rule rather than raised here, because the rule wants each
+  parser's advisories reviewed together (`pillow`, `openpyxl`, `markdown-it-py`) and the lock
+  is already at Pillow 12.3.0, so the floor choice has room to be deliberate.
+
+- **No CI job installs the declared floors.** CI tests `uv.lock`, which equals the pypdf floor
+  today only by coincidence; the next Dependabot bump separates them, and code that uses a
+  newer API would pass CI and fail for a user at the floor. Fix: a job running the suite after
+  `uv pip install --resolution lowest-direct`. Deferred because other floors will need raises
+  before it can be green — `pillow>=10.0` publishes no wheels past CPython 3.12, the oldest in
+  carrel's matrix — which makes it a PR of its own.
+
+- **pypdf warnings are silenced wholesale.** `main` sets the `pypdf` logger to `ERROR` so a
+  hostile file cannot flood stderr (D-026). That also hides the occasional useful warning on an
+  honest file; `--debug` restores them. A counted summary ("pypdf: 50,000 warnings suppressed")
+  would keep the signal. Not done yet.
+
 - **pypdf 6.18 changed what `form fill` writes, and no test looks at appearance streams.**
   Found reviewing #50 and confirmed by filling `tests/fixtures/form.pdf` (`name` = "Hello")
   under both versions: 6.16.2's rebuilt `/AP /N` clips text to `4 2 212.0 16.0 re` and paints
@@ -405,8 +423,8 @@
   background their form declared, and a value that exactly fit before can now be clipped at
   the right edge. `NeedAppearances` stays true, so viewers that regenerate appearances are
   unaffected. Deferred rather than pinned because the change is upstream, honours the form's
-  own `/MK`, and already reaches every fresh `pip install carrel` whatever this lock says (the
-  floor is `>=5.0`); a byte-level assertion on pypdf's stream would break on its next
+  own `/MK`, and now reaches every install through the `pypdf>=6.18.1` floor (D-026) — a
+  documented, upstream behaviour change; a byte-level assertion on pypdf's stream would break on its next
   cosmetic change. Fix: a test that fills a field to its width and asserts the value's glyphs
   are inside the clip box, not the stream's bytes.
 
