@@ -65,7 +65,9 @@ Issues = "https://github.com/coltonbearden/carrel/issues"
 carrel = "carrel.cli:main"
 
 [dependency-groups]
-dev = ["pytest>=8.0", "pytest-cov>=6.0", "ruff>=0.16", "mypy>=1.14", "pyyaml>=6.0"]
+# `uv` is here so uv.lock pins the uv CI installs (setup-uv `version-file: uv.lock`)
+# and Dependabot bumps it through the same reviewed PR as every other tool.
+dev = ["pytest>=8.0", "pytest-cov>=6.0", "ruff>=0.16", "mypy>=1.14", "pyyaml>=6.0", "uv>=0.12.13"]
 docs = ["mkdocs-material>=9.5"]
 
 [build-system]

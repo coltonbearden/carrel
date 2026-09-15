@@ -32,7 +32,9 @@ jobs:
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
           python-version: "3.12"
-          enable-cache: true
+          version-file: uv.lock
+          # no cache: the release build must not restore what other workflows' jobs saved
+          enable-cache: false
       - name: Release tag must equal v<product.json version>
         env:
           TAG: ${{ github.ref_name }}
@@ -51,7 +53,7 @@ jobs:
       - name: Generated copies must match product.json
         run: |
           python3 scripts/sync_product.py
-          git diff --exit-code -- src/carrel/_product.py pyproject.toml .claude-plugin plugins CITATION.cff
+          git diff --exit-code -- src/carrel/_product.py pyproject.toml .claude-plugin plugins CITATION.cff context7.json
       - name: Identity + marketplace tests
         run: uv run --group dev pytest -q tests/test_product_sync.py tests/test_marketplace.py
       - name: Build sdist + wheel from the locked toolchain

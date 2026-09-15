@@ -12,8 +12,9 @@
 - **In flight:** nothing. #48 (Context7) was the v0.5.0 wave's last PR. Of the two Dependabot
   PRs that opened after it, #49 (`setup-uv` 10.1.0) merged as `d4619cf`; #50 (pypdf 6.18.1,
   ruff 0.16.7, and the pre-commit hooks now run from `uv.lock`) is the change that wrote this
-  line. What their reviews found that is not fixed is under Open issues (CI's uv cache, the
-  pypdf floor, `form fill`'s and `note pdf-add`'s appearance output).
+  line. What their reviews found is fixed or under Open issues: CI's uv cache, uv pin and the
+  `context7.json` drift gate were fixed in the follow-up `ci:` PR; the pypdf floor and
+  `form fill`'s and `note pdf-add`'s appearance output are below.
 - **Next:** MCP v3 (`specs/30-mcp-v3.md`) as **v0.6.0**: 11 new tools, 14 → 25, with `rename`,
   `intake`, `organize` and `ocr` first. That ordering is this wave's brief, not spec 30, which
   states none: `rename`/`intake`/`organize` are what stop the accounting-inbox pipeline being
@@ -369,32 +370,6 @@
   (also in `test_refs.py`, `test_desk_db_cmds.py`, `test_watch_org_dedupe.py`,
   `test_redact_sign_form.py` and others). `tests/conftest.py` is the shared-plumbing home;
   hoisting it is a whole-suite edit, deliberately not bundled into a behaviour PR.
-
-- **CI's drift gates do not diff `context7.json`.** `scripts/sync_product.py` writes it since
-  #48, but the `git diff --exit-code` pathspecs in `.github/workflows/test.yml` and
-  `publish.yml` were not extended, so if the sync ever mangled the file the lint job would
-  repair it on disk and report green. Not changed in #48 because the v0.5.0 brief puts both
-  workflow files out of scope. The practical risk is covered meanwhile —
-  `test_context7_sync_rewrites_identity_only` runs the sync against a stale copy in the `test`
-  job — but the pathspec is the right home for it. Add `context7.json` to both.
-
-- **CI's uv cache is shared across workflows, including the release build.** Found reviewing
-  #49; pre-existing, not introduced by the bump. setup-uv's cache key (v10.1.0,
-  `src/cache/restore-cache.ts::computeKeys`) is arch, platform, OS, Python version, prune/python
-  flags, the `uv.lock` hash and `cache-suffix` — no workflow or job name, and no job here sets a
-  suffix. So `publish.yml`'s `build` and `docs.yml`'s Pages build restore a cache that
-  `test.yml`'s jobs saved after running third-party dependency code, and `uv build`'s isolated
-  build environment is not covered by the lock's hashes (see the unpinned-backend entry above).
-  Three smaller findings ride with it: five ubuntu/py3.12 jobs race for that one key, so
-  whichever finishes first (often the lean `test-minimal`) decides what the rest restore; uv
-  itself is unpinned (no `version:` input, no `required-version`), and v10.1.0 now fails the
-  install outright when a just-released uv is missing from its checksum manifest; and the
-  checkout + setup-uv block is copied seven times across three workflows, so each of these is
-  seven edits. Deferred because none is the bump's, a change to `publish.yml` cannot be
-  exercised before the next tag, and the release pipeline gets its own `ci:` PR and review.
-  Fix, in priority order: `enable-cache: false` in `publish.yml` (and `docs.yml`);
-  `cache-suffix: ${{ github.job }}-${{ matrix.python }}` elsewhere; pin uv; then a local
-  composite action so the next change is one edit.
 
 - **The runtime floor is `pypdf>=5.0`, so #50's pypdf security fixes reach the lock, not users.**
   6.18.1 alone tightens FlateDecode recovery and caps `/Widths` entry counts and `parse_bfchar`
