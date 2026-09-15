@@ -219,3 +219,15 @@ Dropping the default `excludeFolders` is the deliberate half. Its `*archive*` pa
 **No `url` or `public_key`** (owner's answer). Both are in the schema; neither is needed for a public GitHub repository, and `public_key` is a claim credential that belongs in the dashboard rather than in git.
 
 **Freshness is `.github/workflows/context7-refresh.yml`.** The plan for this work assumed the refresh endpoint was undocumented and provided for shipping the config alone — it is documented, in the published OpenAPI spec (<https://context7.com/openapi.json>, "Context7 Public API" 2.0.0): `POST https://context7.com/api/v1/refresh`, bearer auth, body `{"libraryName": "/owner/repo"}`, `200 → {"message": …}`. The workflow was written from that spec rather than from guesswork. It derives `libraryName` from `github.repository` — the repository has moved once already, and a hardcoded name would 404 forever after the next move — and it logs the HTTP status and `message`, the one documented field, only. The first draft also echoed an `error` field, which is precisely where an authenticated endpoint puts a credential or an internal path; GitHub masks only the registered secret, and the log is public. Retries are bounded (`--retry-max-time 120`, `timeout-minutes: 5`) so a long `Retry-After` cannot park a runner for hours. Until `CONTEXT7_API_KEY` exists the job is green and skipped, so there is nothing to disable and no red history in a repository that never asked for it.
+
+## D-027 (2026-09-15) — `.claude/settings.json` grants only what the release loop runs, and every rule does work
+
+Four owner items from #38's review, deferred at the time because the file landed byte-for-byte, decided together:
+
+**`gh workflow run` covers `test.yml` and `context7-refresh.yml` only.** `docs.yml` deploys GitHub Pages on any event but `pull_request`, dispatch included, so the blanket grant let an unattended run publish the site; `publish.yml` has no dispatch trigger, but a blanket grant would have covered one added later.
+
+**`gh repo edit` covers `--description` only**, the one invocation the release loop makes (v0.5.0's positioning, D-024). The user-level deny already refuses the governance flags; the project grant no longer relies on that.
+
+**The dead `git push --force-with-lease` allow is dropped, not revived.** The user-level `Bash(git push --force*)` deny matches it and deny beats allow; splitting that deny to make the allow live would permit a force push of any kind, which the owner ruled out. Rebases go through `gh pr update-branch`.
+
+**Deny rules another deny rule already covers are removed**: `git push --force`, `git push -f` and `git add .` (a trailing ` *` also matches the bare command), `git push -f *` (inside `git push -f*`), `git push * -f` and `git push * -f *` (inside `git push * -f*`) — plus `git push * :*`, which reads as `git push *  *` and matched nothing. `tests/test_settings_permissions.py` proves each removed shape's commands are still denied, rejects a rule that needs a double space to match, and rejects a deny rule another one covers, so the list stays a list of rules that each do something.

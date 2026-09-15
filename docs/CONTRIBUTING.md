@@ -102,7 +102,10 @@ waiting for a human to approve the commands this repository's release loop
 actually uses: `uv run`/`sync`/`build`, `git switch`/`fetch`/`rebase`/`worktree`,
 `git add`/`git commit`/`git push` (the loop has to be able to land a branch),
 `git branch -d`/`-D`, the read-only and PR-management halves of `gh`,
-`claude plugin`, `mkdocs build`, and `scripts/github-harden.sh`.
+`claude plugin`, `mkdocs build`, and `scripts/github-harden.sh`. Two `gh` grants
+are deliberately narrow: `gh workflow run` covers only `test.yml` and
+`context7-refresh.yml` (`docs.yml` deploys GitHub Pages when dispatched), and
+`gh repo edit` covers only `--description`.
 
 **A rule is a match against the whole command, with `*` standing in for any
 text** ([permissions reference](https://code.claude.com/docs/en/permissions)).
@@ -119,10 +122,14 @@ each of them has caught us out:
   `git push --force-with-lease`.
 - The `:*` form is recognised **only at the end of a pattern**, which means no
   rule can end in a literal colon followed by a wildcard. `Bash(git push * :*)`
-  reads as `git push *  *`, not as "a refspec beginning with a colon".
+  reads as `git push *  *`, not as "a refspec beginning with a colon" — it sat
+  in this file as dead config until it was removed, and a test now rejects any
+  rule that needs a double space to match.
 
 `tests/test_settings_permissions.py` implements that matcher and asserts on real
-command strings, so the file is checked by execution rather than by reading.
+command strings, so the file is checked by execution rather than by reading. It
+also rejects a deny rule another deny rule already covers: six such rules were
+removed at once, and a redundant rule reads as a gap someone closed.
 Three further consequences are easy to get wrong:
 
 - **`gh api` is not allow-listed at all.** No endpoint prefix is safe: `gh api

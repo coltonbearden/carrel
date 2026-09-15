@@ -77,12 +77,12 @@ def test_the_matcher_reproduces_the_documented_examples():
     assert not _matches("git push --force", "git push --force origin main")
     # and the shape this repo got wrong once: `:*` DOES cover the bare command
     assert _matches("git push --force:*", "git push --force")
-    # ...and its corollary, which costs one rule in this very file: a trailing
-    # `:*` is *always* read as the wildcard suffix, so no rule can end in a
-    # literal colon-plus-wildcard. `Bash(git push * :*)` therefore reads as
-    # `git push *  *` (two spaces) and is dead config, not a guard against
-    # `git push origin :feature`. Deleting `main` is covered by the literal
-    # `git push *:main` and by the ruleset's own "Restrict deletions".
+    # ...and its corollary: a trailing `:*` is *always* read as the wildcard
+    # suffix, so no rule can end in a literal colon-plus-wildcard.
+    # `Bash(git push * :*)` read as `git push *  *` (two spaces) and sat in this
+    # file as dead config until the owner removed it; the double-space test below
+    # keeps it out. Deleting `main` is covered by the literal `git push *:main`
+    # and by the ruleset's own "Restrict deletions".
     assert not _matches("git push * :*", "git push origin :feature")
 
 
@@ -96,6 +96,8 @@ MUST_BE_DENIED = [
     "git push -f origin main",
     "git push origin main --force",
     "git push origin --force",
+    "git push origin feature -f",
+    "git push origin -f feature",
     # bundled short options: parse-options accepts -fu as -f -u
     "git push -fu origin feature",
     # a leading `+` on a refspec is a force push with no flag
@@ -193,3 +195,72 @@ def test_contributing_describes_the_git_grant_it_actually_ships():
         assert f"`{verb}`" in text, (
             f"docs/CONTRIBUTING.md does not mention the {verb!r} grant this file ships"
         )
+
+
+def _normalized(rule: str) -> str:
+    return rule[: -len(":*")] + " *" if rule.endswith(":*") else rule
+
+
+def _bash_rules(kind: str) -> list[str]:
+    return [m.group(1) for r in _rules(kind) if (m := re.fullmatch(r"Bash\((.*)\)", r))]
+
+
+def test_no_rule_needs_two_spaces_to_match():
+    """The `Bash(git push * :*)` trap: a rule no real command line can satisfy."""
+    dead = [r for kind in ("allow", "deny") for r in _bash_rules(kind) if "  " in _normalized(r)]
+    assert not dead, f"these rules only match a command with a double space: {dead}"
+
+
+#: Stand-ins for each `*` when probing whether one rule already covers another.
+_WITNESSES = ("", "x", "origin main", "-u origin feature")
+
+
+def _witnesses(rule: str) -> list[str]:
+    parts = _normalized(rule).split("*")
+    commands = [parts[0]]
+    for part in parts[1:]:
+        commands = [c + w + part for c in commands for w in _WITNESSES]
+    if _normalized(rule).endswith(" *") and rule.count("*") == 1:
+        commands.append(_normalized(rule)[:-2])  # the bare command it also matches
+    return [" ".join(c.split()) for c in commands]
+
+
+def test_no_deny_rule_is_already_covered_by_another():
+    """A redundant deny rule reads as a gap someone closed — and hides which rule does the work.
+
+    Six were removed together: `git push --force`, `git push -f` and `git add .`
+    (a trailing ` *` also matches the bare command), `git push -f *` (inside
+    `git push -f*`), and `git push * -f` / `git push * -f *` (inside `git push * -f*`).
+    """
+    rules = _bash_rules("deny")
+    redundant = [
+        (r, other)
+        for r in rules
+        for other in rules
+        if other != r and all(_matches(other, w) for w in _witnesses(r))
+    ]
+    assert not redundant, "\n".join(f"{r!r} is already covered by {o!r}" for r, o in redundant)
+
+
+def test_workflow_dispatch_is_limited_to_workflows_that_publish_nothing():
+    """`docs.yml` deploys GitHub Pages on any non-pull_request event, dispatch included."""
+    assert _covered("allow", "gh workflow run context7-refresh.yml")
+    assert _covered("allow", "gh workflow run test.yml --ref main")
+    for cmd in ("gh workflow run docs.yml", "gh workflow run publish.yml", "gh workflow run 12345"):
+        assert not _covered("allow", cmd), f"{cmd!r} runs unprompted"
+
+
+def test_repo_edit_is_limited_to_the_description():
+    assert _covered("allow", 'gh repo edit coltonbearden/carrel --description "Read, index, pack"')
+    assert _covered("allow", 'gh repo edit --description "x"')
+    for cmd in (
+        "gh repo edit coltonbearden/carrel --visibility private",
+        "gh repo edit --default-branch dev",
+        "gh repo edit --enable-issues=false",
+    ):
+        assert not _covered("allow", cmd), f"{cmd!r} runs unprompted"
+
+
+def test_no_allow_rule_is_dead_under_the_deny_list():
+    """`Bash(git push --force-with-lease:*)` was allowed here and denied by a user-level rule."""
+    assert not any("--force" in r for r in _bash_rules("allow")), _bash_rules("allow")

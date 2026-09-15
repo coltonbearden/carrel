@@ -10,10 +10,10 @@
   9 marketplace plugins, desk schema v2. Repo `coltonbearden/carrel`, docs at
   https://coltonbearden.github.io/carrel/, PyPI package `carrel`.
 - **In flight:** nothing. #48 (Context7) was the v0.5.0 wave's last PR. Of the two Dependabot
-  PRs that opened after it, #49 (`setup-uv` 10.1.0) merged as `d4619cf`; #50 (pypdf 6.18.1,
-  ruff 0.16.7, and the pre-commit hooks now run from `uv.lock`) is the change that wrote this
-  line. What their reviews found that is not fixed is under Open issues (CI's uv cache, the
-  pypdf floor, `form fill`'s and `note pdf-add`'s appearance output).
+  PRs that opened after it, #49 (`setup-uv` 10.1.0) merged as `d4619cf` and #50 (pypdf 6.18.1,
+  ruff 0.16.7, pre-commit hooks run from `uv.lock`) as `fe0695a`. Every follow-up their reviews
+  raised for the owner is decided and landed: CI's uv cache and uv pin, the pypdf floor
+  (D-026, with hostile PDFs now exiting 4) and the `.claude/settings.json` items.
 - **Next:** MCP v3 (`specs/30-mcp-v3.md`) as **v0.6.0**: 11 new tools, 14 → 25, with `rename`,
   `intake`, `organize` and `ocr` first. That ordering is this wave's brief, not spec 30, which
   states none: `rename`/`intake`/`organize` are what stop the accounting-inbox pipeline being
@@ -35,11 +35,6 @@
     `continue-on-error` in `.github/workflows/test.yml`, add the check to `REQUIRED_CHECKS`,
     then run `scripts/github-harden.sh`. (`test-minimal (macos)` was added on 2026-09-11 under
     the owner's authorisation in the v0.4.1 brief.)
-  - **Owner decision:** four `.claude/settings.json` items — a `gh workflow run` allow that can
-    deploy Pages, a dead `--force-with-lease` allow (whose fix is to split a *user-level* deny),
-    a `gh repo edit` allow broader than the one command needing it, and four unreachable deny
-    shapes. See the subsection at the end of Open issues. None is urgent; all are the owner's
-    call because the file is theirs.
 
 ## Done
 
@@ -425,27 +420,6 @@
   notice a regression in colour or font. Fix: assert `/DA` and `/DS` in
   `tests/test_desk_db_cmds.py`, and set the font in `/DA` ourselves if a viewer is found that
   mis-renders it.
-
-### Owner's call: `.claude/settings.json`
-
-Found by #38's review and deferred by the owner's decision that the file lands byte-for-byte.
-None is urgent; all four are the owner's to make.
-
-- `Bash(gh workflow run:*)` can dispatch `docs.yml`, which deploys GitHub Pages on any
-  non-`pull_request` event. Narrow to the workflows that are safe to dispatch, or drop it.
-- `Bash(git push --force-with-lease:*)` in the allow list is dead: the user-level
-  `Bash(git push --force*)` has no space before the `*`, so it matches `--force-with-lease`
-  too and deny beats allow. Either split the user-level rule into
-  `Bash(git push --force)` + `Bash(git push --force *)`, or drop the dead allow entry. This
-  session did every rebase with `gh pr update-branch` because of it.
-- `Bash(gh repo edit:*)` is live again: the user-level deny was narrowed to the governance
-  shapes (`--visibility`, `--default-branch`, `--template`, `--allow-forking`,
-  `--enable-secret-scanning`, `--enable-advanced-security`) on 2026-09-12, and
-  `gh repo edit --description` ran successfully at the v0.5.0 release. The project allow entry
-  is broader than the one command that needs it.
-- Four subsumed or unreachable deny entries, including `Bash(git push * :*)` — a trailing `:*`
-  is always read as the wildcard suffix, so it cannot express a literal colon and the rule
-  never matches what it was written for. Cosmetic.
 
 ## Key facts for a fresh session
 
