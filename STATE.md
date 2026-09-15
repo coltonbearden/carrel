@@ -9,11 +9,11 @@
   verification record is the v0.5.0 entry under Done. 33 commands, 14 MCP tools, 19 adapters,
   9 marketplace plugins, desk schema v2. Repo `coltonbearden/carrel`, docs at
   https://coltonbearden.github.io/carrel/, PyPI package `carrel`.
-- **In flight:** nothing. #48 (Context7) was the v0.5.0 wave's last PR. Of the two Dependabot
-  PRs that opened after it, #49 (`setup-uv` 10.1.0) merged as `d4619cf` and #50 (pypdf 6.18.1,
-  ruff 0.16.7, pre-commit hooks run from `uv.lock`) as `fe0695a`. Every follow-up their reviews
-  raised for the owner is decided and landed: CI's uv cache and uv pin, the pypdf floor
-  (D-026, with hostile PDFs now exiting 4) and the `.claude/settings.json` items.
+- **In flight:** nothing. #48 (Context7) was the v0.5.0 wave's last PR. The two Dependabot PRs
+  after it merged: #49 (`setup-uv` 10.1.0) as `d4619cf` and #50 (pypdf 6.18.1, ruff 0.16.7,
+  pre-commit hooks run from `uv.lock`) as `fe0695a`. The owner items their reviews raised are
+  decided and landed — CI's uv cache and uv pin, the pypdf floor (D-026) and the
+  `.claude/settings.json` items (D-027); what is still open is below.
 - **Next:** MCP v3 (`specs/30-mcp-v3.md`) as **v0.6.0**: 11 new tools, 14 → 25, with `rename`,
   `intake`, `organize` and `ocr` first. That ordering is this wave's brief, not spec 30, which
   states none: `rename`/`intake`/`organize` are what stop the accounting-inbox pipeline being
@@ -35,6 +35,14 @@
     `continue-on-error` in `.github/workflows/test.yml`, add the check to `REQUIRED_CHECKS`,
     then run `scripts/github-harden.sh`. (`test-minimal (macos)` was added on 2026-09-11 under
     the owner's authorisation in the v0.4.1 brief.)
+  - **Owner's step:** restrict the `github-pages` environment to deployments from `main`
+    (Settings → Environments → github-pages → Deployment branches), and teach
+    `scripts/github-harden.sh` to set and verify it as it does for `pypi`. D-027 narrowed
+    `gh workflow run` to exact commands, but a workflow file is whatever the dispatched branch
+    says, so only an environment policy stops a branch deploying Pages.
+  - **Owner's call:** the user-level `~/.claude/settings.json` allows `Bash(gh:*)`, which
+    re-grants every `gh` command the project file narrows (D-027) — workflow dispatch and
+    `gh repo edit` included — in the owner's own sessions. Narrowing it is the owner's file.
 
 ## Done
 
@@ -398,6 +406,14 @@
   bump because raising a runtime floor changes what users can co-install and belongs in a
   release with a CHANGELOG line. Decide the policy (floor at the newest security release, or at
   a tested minimum with a CI job that installs it) rather than chasing each patch.
+
+- **Two force/delete shapes the deny list cannot express.** Bundled short options with `f`
+  after the first letter (`git push -uf origin x`) and colon-refspec deletion
+  (`git push origin :feature`) run unprompted under `Bash(git push:*)`. The first is
+  combinatorial (every bundle of `-4 -6 -d -n -q -u -v` with `f`), the second is impossible:
+  no rule can end in a literal colon plus wildcard. Found reviewing D-027. `main` stays covered
+  by `git push *:main` and the ruleset; the real fix for the rest is a PreToolUse hook that
+  parses the push, which the permissions docs recommend for exactly this.
 
 - **pypdf 6.18 changed what `form fill` writes, and no test looks at appearance streams.**
   Found reviewing #50 and confirmed by filling `tests/fixtures/form.pdf` (`name` = "Hello")

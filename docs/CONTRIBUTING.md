@@ -103,9 +103,10 @@ actually uses: `uv run`/`sync`/`build`, `git switch`/`fetch`/`rebase`/`worktree`
 `git add`/`git commit`/`git push` (the loop has to be able to land a branch),
 `git branch -d`/`-D`, the read-only and PR-management halves of `gh`,
 `claude plugin`, `mkdocs build`, and `scripts/github-harden.sh`. Two `gh` grants
-are deliberately narrow: `gh workflow run` covers only `test.yml` and
-`context7-refresh.yml` (`docs.yml` deploys GitHub Pages when dispatched), and
-`gh repo edit` covers only `--description`.
+are deliberately narrow: `gh workflow run` is exactly `test.yml` or
+`context7-refresh.yml`, with no `--ref` (`docs.yml` deploys GitHub Pages when
+dispatched), and `gh repo edit` covers only `--description`, with nothing after it
+(D-027).
 
 **A rule is a match against the whole command, with `*` standing in for any
 text** ([permissions reference](https://code.claude.com/docs/en/permissions)).
@@ -128,8 +129,9 @@ each of them has caught us out:
 
 `tests/test_settings_permissions.py` implements that matcher and asserts on real
 command strings, so the file is checked by execution rather than by reading. It
-also rejects a deny rule another deny rule already covers: six such rules were
-removed at once, and a redundant rule reads as a gap someone closed.
+also rejects a deny rule another deny rule already covers, and an allow rule the
+deny list refuses entirely: a redundant rule reads as a gap someone closed, and a
+dead one as a grant that works.
 Three further consequences are easy to get wrong:
 
 - **`gh api` is not allow-listed at all.** No endpoint prefix is safe: `gh api

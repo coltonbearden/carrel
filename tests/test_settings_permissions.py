@@ -27,6 +27,7 @@ stops covering a command fails.
 
 from __future__ import annotations
 
+import functools
 import json
 import re
 from pathlib import Path
@@ -35,15 +36,25 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SETTINGS = REPO_ROOT / ".claude" / "settings.json"
 
 
-def _rules(kind: str) -> list[str]:
+@functools.cache
+def _rules(kind: str) -> tuple[str, ...]:
     data = json.loads(SETTINGS.read_text(encoding="utf-8"))
-    return data["permissions"][kind]
+    return tuple(data["permissions"][kind])
+
+
+def _bash_rules(kind: str) -> list[str]:
+    """The text inside each `Bash(...)` rule of `kind`."""
+    return [m.group(1) for r in _rules(kind) if (m := re.fullmatch(r"Bash\((.*)\)", r))]
+
+
+def _normalized(rule: str) -> str:
+    """`:*` is just another spelling of a trailing ` *`."""
+    return rule[: -len(":*")] + " *" if rule.endswith(":*") else rule
 
 
 def _matches(rule: str, command: str) -> bool:
     """True when `rule` (the text inside `Bash(...)`) covers `command`."""
-    if rule.endswith(":*"):
-        rule = rule[: -len(":*")] + " *"
+    rule = _normalized(rule)
     if "*" not in rule:
         return rule == command
     if rule.endswith(" *") and rule.count("*") == 1:
@@ -53,11 +64,12 @@ def _matches(rule: str, command: str) -> bool:
 
 
 def _covered(kind: str, command: str) -> bool:
-    return any(
-        _matches(m.group(1), command)
-        for rule in _rules(kind)
-        if (m := re.fullmatch(r"Bash\((.*)\)", rule))
-    )
+    return any(_matches(rule, command) for rule in _bash_rules(kind))
+
+
+def _runs_unprompted(command: str) -> bool:
+    """Deny beats allow: what an unattended run can actually do."""
+    return _covered("allow", command) and not _covered("deny", command)
 
 
 def test_the_matcher_reproduces_the_documented_examples():
@@ -98,6 +110,10 @@ MUST_BE_DENIED = [
     "git push origin --force",
     "git push origin feature -f",
     "git push origin -f feature",
+    # a lease is still a force push, and the owner ruled out force pushes of any kind
+    "git push --force-with-lease origin feature",
+    "git push origin feature --force-with-lease",
+    "git push origin feature --force-if-includes --force-with-lease",
     # bundled short options: parse-options accepts -fu as -f -u
     "git push -fu origin feature",
     # a leading `+` on a refspec is a force push with no flag
@@ -106,6 +122,9 @@ MUST_BE_DENIED = [
     # wholesale rewrite / deletion of remote refs
     "git push --mirror origin",
     "git push --delete origin feature",
+    "git push origin feature --delete",
+    "git push -d origin feature",
+    "git push origin feature -d",
     "git push origin :main",
     # arbitrary program execution on a local or file:// remote
     "git push --receive-pack=sh /tmp/repo",
@@ -133,6 +152,8 @@ MUST_STAY_USABLE = [
     "git push -u origin fix/pack-first-five-minutes",
     "git push origin docs/state-v0.5.0",
     "git push",
+    # `-d*` must not reach the long option that only looks like it
+    "git push --dry-run origin feature",
 ]
 
 
@@ -155,10 +176,13 @@ def test_the_destructive_git_verbs_stay_denied():
         "git commit --no-verify -m wip",
         "git commit -m wip --no-verify",
         "git commit -n -m wip",
+        "git commit -m wip -n",
         # stage-everything publishes whatever .gitignore happens to miss
         "git add -A",
         "git add --all",
         "git add .",
+        "git add ./",
+        "git add :/",
     ):
         assert _covered("deny", cmd), f"no deny rule covers {cmd!r}"
 
@@ -183,6 +207,7 @@ def test_the_release_loop_commands_are_allowed():
         "gh pr create --title x --body y",
         "gh pr checks 38 --watch",
         "gh release create v0.5.0 --target abc",
+        "gh pr update-branch 53",
         "claude plugin validate .",
     ):
         assert _covered("allow", cmd), f"no allow rule covers {cmd!r}"
@@ -195,14 +220,6 @@ def test_contributing_describes_the_git_grant_it_actually_ships():
         assert f"`{verb}`" in text, (
             f"docs/CONTRIBUTING.md does not mention the {verb!r} grant this file ships"
         )
-
-
-def _normalized(rule: str) -> str:
-    return rule[: -len(":*")] + " *" if rule.endswith(":*") else rule
-
-
-def _bash_rules(kind: str) -> list[str]:
-    return [m.group(1) for r in _rules(kind) if (m := re.fullmatch(r"Bash\((.*)\)", r))]
 
 
 def test_no_rule_needs_two_spaces_to_match():
@@ -222,7 +239,9 @@ def _witnesses(rule: str) -> list[str]:
         commands = [c + w + part for c in commands for w in _WITNESSES]
     if _normalized(rule).endswith(" *") and rule.count("*") == 1:
         commands.append(_normalized(rule)[:-2])  # the bare command it also matches
-    return [" ".join(c.split()) for c in commands]
+    # not whitespace-normalised: the matcher sees the raw text, and collapsing
+    # `git push  -f` to `git push -f` would hide what `git push * -f*` covers
+    return commands
 
 
 def test_no_deny_rule_is_already_covered_by_another():
@@ -235,32 +254,52 @@ def test_no_deny_rule_is_already_covered_by_another():
     rules = _bash_rules("deny")
     redundant = [
         (r, other)
-        for r in rules
-        for other in rules
-        if other != r and all(_matches(other, w) for w in _witnesses(r))
+        for i, r in enumerate(rules)
+        for j, other in enumerate(rules)
+        # by position, so an exact duplicate is reported too
+        if i != j and all(_matches(other, w) for w in _witnesses(r))
     ]
     assert not redundant, "\n".join(f"{r!r} is already covered by {o!r}" for r, o in redundant)
 
 
 def test_workflow_dispatch_is_limited_to_workflows_that_publish_nothing():
-    """`docs.yml` deploys GitHub Pages on any non-pull_request event, dispatch included."""
-    assert _covered("allow", "gh workflow run context7-refresh.yml")
-    assert _covered("allow", "gh workflow run test.yml --ref main")
-    for cmd in ("gh workflow run docs.yml", "gh workflow run publish.yml", "gh workflow run 12345"):
-        assert not _covered("allow", cmd), f"{cmd!r} runs unprompted"
+    """`docs.yml` deploys GitHub Pages on any non-pull_request event, dispatch included.
+
+    Exact commands, not prefixes: `--ref <branch>` would run that branch's copy
+    of the workflow, which an unattended run can push first.
+    """
+    assert _runs_unprompted("gh workflow run context7-refresh.yml")
+    assert _runs_unprompted("gh workflow run test.yml")
+    for cmd in (
+        "gh workflow run docs.yml",
+        "gh workflow run publish.yml",
+        "gh workflow run 12345",
+        "gh workflow run test.yml --ref feature",
+    ):
+        assert not _runs_unprompted(cmd), f"{cmd!r} runs unprompted"
 
 
 def test_repo_edit_is_limited_to_the_description():
-    assert _covered("allow", 'gh repo edit coltonbearden/carrel --description "Read, index, pack"')
-    assert _covered("allow", 'gh repo edit --description "x"')
+    assert _runs_unprompted(
+        'gh repo edit --description "Read, index, pack and file your documents"'
+    )
     for cmd in (
         "gh repo edit coltonbearden/carrel --visibility private",
         "gh repo edit --default-branch dev",
         "gh repo edit --enable-issues=false",
+        # the allow rule's trailing wildcard would otherwise carry any flag along
+        "gh repo edit --description x --visibility public --accept-visibility-change-consequences",
+        "gh repo edit --description x --homepage https://example.invalid",
     ):
-        assert not _covered("allow", cmd), f"{cmd!r} runs unprompted"
+        assert not _runs_unprompted(cmd), f"{cmd!r} runs unprompted"
 
 
 def test_no_allow_rule_is_dead_under_the_deny_list():
-    """`Bash(git push --force-with-lease:*)` was allowed here and denied by a user-level rule."""
-    assert not any("--force" in r for r in _bash_rules("allow")), _bash_rules("allow")
+    """`Bash(git push --force-with-lease:*)` sat in allow while a deny rule refused all of it."""
+    deny = _bash_rules("deny")
+    dead = [
+        rule
+        for rule in _bash_rules("allow")
+        if all(any(_matches(d, w) for d in deny) for w in _witnesses(rule))
+    ]
+    assert not dead, f"allow rules every command of which is denied: {dead}"
