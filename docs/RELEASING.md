@@ -41,6 +41,14 @@ fails every job in seconds.
 `CITATION.cff`. Never edit those by hand — `tests/test_product_sync.py` and the
 `lint` CI job fail when any copy drifts.
 
+**Runtime floors for parsers of untrusted input.** carrel opens files it did not
+write, so for the dependencies that parse them — `pypdf`, `pillow`, `openpyxl`,
+`markdown-it-py` — check each project's security advisories and raise the
+`pyproject.toml` floor to the newest release that fixes one. A floor is what a
+`pip install carrel` into an existing environment actually gets; uv.lock only
+decides what CI tests. Raising a floor is a patch under D-023 (no invocation that
+succeeded starts failing) and gets a `**Security (dependencies):**` CHANGELOG line.
+
 Then add a `## vX.Y.Z — YYYY-MM-DD` entry at the top of `CHANGELOG.md`
 (the test suite checks the heading exists; the publish workflow checks it again).
 
