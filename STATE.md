@@ -13,7 +13,7 @@
   that opened after it were reviewed and merged on 2026-09-15 — #49 (`setup-uv` 10.1.0) and #50
   (pypdf 6.18.1, ruff 0.16.7, and the pre-commit ruff hooks now run from `uv.lock`). What their
   reviews found that is not fixed is under Open issues (CI's uv cache, the pypdf floor,
-  `note pdf-add`'s appearance string).
+  `form fill`'s and `note pdf-add`'s appearance output).
 - **Next:** MCP v3 (`specs/30-mcp-v3.md`) as **v0.6.0**: 11 new tools, 14 → 25, with `rename`,
   `intake`, `organize` and `ocr` first. That ordering is this wave's brief, not spec 30, which
   states none: `rename`/`intake`/`organize` are what stop the accounting-inbox pipeline being
@@ -403,6 +403,19 @@
   bump because raising a runtime floor changes what users can co-install and belongs in a
   release with a CHANGELOG line. Decide the policy (floor at the newest security release, or at
   a tested minimum with a CI job that installs it) rather than chasing each patch.
+
+- **pypdf 6.18 changed what `form fill` writes, and no test looks at appearance streams.**
+  Found reviewing #50 and confirmed by filling `tests/fixtures/form.pdf` (`name` = "Hello")
+  under both versions: 6.16.2's rebuilt `/AP /N` clips text to `4 2 212.0 16.0 re` and paints
+  nothing else; 6.18.1 first paints the field's own `/MK` background (`0.8 0.843 1 rg f`) and
+  border (`0.1 0.1 0.1 RG s`), then clips to `4 2 208.0 14.0 re`. So filled fields gain the
+  background their form declared, and a value that exactly fit before can now be clipped at
+  the right edge. `NeedAppearances` stays true, so viewers that regenerate appearances are
+  unaffected. Deferred rather than pinned because the change is upstream, honours the form's
+  own `/MK`, and already reaches every fresh `pip install carrel` whatever this lock says (the
+  floor is `>=5.0`); a byte-level assertion on pypdf's stream would break on its next
+  cosmetic change. Fix: a test that fills a field to its width and asserts the value's glyphs
+  are inside the clip box, not the stream's bytes.
 
 - **Nothing pins what `note pdf-add` writes beyond `/Subtype` and `/Contents`.** #50's review
   predicted pypdf 6.18.1 (#4051) would change the FreeText `/DA` colour; run against both

@@ -19,12 +19,14 @@
 #     defence, and `--force-exclude` makes ruff honour that exclude for the
 #     filenames pre-commit passes it explicitly.
 #
-# Every tool the project locks runs from the lock, as `uv run --frozen …`, so
-# the gate's `uv run ruff` and this hook cannot be two ruff versions apart. A
-# remote ruff-pre-commit `rev` is a second copy of the version, and every ruff
-# bump in uv.lock would need it moved by hand to match.
-# `--frozen` matters as much as `uv run`: without it uv relocks a stale lock
-# before the hook runs, and `uv-lock-current` then passes on the repaired file.
+# Every tool the project locks runs from the lock, as `uv run --locked …`, so
+# these hooks and CI's lint job (`uv run ruff`/`uv run mypy`, test.yml) cannot be
+# two versions apart. A remote ruff-pre-commit `rev` is a second copy of the
+# version, and every ruff bump in uv.lock would need it moved by hand to match.
+# `--locked` matters as much as `uv run`: plain `uv run` relocks a stale lock
+# before the hook runs, so `uv-lock-current` would then pass on the repaired
+# file, and `--frozen` would run the stale lock quietly and override an exported
+# UV_LOCKED. `--locked` never writes uv.lock and fails loudly instead.
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
@@ -58,7 +60,7 @@ repos:
         # Read-only on purpose: `uv run` and `uv sync` relock silently, so any
         # check reached *through* them repairs the staleness it should report.
         # That includes running pre-commit itself as `uv run pre-commit …`, which
-        # is why the gate in CLAUDE.md cannot catch this and CI has to: CI syncs
+        # is why a local check run that way cannot catch this and CI has to: CI syncs
         # with UV_LOCKED=1, where a stale lock fails every job in seconds before
         # a test runs. v0.5.0's first push did exactly that. Invoke this hook via
         # a real git hook or `uvx pre-commit` to see it fire.
@@ -68,27 +70,27 @@ repos:
         files: ^(pyproject\.toml|uv\.lock|product\.json)$
       - id: ruff-check
         name: ruff check
-        entry: uv run --frozen ruff check --force-exclude --fix
+        entry: uv run --locked ruff check --force-exclude --fix
         language: system
         types_or: [python, pyi, jupyter]
         require_serial: true
         exclude: ^tests/fixtures/(?!generate\.py$)
       - id: ruff-format
         name: ruff format
-        entry: uv run --frozen ruff format --force-exclude
+        entry: uv run --locked ruff format --force-exclude
         language: system
         types_or: [python, pyi, jupyter]
         require_serial: true
         exclude: ^tests/fixtures/(?!generate\.py$)
       - id: mypy
         name: mypy (src/carrel)
-        entry: uv run --frozen mypy
+        entry: uv run --locked mypy
         language: system
         pass_filenames: false
         files: ^(src/carrel/.*\.py|pyproject\.toml)$
       - id: product-sync
         name: product.json ↔ generated copies
-        entry: uv run --frozen pytest -q tests/test_product_sync.py
+        entry: uv run --locked pytest -q tests/test_product_sync.py
         language: system
         pass_filenames: false
         files: ^(product\.json|pyproject\.toml|CITATION\.cff|CHANGELOG\.md|context7\.json|src/carrel/_product\.py|\.claude-plugin/.*|plugins/.*/plugin\.json)$
