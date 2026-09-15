@@ -16,6 +16,13 @@ concurrency:
 env:
   UV_LOCKED: "1"   # every job resolves from uv.lock, never re-resolves
 
+# Every setup-uv step: `version-file: uv.lock` installs the uv that uv.lock pins
+# (the never-installed `uv-pin` group), and `cache-suffix` keeps jobs that sync
+# different groups from saving over one shared key — setup-uv's key has no job or
+# workflow in it otherwise, and job ids are unique only within a workflow. Only
+# this workflow caches; every other one runs with `enable-cache: false`.
+# tests/test_workflows.py holds all three rules.
+
 jobs:
   lint:
     name: lint
@@ -28,7 +35,9 @@ jobs:
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
           python-version: "3.12"
+          version-file: uv.lock
           enable-cache: true
+          cache-suffix: ${{ github.workflow }}-${{ github.job }}
       # all extras: mypy sees every optional import and sync_reference.py can load every command;
       # the docs group is for the strict site build at the end (doc-drift gate, D-g)
       - run: uv sync --group dev --group docs --all-extras
@@ -41,15 +50,15 @@ jobs:
       - name: product.json ↔ generated copies
         run: |
           uv run python scripts/sync_product.py
-          git diff --exit-code -- src/carrel/_product.py pyproject.toml .claude-plugin plugins CITATION.cff
+          git diff --exit-code   # the whole tree: every file the sync writes, including ones added later
       - name: docs/REFERENCE.md ↔ CLI --help
         run: |
           uv run python scripts/sync_reference.py
-          git diff --exit-code -- docs/REFERENCE.md
+          git diff --exit-code
       - name: plugins/*/commands/*.md ↔ CLI --help
         run: |
           uv run python scripts/sync_plugins.py
-          git diff --exit-code -- plugins
+          git diff --exit-code
       # Anchors and links; prose drift is tests/test_docs_drift.py in the test jobs.
       - name: docs site builds strict
         run: uv run mkdocs build --strict
@@ -78,7 +87,9 @@ jobs:
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
           python-version: ${{ matrix.python }}
+          version-file: uv.lock
           enable-cache: true
+          cache-suffix: ${{ github.workflow }}-${{ github.job }}
 
       - run: uv sync --group dev --all-extras
 
@@ -119,7 +130,9 @@ jobs:
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
           python-version: "3.12"
+          version-file: uv.lock
           enable-cache: true
+          cache-suffix: ${{ github.workflow }}-${{ github.job }}
       - run: uv sync --group dev
       - name: Suite must pass via skips, never crashes
         run: uv run pytest
@@ -138,7 +151,9 @@ jobs:
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
           python-version: "3.12"
+          version-file: uv.lock
           enable-cache: true
+          cache-suffix: ${{ github.workflow }}-${{ github.job }}
       - run: uv sync --group dev
       - name: Suite must pass via skips, never crashes
         run: uv run pytest
@@ -165,7 +180,9 @@ jobs:
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
           python-version: "3.12"
+          version-file: uv.lock
           enable-cache: true
+          cache-suffix: ${{ github.workflow }}-${{ github.job }}
       - run: uv sync --group dev
       # The smoke test runs first so the job proves the package installs,
       # imports, and runs even while the full suite below is still red.

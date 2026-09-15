@@ -69,6 +69,12 @@ carrel = "carrel.cli:main"
 [dependency-groups]
 dev = ["pytest>=8.0", "pytest-cov>=6.0", "ruff>=0.16", "mypy>=1.14", "pyyaml>=6.0"]
 docs = ["mkdocs-material>=9.5"]
+# Locked, never installed: uv.lock's `uv` entry is what setup-uv's
+# `version-file: uv.lock` installs in CI, and Dependabot bumps it like any other
+# tool. Nothing in this repository syncs this group (`uv sync --all-groups` would):
+# a second uv in `.venv/bin` shadows the developer's own and, on Windows, cannot
+# replace itself mid-sync.
+uv-pin = ["uv>=0.12.13"]
 
 [build-system]
 requires = ["hatchling"]

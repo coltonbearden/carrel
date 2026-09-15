@@ -9,12 +9,11 @@
   verification record is the v0.5.0 entry under Done. 33 commands, 14 MCP tools, 19 adapters,
   9 marketplace plugins, desk schema v2. Repo `coltonbearden/carrel`, docs at
   https://coltonbearden.github.io/carrel/, PyPI package `carrel`.
-- **In flight:** nothing. #48 (Context7) was the v0.5.0 wave's last PR. Of the two Dependabot
-  PRs that opened after it, #49 (`setup-uv` 10.1.0) merged as `d4619cf`; #50 (pypdf 6.18.1,
-  ruff 0.16.7, and the pre-commit hooks now run from `uv.lock`) is the change that wrote this
-  line. Their reviews' follow-ups: CI's uv cache and uv pin are fixed, and so is the pypdf floor
-  (D-026, with hostile PDFs now exiting 4); the `.claude/settings.json` owner items are still
-  under Also pending.
+- **In flight:** nothing. #48 (Context7) was the v0.5.0 wave's last PR. The two Dependabot PRs
+  after it merged: #49 (`setup-uv` 10.1.0) as `d4619cf` and #50 (pypdf 6.18.1, ruff 0.16.7,
+  pre-commit hooks run from `uv.lock`) as `fe0695a`. CI's uv cache and uv pin, from #49's review,
+  are fixed, and so is the pypdf floor from #50's (D-026, with hostile PDFs now exiting 4); the
+  `.claude/settings.json` owner items and everything else still open are below.
 - **Next:** MCP v3 (`specs/30-mcp-v3.md`) as **v0.6.0**: 11 new tools, 14 → 25, with `rename`,
   `intake`, `organize` and `ocr` first. That ordering is this wave's brief, not spec 30, which
   states none: `rename`/`intake`/`organize` are what stop the accounting-inbox pipeline being
@@ -371,32 +370,6 @@
   `test_redact_sign_form.py` and others). `tests/conftest.py` is the shared-plumbing home;
   hoisting it is a whole-suite edit, deliberately not bundled into a behaviour PR.
 
-- **CI's drift gates do not diff `context7.json`.** `scripts/sync_product.py` writes it since
-  #48, but the `git diff --exit-code` pathspecs in `.github/workflows/test.yml` and
-  `publish.yml` were not extended, so if the sync ever mangled the file the lint job would
-  repair it on disk and report green. Not changed in #48 because the v0.5.0 brief puts both
-  workflow files out of scope. The practical risk is covered meanwhile —
-  `test_context7_sync_rewrites_identity_only` runs the sync against a stale copy in the `test`
-  job — but the pathspec is the right home for it. Add `context7.json` to both.
-
-- **CI's uv cache is shared across workflows, including the release build.** Found reviewing
-  #49; pre-existing, not introduced by the bump. setup-uv's cache key (v10.1.0,
-  `src/cache/restore-cache.ts::computeKeys`) is arch, platform, OS, Python version, prune/python
-  flags, the `uv.lock` hash and `cache-suffix` — no workflow or job name, and no job here sets a
-  suffix. So `publish.yml`'s `build` and `docs.yml`'s Pages build restore a cache that
-  `test.yml`'s jobs saved after running third-party dependency code, and `uv build`'s isolated
-  build environment is not covered by the lock's hashes (see the unpinned-backend entry above).
-  Three smaller findings ride with it: five ubuntu/py3.12 jobs race for that one key, so
-  whichever finishes first (often the lean `test-minimal`) decides what the rest restore; uv
-  itself is unpinned (no `version:` input, no `required-version`), and v10.1.0 now fails the
-  install outright when a just-released uv is missing from its checksum manifest; and the
-  checkout + setup-uv block is copied seven times across three workflows, so each of these is
-  seven edits. Deferred because none is the bump's, a change to `publish.yml` cannot be
-  exercised before the next tag, and the release pipeline gets its own `ci:` PR and review.
-  Fix, in priority order: `enable-cache: false` in `publish.yml` (and `docs.yml`);
-  `cache-suffix: ${{ github.job }}-${{ matrix.python }}` elsewhere; pin uv; then a local
-  composite action so the next change is one edit.
-
 - **Pillow's floor is `>=10.0`, below its ImageCms fix.** Found reviewing the pypdf floor
   (D-026). `color` and `proof` pass untrusted images to `ImageCms`, and Pillow 10.3.0 fixed a
   buffer overflow there (CVE-2024-28219); `pip install carrel` keeps an older Pillow. Deferred
@@ -434,6 +407,19 @@
   a positional after `--` is mistaken for the flag: JSON formatting of a last-resort error, or
   pypdf's log left on. `--debug` already worked this way; `--json` joined it with the
   pypdf-floor PR. Fix: invoke through `cli.make_context` so `main` can read `ctx.obj`.
+
+- **At the next release, confirm `publish.yml`'s build ran uncached on the locked uv.** The
+  `ci:` PR that took the release build off the shared uv cache and pinned uv through `uv.lock`
+  could not exercise `publish.yml` — it only runs on a published release. In that run's `build`
+  job, the setup-uv step should report the uv version `uv.lock` pins and restore no cache.
+  `tests/test_workflows.py` holds the configuration; only a release proves the behaviour.
+
+- **The setup-uv step is copied seven times across three workflows.** Folding it into a local
+  composite action was the last item of the #49 review's cache finding and was not done: the
+  parametrized `tests/test_workflows.py` now fails on any copy that drifts from the pin or
+  cache rules, which was the risk the duplication posed, and a composite action would also
+  need Dependabot's `github-actions` entry to list `.github/actions/*` so its pinned SHA keeps
+  moving. Worth doing when a fourth rule arrives.
 
 - **pypdf 6.18 changed what `form fill` writes, and no test looks at appearance streams.**
   Found reviewing #50 and confirmed by filling `tests/fixtures/form.pdf` (`name` = "Hello")
