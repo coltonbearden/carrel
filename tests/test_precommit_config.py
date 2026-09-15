@@ -25,7 +25,11 @@ second line of defence in place.
 from __future__ import annotations
 
 import functools
+import itertools
+import os
 import re
+import shlex
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -102,10 +106,10 @@ def test_the_config_defines_every_hook_these_tests_index():
 
 @pytest.mark.parametrize("hook_id", ["ruff-check", "ruff-format"])
 def test_the_ruff_hooks_never_see_markdown(hook_id: str):
-    """`ruff-format`'s upstream `types_or` includes `markdown`; this drops it.
+    """Both are `language: system` hooks, which are handed every staged file.
 
-    `ruff-check`'s upstream does *not* — its pin is belt-and-braces against a
-    future upstream change, not a fix for today's behaviour.
+    Without a `types_or` pin they would see Markdown, and the formatter rewrites
+    Python fences there; `extend-exclude` in pyproject.toml is the first guard.
     """
     types = _hooks()[hook_id].get("types_or")
     assert types is not None, (
@@ -156,21 +160,54 @@ def test_check_yaml_reads_mkdocs_without_going_unsafe_everywhere():
     )
 
 
-def test_the_ruff_hook_runs_the_locked_ruff():
-    """The gate runs ruff twice — `uv run ruff` (from uv.lock) and the pre-commit hook.
+@pytest.mark.skipif(shutil.which("uv") is None, reason="uv is not on PATH")
+def test_no_hook_relocks_a_stale_lock_before_uv_lock_current_reads_it(tmp_path: Path):
+    """`uv run` repairs a stale uv.lock silently, so a hook reached through it
+    makes `uv-lock-current` pass on the file it just fixed.
 
-    Dependabot updates `uv` and `github-actions`, not pre-commit revs, so every ruff
-    bump it opens moves the lock and leaves the hook behind; #50 moved the lock to
-    0.16.7 with the hook still on 0.16.6. Two formatters a patch apart can disagree
-    about a file, and then the gate fails in one place and passes in the other.
-    This makes the next ruff bump fail until the rev follows, instead of drifting.
+    That happened in v0.5.0: `mypy` and `product-sync` ran first as plain
+    `uv run …`, and the lock check reported "Passed" on a lock that CI then
+    rejected. Asserted by running each hook's own `uv` prefix against a
+    throwaway project with a stale lock and comparing the lock's bytes — not by
+    string-matching a flag: what matters is that the lock survives, however the
+    entry spells it.
     """
-    lock = (REPO_ROOT / "uv.lock").read_text(encoding="utf-8")
-    locked = re.search(r'^name = "ruff"\nversion = "([^"]+)"', lock, re.M)
-    assert locked, "uv.lock has no ruff package"
     config = yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
-    (rev,) = [r["rev"] for r in config["repos"] if r["repo"].endswith("/ruff-pre-commit")]
-    assert rev == f"v{locked.group(1)}", (
-        f".pre-commit-config.yaml pins ruff-pre-commit {rev}, uv.lock has ruff "
-        f"{locked.group(1)} — bump the rev with the lock"
+    prefixes: dict[str, list[str]] = {}
+    for repo in config["repos"]:
+        for hook in repo["hooks"]:
+            argv = shlex.split(hook.get("entry", ""))
+            if argv[:2] != ["uv", "run"]:
+                continue
+            flags = list(itertools.takewhile(lambda arg: arg.startswith("-"), argv[2:]))
+            prefixes[hook["id"]] = ["uv", "run", *flags]
+    assert prefixes, "no hook runs through `uv run`; this test no longer checks anything"
+
+    project = tmp_path / "stale"
+    project.mkdir()
+    pyproject = project / "pyproject.toml"
+    pyproject.write_text(
+        '[project]\nname = "stale-probe"\nversion = "0.1.0"\nrequires-python = ">=3.12"\n'
+        "[tool.uv]\npackage = false\n",
+        encoding="utf-8",
+    )
+    # CI exports UV_LOCKED=1, under which a plain `uv run` errors instead of
+    # relocking — the defect would then leave the lock alone and pass here.
+    env = {k: v for k, v in os.environ.items() if not k.startswith("UV_")}
+    env["UV_OFFLINE"] = "1"  # a version-only relock resolves nothing
+    subprocess.run(["uv", "lock"], cwd=project, env=env, check=True, capture_output=True)
+    pyproject.write_text(pyproject.read_text().replace("0.1.0", "0.1.1"), encoding="utf-8")
+    stale = (project / "uv.lock").read_bytes()
+    check = subprocess.run(["uv", "lock", "--check"], cwd=project, env=env, capture_output=True)
+    assert check.returncode != 0, "the probe project's lock is not stale; the test is vacuous"
+
+    relocked = []
+    for hook_id, prefix in prefixes.items():
+        subprocess.run([*prefix, "python", "-c", "pass"], cwd=project, env=env, capture_output=True)
+        if (project / "uv.lock").read_bytes() != stale:
+            relocked.append(hook_id)
+            (project / "uv.lock").write_bytes(stale)
+    assert not relocked, (
+        f"{relocked} relock uv.lock before `uv-lock-current` reads it; "
+        "run them as `uv run --frozen …`"
     )

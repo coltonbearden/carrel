@@ -10,13 +10,20 @@
 #     byte-for-byte by that script (CLAUDE.md). A hook that "fixes" a fixture is
 #     undone on the next run, and the gate step that diffs them starts failing.
 #     `generate.py` itself is hand-written and stays covered.
-#   - `ruff-format` must not see Markdown. Since ruff-pre-commit v0.14 its
-#     upstream `types_or` includes `markdown`, and formatting a Python fence
-#     rewrites mkdocs' `--8<--` snippet directives. The root-cause guard is
-#     `extend-exclude = ["**/*.md"]` in pyproject.toml, which governs every ruff
-#     invocation; the pin here is the second line of defence. (`ruff-check`'s
-#     upstream types_or does *not* include markdown — its pin is belt-and-braces
-#     against a future upstream change.)
+#   - The ruff hooks must not see Markdown. A `language: system` hook with no
+#     `types_or` is handed every staged file, and ruff formats Python fences
+#     inside Markdown (ruff-pre-commit's own `ruff-format` has listed `markdown`
+#     since v0.14), which rewrites mkdocs' `--8<--` snippet directives. The
+#     root-cause guard is `extend-exclude = ["**/*.md"]` in pyproject.toml, which
+#     governs every ruff invocation; the `types_or` pin is the second line of
+#     defence, and `--force-exclude` makes ruff honour that exclude for the
+#     filenames pre-commit passes it explicitly.
+#
+# Every tool the project locks runs from the lock, as `uv run --frozen …`, so
+# the gate's `uv run ruff` and this hook cannot be two ruff versions apart —
+# a remote ruff-pre-commit `rev` drifts from uv.lock on every Dependabot bump.
+# `--frozen` matters as much as `uv run`: without it uv relocks a stale lock
+# before the hook runs, and `uv-lock-current` then passes on the repaired file.
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
@@ -42,30 +49,9 @@ repos:
       - id: check-added-large-files
         args: [--maxkb=512]
       - id: check-merge-conflict
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.7
-    hooks:
-      - id: ruff-check
-        args: [--fix]
-        types_or: [python, pyi, jupyter]
-        exclude: ^tests/fixtures/(?!generate\.py$)
-      - id: ruff-format
-        types_or: [python, pyi, jupyter]
-        exclude: ^tests/fixtures/(?!generate\.py$)
   - repo: local
     hooks:
-      - id: mypy
-        name: mypy (src/carrel)
-        entry: uv run mypy
-        language: system
-        pass_filenames: false
-        files: ^(src/carrel/.*\.py|pyproject\.toml)$
-      - id: product-sync
-        name: product.json ↔ generated copies
-        entry: uv run pytest -q tests/test_product_sync.py
-        language: system
-        pass_filenames: false
-        files: ^(product\.json|pyproject\.toml|CITATION\.cff|CHANGELOG\.md|context7\.json|src/carrel/_product\.py|\.claude-plugin/.*|plugins/.*/plugin\.json)$
+      # First, so a stale lock is reported before anything else touches uv.
       - id: uv-lock-current
         name: uv.lock ↔ pyproject
         # Read-only on purpose: `uv run` and `uv sync` relock silently, so any
@@ -79,3 +65,29 @@ repos:
         language: system
         pass_filenames: false
         files: ^(pyproject\.toml|uv\.lock|product\.json)$
+      - id: ruff-check
+        name: ruff check
+        entry: uv run --frozen ruff check --force-exclude --fix
+        language: system
+        types_or: [python, pyi, jupyter]
+        require_serial: true
+        exclude: ^tests/fixtures/(?!generate\.py$)
+      - id: ruff-format
+        name: ruff format
+        entry: uv run --frozen ruff format --force-exclude
+        language: system
+        types_or: [python, pyi, jupyter]
+        require_serial: true
+        exclude: ^tests/fixtures/(?!generate\.py$)
+      - id: mypy
+        name: mypy (src/carrel)
+        entry: uv run --frozen mypy
+        language: system
+        pass_filenames: false
+        files: ^(src/carrel/.*\.py|pyproject\.toml)$
+      - id: product-sync
+        name: product.json ↔ generated copies
+        entry: uv run --frozen pytest -q tests/test_product_sync.py
+        language: system
+        pass_filenames: false
+        files: ^(product\.json|pyproject\.toml|CITATION\.cff|CHANGELOG\.md|context7\.json|src/carrel/_product\.py|\.claude-plugin/.*|plugins/.*/plugin\.json)$
