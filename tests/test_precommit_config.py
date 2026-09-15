@@ -52,19 +52,21 @@ THE_GENERATOR = "tests/fixtures/generate.py"
 
 
 @functools.cache
+def _config() -> dict:
+    return yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
+
+
 def _hooks() -> dict[str, dict]:
     """Every hook by id. Ids are unique except where a test says otherwise."""
-    config = yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
     found: dict[str, dict] = {}
-    for repo in config["repos"]:
+    for repo in _config()["repos"]:
         for hook in repo["hooks"]:
             found.setdefault(hook["id"], hook)
     return found
 
 
 def _all_check_yaml() -> list[dict]:
-    config = yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
-    return [h for r in config["repos"] for h in r["hooks"] if h["id"] == "check-yaml"]
+    return [h for r in _config()["repos"] for h in r["hooks"] if h["id"] == "check-yaml"]
 
 
 # --------------------------------------------------------------- the outcome
@@ -172,9 +174,8 @@ def test_no_hook_relocks_a_stale_lock_before_uv_lock_current_reads_it(tmp_path: 
     string-matching a flag: what matters is that the lock survives, however the
     entry spells it.
     """
-    config = yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
     prefixes: dict[str, list[str]] = {}
-    for repo in config["repos"]:
+    for repo in _config()["repos"]:
         for hook in repo["hooks"]:
             argv = shlex.split(hook.get("entry", ""))
             if argv[:2] != ["uv", "run"]:
@@ -193,7 +194,9 @@ def test_no_hook_relocks_a_stale_lock_before_uv_lock_current_reads_it(tmp_path: 
     )
     # CI exports UV_LOCKED=1, under which a plain `uv run` errors instead of
     # relocking — the defect would then leave the lock alone and pass here.
-    env = {k: v for k, v in os.environ.items() if not k.startswith("UV_")}
+    # Only the two lock-policy variables go: CI's UV_PYTHON still picks the
+    # interpreter, which offline mode cannot download.
+    env = {k: v for k, v in os.environ.items() if k not in ("UV_LOCKED", "UV_FROZEN")}
     env["UV_OFFLINE"] = "1"  # a version-only relock resolves nothing
     subprocess.run(["uv", "lock"], cwd=project, env=env, check=True, capture_output=True)
     pyproject.write_text(pyproject.read_text().replace("0.1.0", "0.1.1"), encoding="utf-8")

@@ -20,8 +20,9 @@
 #     filenames pre-commit passes it explicitly.
 #
 # Every tool the project locks runs from the lock, as `uv run --frozen …`, so
-# the gate's `uv run ruff` and this hook cannot be two ruff versions apart —
-# a remote ruff-pre-commit `rev` drifts from uv.lock on every Dependabot bump.
+# the gate's `uv run ruff` and this hook cannot be two ruff versions apart. A
+# remote ruff-pre-commit `rev` is a second copy of the version, and every ruff
+# bump in uv.lock would need it moved by hand to match.
 # `--frozen` matters as much as `uv run`: without it uv relocks a stale lock
 # before the hook runs, and `uv-lock-current` then passes on the repaired file.
 repos:
