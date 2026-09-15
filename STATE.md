@@ -9,8 +9,11 @@
   verification record is the v0.5.0 entry under Done. 33 commands, 14 MCP tools, 19 adapters,
   9 marketplace plugins, desk schema v2. Repo `coltonbearden/carrel`, docs at
   https://coltonbearden.github.io/carrel/, PyPI package `carrel`.
-- **In flight:** nothing from the v0.5.0 wave — #48 (Context7) was its last PR. Two Dependabot
-  PRs that opened afterwards (#49 `setup-uv`, #50 python deps) are awaiting their own review.
+- **In flight:** nothing. #48 (Context7) was the v0.5.0 wave's last PR. Of the two Dependabot
+  PRs that opened after it, #49 (`setup-uv` 10.1.0) merged as `d4619cf`; #50 (pypdf 6.18.1,
+  ruff 0.16.7, and the pre-commit hooks now run from `uv.lock`) is the change that wrote this
+  line. What their reviews found that is not fixed is under Open issues (CI's uv cache, the
+  pypdf floor, `form fill`'s and `note pdf-add`'s appearance output).
 - **Next:** MCP v3 (`specs/30-mcp-v3.md`) as **v0.6.0**: 11 new tools, 14 → 25, with `rename`,
   `intake`, `organize` and `ocr` first. That ordering is this wave's brief, not spec 30, which
   states none: `rename`/`intake`/`organize` are what stop the accounting-inbox pipeline being
@@ -374,6 +377,54 @@
   workflow files out of scope. The practical risk is covered meanwhile —
   `test_context7_sync_rewrites_identity_only` runs the sync against a stale copy in the `test`
   job — but the pathspec is the right home for it. Add `context7.json` to both.
+
+- **CI's uv cache is shared across workflows, including the release build.** Found reviewing
+  #49; pre-existing, not introduced by the bump. setup-uv's cache key (v10.1.0,
+  `src/cache/restore-cache.ts::computeKeys`) is arch, platform, OS, Python version, prune/python
+  flags, the `uv.lock` hash and `cache-suffix` — no workflow or job name, and no job here sets a
+  suffix. So `publish.yml`'s `build` and `docs.yml`'s Pages build restore a cache that
+  `test.yml`'s jobs saved after running third-party dependency code, and `uv build`'s isolated
+  build environment is not covered by the lock's hashes (see the unpinned-backend entry above).
+  Three smaller findings ride with it: five ubuntu/py3.12 jobs race for that one key, so
+  whichever finishes first (often the lean `test-minimal`) decides what the rest restore; uv
+  itself is unpinned (no `version:` input, no `required-version`), and v10.1.0 now fails the
+  install outright when a just-released uv is missing from its checksum manifest; and the
+  checkout + setup-uv block is copied seven times across three workflows, so each of these is
+  seven edits. Deferred because none is the bump's, a change to `publish.yml` cannot be
+  exercised before the next tag, and the release pipeline gets its own `ci:` PR and review.
+  Fix, in priority order: `enable-cache: false` in `publish.yml` (and `docs.yml`);
+  `cache-suffix: ${{ github.job }}-${{ matrix.python }}` elsewhere; pin uv; then a local
+  composite action so the next change is one edit.
+
+- **The runtime floor is `pypdf>=5.0`, so #50's pypdf security fixes reach the lock, not users.**
+  6.18.1 alone tightens FlateDecode recovery and caps `/Widths` entry counts and `parse_bfchar`
+  token lengths (its release notes, SEC section), and carrel reads untrusted PDFs; `pip install
+  carrel` into an environment that already has an older pypdf keeps it. Deferred from a lock
+  bump because raising a runtime floor changes what users can co-install and belongs in a
+  release with a CHANGELOG line. Decide the policy (floor at the newest security release, or at
+  a tested minimum with a CI job that installs it) rather than chasing each patch.
+
+- **pypdf 6.18 changed what `form fill` writes, and no test looks at appearance streams.**
+  Found reviewing #50 and confirmed by filling `tests/fixtures/form.pdf` (`name` = "Hello")
+  under both versions: 6.16.2's rebuilt `/AP /N` clips text to `4 2 212.0 16.0 re` and paints
+  nothing else; 6.18.1 first paints the field's own `/MK` background (`0.8 0.843 1 rg f`) and
+  border (`0.1 0.1 0.1 RG s`), then clips to `4 2 208.0 14.0 re`. So filled fields gain the
+  background their form declared, and a value that exactly fit before can now be clipped at
+  the right edge. `NeedAppearances` stays true, so viewers that regenerate appearances are
+  unaffected. Deferred rather than pinned because the change is upstream, honours the form's
+  own `/MK`, and already reaches every fresh `pip install carrel` whatever this lock says (the
+  floor is `>=5.0`); a byte-level assertion on pypdf's stream would break on its next
+  cosmetic change. Fix: a test that fills a field to its width and asserts the value's glyphs
+  are inside the clip box, not the stream's bytes.
+
+- **Nothing pins what `note pdf-add` writes beyond `/Subtype` and `/Contents`.** #50's review
+  predicted pypdf 6.18.1 (#4051) would change the FreeText `/DA` colour; run against both
+  versions, the annotation is byte-identical (`/DA '0.0 0.0 0.0 rg'`, `/C [1,1,1]`, the same
+  `/DS`, no `/AP`), so that part was wrong. What stands: the `/DA` pypdf writes has no `Tf`
+  font operator, which the PDF spec requires in a default appearance string, and no test would
+  notice a regression in colour or font. Fix: assert `/DA` and `/DS` in
+  `tests/test_desk_db_cmds.py`, and set the font in `/DA` ourselves if a viewer is found that
+  mis-renders it.
 
 ### Owner's call: `.claude/settings.json`
 

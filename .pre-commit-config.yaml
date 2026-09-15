@@ -10,13 +10,26 @@
 #     byte-for-byte by that script (CLAUDE.md). A hook that "fixes" a fixture is
 #     undone on the next run, and the gate step that diffs them starts failing.
 #     `generate.py` itself is hand-written and stays covered.
-#   - `ruff-format` must not see Markdown. Since ruff-pre-commit v0.14 its
-#     upstream `types_or` includes `markdown`, and formatting a Python fence
-#     rewrites mkdocs' `--8<--` snippet directives. The root-cause guard is
-#     `extend-exclude = ["**/*.md"]` in pyproject.toml, which governs every ruff
-#     invocation; the pin here is the second line of defence. (`ruff-check`'s
-#     upstream types_or does *not* include markdown — its pin is belt-and-braces
-#     against a future upstream change.)
+#   - The ruff hooks must not see Markdown. A `language: system` hook with no
+#     `types_or` is handed every staged file, and ruff formats Python fences
+#     inside Markdown (ruff-pre-commit's own `ruff-format` has listed `markdown`
+#     since v0.14), which rewrites mkdocs' `--8<--` snippet directives. The
+#     root-cause guard is `extend-exclude = ["**/*.md"]` in pyproject.toml, which
+#     governs every ruff invocation; the `types_or` pin is the second line of
+#     defence, and `--force-exclude` makes ruff honour that exclude for the
+#     filenames pre-commit passes it explicitly.
+#
+# Every tool the project locks runs from the lock, as `uv run --locked …`, so
+# these hooks and CI's lint job (`uv run ruff`/`uv run mypy`, test.yml) cannot be
+# two versions apart. A remote ruff-pre-commit `rev` is a second copy of the
+# version, and every ruff bump in uv.lock would need it moved by hand to match.
+# `--locked` matters as much as `uv run`: plain `uv run` relocks a stale lock
+# before the hook runs, so `uv-lock-current` would then pass on the repaired
+# file, and `--frozen` would run the stale lock quietly and override an exported
+# UV_LOCKED. `--locked` never writes uv.lock and fails on a stale one — unless
+# UV_NO_SYNC is exported, which skips the sync and the lock check with it and
+# runs whatever `.venv` holds. Don't export it while committing; the
+# `uv-lock-current` hook still refuses a staged stale lock either way.
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
@@ -42,36 +55,15 @@ repos:
       - id: check-added-large-files
         args: [--maxkb=512]
       - id: check-merge-conflict
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.6
-    hooks:
-      - id: ruff-check
-        args: [--fix]
-        types_or: [python, pyi, jupyter]
-        exclude: ^tests/fixtures/(?!generate\.py$)
-      - id: ruff-format
-        types_or: [python, pyi, jupyter]
-        exclude: ^tests/fixtures/(?!generate\.py$)
   - repo: local
     hooks:
-      - id: mypy
-        name: mypy (src/carrel)
-        entry: uv run mypy
-        language: system
-        pass_filenames: false
-        files: ^(src/carrel/.*\.py|pyproject\.toml)$
-      - id: product-sync
-        name: product.json ↔ generated copies
-        entry: uv run pytest -q tests/test_product_sync.py
-        language: system
-        pass_filenames: false
-        files: ^(product\.json|pyproject\.toml|CITATION\.cff|CHANGELOG\.md|context7\.json|src/carrel/_product\.py|\.claude-plugin/.*|plugins/.*/plugin\.json)$
+      # First, so a stale lock is reported before anything else touches uv.
       - id: uv-lock-current
         name: uv.lock ↔ pyproject
         # Read-only on purpose: `uv run` and `uv sync` relock silently, so any
         # check reached *through* them repairs the staleness it should report.
         # That includes running pre-commit itself as `uv run pre-commit …`, which
-        # is why the gate in CLAUDE.md cannot catch this and CI has to: CI syncs
+        # is why a local check run that way cannot catch this and CI has to: CI syncs
         # with UV_LOCKED=1, where a stale lock fails every job in seconds before
         # a test runs. v0.5.0's first push did exactly that. Invoke this hook via
         # a real git hook or `uvx pre-commit` to see it fire.
@@ -79,3 +71,29 @@ repos:
         language: system
         pass_filenames: false
         files: ^(pyproject\.toml|uv\.lock|product\.json)$
+      - id: ruff-check
+        name: ruff check
+        entry: uv run --locked ruff check --force-exclude --fix
+        language: system
+        types_or: [python, pyi, jupyter]
+        require_serial: true
+        exclude: ^tests/fixtures/(?!generate\.py$)
+      - id: ruff-format
+        name: ruff format
+        entry: uv run --locked ruff format --force-exclude
+        language: system
+        types_or: [python, pyi, jupyter]
+        require_serial: true
+        exclude: ^tests/fixtures/(?!generate\.py$)
+      - id: mypy
+        name: mypy (src/carrel)
+        entry: uv run --locked mypy
+        language: system
+        pass_filenames: false
+        files: ^(src/carrel/.*\.py|pyproject\.toml)$
+      - id: product-sync
+        name: product.json ↔ generated copies
+        entry: uv run --locked pytest -q tests/test_product_sync.py
+        language: system
+        pass_filenames: false
+        files: ^(product\.json|pyproject\.toml|CITATION\.cff|CHANGELOG\.md|context7\.json|src/carrel/_product\.py|\.claude-plugin/.*|plugins/.*/plugin\.json)$
