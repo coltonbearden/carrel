@@ -60,7 +60,7 @@ def emit(ctx: click.Context | None, data: Any, human: Callable[[Any], None] | No
         rprint(data)
 
 
-def error_line(msg: str, code: ExitCode = ExitCode.ERROR) -> str:
+def error_line(msg: str, code: ExitCode = ExitCode.ERROR, *, as_json: bool | None = None) -> str:
     """One stderr line for an error — JSON under `--json`, `error: ...` otherwise.
 
     stdout is never touched: the data channel and the error channel stay apart.
@@ -72,9 +72,14 @@ def error_line(msg: str, code: ExitCode = ExitCode.ERROR) -> str:
     in `convert` and `thumb` that report an error per source and keep going. The
     one exception is `click.UsageError` (a malformed command line), which click
     renders itself with the `Usage:` banner that is the answer to it.
+
+    `as_json` overrides the context for the one caller that has none left:
+    `carrel.cli.main`'s last-resort handler.
     """
-    ctx = click.get_current_context(silent=True)
-    if ctx is not None and ctx.obj and ctx.obj.get("json"):
+    if as_json is None:
+        ctx = click.get_current_context(silent=True)
+        as_json = bool(ctx is not None and ctx.obj and ctx.obj.get("json"))
+    if as_json:
         return json.dumps({"error": msg, "exit_code": int(code)})
     return f"error: {msg}"
 
@@ -97,7 +102,9 @@ def debugging(ctx: click.Context | None) -> bool:
 
 
 def handled[**P, R](fn: Callable[P, R]) -> Callable[P, R | None]:
-    """Convert CarrelError into a clean message + exit code (unless --debug).
+    """Convert CarrelError — and a PDF pypdf refuses — into a clean message + exit code.
+
+    Under --debug both propagate with their tracebacks instead.
 
     Most command callbacks wear this (D-016); the exit-code convention in
     CLAUDE.md is only honoured because the mapping lives here, once. The
@@ -117,8 +124,50 @@ def handled[**P, R](fn: Callable[P, R]) -> Callable[P, R | None]:
             if debugging(ctx):
                 raise
             fail(str(e), e.exit_code)
+        except Exception as e:
+            refused = pdf_refusal(e)
+            if debugging(ctx) or refused is None:
+                raise
+            fail(*refused)
 
     return wrapper
+
+
+def pdf_refusal(exc: Exception) -> tuple[str, ExitCode] | None:
+    """The message and exit code for one of pypdf's own errors, else None.
+
+    Classified by type alone, so it answers "which exit code", not "whose fault":
+    a `PyPdfError` is reported as bad input (exit 4) even in the rare case it came
+    from a PDF carrel generated. `LimitReachedError` is why this exists — pypdf 6
+    raises it for decompression bombs and oversized structures, and it is a
+    sibling of `PdfReadError`, not a subclass, so catching `PdfReadError` alone
+    let hostile files exit 1 as "unexpected error". Malformed files that make
+    pypdf raise a plain `ValueError` or `TypeError` are not covered (STATE.md).
+
+    Split out: an encrypted file names the decrypt command; pypdf's
+    `DependencyError` — AES without `cryptography`, JBIG2 without `jbig2dec` — is
+    exit 3 with pypdf's own message, which names what is missing; and
+    `PageSizeNotDefinedError`/`XmpDocumentError`, raised for API misuse, stay
+    unexpected.
+
+    Looked up in `sys.modules` rather than imported: if pypdf was never imported,
+    the exception cannot be one of its errors, and importing it costs ~0.2 s.
+    """
+    errors = sys.modules.get("pypdf.errors")
+    if errors is None:
+        return None
+    if isinstance(exc, errors.DependencyError):
+        return f"pypdf needs something that is not installed: {exc}", ExitCode.MISSING_DEP
+    if isinstance(exc, errors.FileNotDecryptedError):
+        from carrel._product import PRODUCT
+
+        hint = f"`{PRODUCT['cli']} edit pdf FILE --decrypt PASSWORD -o OUT`"
+        return f"encrypted PDF: {exc} — decrypt it first with {hint}", ExitCode.BAD_INPUT
+    if isinstance(exc, (errors.PageSizeNotDefinedError, errors.XmpDocumentError)):
+        return None
+    if isinstance(exc, errors.PyPdfError):
+        return f"unreadable PDF: {exc}", ExitCode.BAD_INPUT
+    return None
 
 
 def root_of(ctx: click.Context) -> Path:

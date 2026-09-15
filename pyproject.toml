@@ -39,7 +39,9 @@ classifiers = [
 dependencies = [
     "click>=8.1",
     "rich>=13.0",
-    "pypdf>=5.0",
+    # carrel parses untrusted PDFs, so this floor tracks pypdf's security releases
+    # rather than the oldest API that works (D-026; docs/RELEASING.md, "Runtime floors")
+    "pypdf>=6.18.1",
     "pillow>=10.0",
     "reportlab>=4.0",
     "watchdog>=4.0",

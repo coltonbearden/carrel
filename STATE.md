@@ -12,8 +12,8 @@
 - **In flight:** nothing. #48 (Context7) was the v0.5.0 wave's last PR. The two Dependabot PRs
   after it merged: #49 (`setup-uv` 10.1.0) as `d4619cf` and #50 (pypdf 6.18.1, ruff 0.16.7,
   pre-commit hooks run from `uv.lock`) as `fe0695a`. CI's uv cache and uv pin, from #49's review,
-  are fixed; the pypdf floor, the `.claude/settings.json` owner items and everything else still
-  open are below.
+  are fixed, and so is the pypdf floor from #50's (D-026, with hostile PDFs now exiting 4); the
+  `.claude/settings.json` owner items and everything else still open are below.
 - **Next:** MCP v3 (`specs/30-mcp-v3.md`) as **v0.6.0**: 11 new tools, 14 → 25, with `rename`,
   `intake`, `organize` and `ocr` first. That ordering is this wave's brief, not spec 30, which
   states none: `rename`/`intake`/`organize` are what stop the accounting-inbox pipeline being
@@ -370,13 +370,43 @@
   `test_redact_sign_form.py` and others). `tests/conftest.py` is the shared-plumbing home;
   hoisting it is a whole-suite edit, deliberately not bundled into a behaviour PR.
 
-- **The runtime floor is `pypdf>=5.0`, so #50's pypdf security fixes reach the lock, not users.**
-  6.18.1 alone tightens FlateDecode recovery and caps `/Widths` entry counts and `parse_bfchar`
-  token lengths (its release notes, SEC section), and carrel reads untrusted PDFs; `pip install
-  carrel` into an environment that already has an older pypdf keeps it. Deferred from a lock
-  bump because raising a runtime floor changes what users can co-install and belongs in a
-  release with a CHANGELOG line. Decide the policy (floor at the newest security release, or at
-  a tested minimum with a CI job that installs it) rather than chasing each patch.
+- **Pillow's floor is `>=10.0`, below its ImageCms fix.** Found reviewing the pypdf floor
+  (D-026). `color` and `proof` pass untrusted images to `ImageCms`, and Pillow 10.3.0 fixed a
+  buffer overflow there (CVE-2024-28219); `pip install carrel` keeps an older Pillow. Deferred
+  to the next release under the D-026 rule rather than raised here, because the rule wants each
+  parser's advisories reviewed together (`pillow`, `openpyxl`, `markdown-it-py`) and the lock
+  is already at Pillow 12.3.0, so the floor choice has room to be deliberate.
+
+- **No CI job installs the declared floors.** CI tests `uv.lock`, which equals the pypdf floor
+  today only by coincidence; the next Dependabot bump separates them, and code that uses a
+  newer API would pass CI and fail for a user at the floor. Fix: a job running the suite after
+  `uv pip install --resolution lowest-direct`. Deferred because other floors will need raises
+  before it can be green — `pillow>=10.0` publishes no wheels past CPython 3.12, the oldest in
+  carrel's matrix — which makes it a PR of its own.
+
+- **pypdf's log is silenced wholesale.** `main` sets the `pypdf` logger to `CRITICAL` so a
+  hostile file cannot flood stderr (D-026). That also hides the occasional useful warning on an
+  honest file; `--debug` restores them. A counted summary ("pypdf: 50,000 warnings suppressed")
+  would keep the signal. Not done yet.
+
+- **carrel has no shared PDF-opening helper, so hostile-PDF handling stops at pypdf's own
+  errors.** `core.output.pdf_refusal` maps pypdf's `PyPdfError`s to exit 4 by type. Three gaps
+  remain, all found reviewing the pypdf-floor PR: (1) a malformed structure that makes pypdf
+  raise a plain `ValueError` (`/MediaBox [ 0 ]` in `sign stamp`) or carrel's own loops raise a
+  `TypeError` (`/Annots 9` in `note pdf`) is still exit 1 "unexpected error"; (2) the message
+  does not say which file — `edit pdf a.pdf --merge b.pdf` on a hostile `b.pdf` leaves the user
+  to guess (only `note` names it); (3) a pypdf error on a PDF carrel generated itself (`sign`'s
+  reportlab overlay, `note pdf-add`'s read-back) is reported as the user's bad input. The fix
+  for all three is one helper that opens *user input*, touches `.pages`, and converts pypdf's
+  refusals and structural `ValueError`/`TypeError`s into `CarrelInputError(path, …)` where the
+  path is known. Deferred because it touches every pypdf call site in seven commands — the same
+  surface v0.6.0's confined accessor rewrites.
+
+- **`main` reads `--json` and `--debug` from raw argv.** Its last-resort error handler and the
+  pypdf log switch run where click's context is gone, so a literal `--json` or `--debug` passed as
+  a positional after `--` is mistaken for the flag: JSON formatting of a last-resort error, or
+  pypdf's log left on. `--debug` already worked this way; `--json` joined it with the
+  pypdf-floor PR. Fix: invoke through `cli.make_context` so `main` can read `ctx.obj`.
 
 - **At the next release, confirm `publish.yml`'s build ran uncached on the locked uv.** The
   `ci:` PR that took the release build off the shared uv cache and pinned uv through `uv.lock`
@@ -399,8 +429,8 @@
   background their form declared, and a value that exactly fit before can now be clipped at
   the right edge. `NeedAppearances` stays true, so viewers that regenerate appearances are
   unaffected. Deferred rather than pinned because the change is upstream, honours the form's
-  own `/MK`, and already reaches every fresh `pip install carrel` whatever this lock says (the
-  floor is `>=5.0`); a byte-level assertion on pypdf's stream would break on its next
+  own `/MK`, and now reaches every install through the `pypdf>=6.18.1` floor (D-026) — a
+  documented, upstream behaviour change; a byte-level assertion on pypdf's stream would break on its next
   cosmetic change. Fix: a test that fills a field to its width and asserts the value's glyphs
   are inside the clip box, not the stream's bytes.
 
