@@ -10,7 +10,7 @@ import sys
 import click
 
 from carrel._product import PRODUCT
-from carrel.core.output import CarrelError, fail
+from carrel.core.output import CarrelError
 
 # command name -> module under carrel.commands (lazy: a broken optional import
 # only breaks its own command, and --help stays fast)
@@ -131,10 +131,11 @@ def cli(ctx: click.Context, as_json: bool, debug: bool, root: str) -> None:
 def main() -> None:
     debug = "--debug" in sys.argv
     if not debug:
-        # pypdf logs a warning per broken object; a 156-byte PDF with no /Root
-        # produced 50,000 stderr lines before its error, flooding MCP client logs
-        # and anything reading stderr for the --json error object
-        logging.getLogger("pypdf").setLevel(logging.ERROR)
+        # pypdf logs a warning per broken object (and an error per unsupported
+        # font encoding); a 156-byte PDF with no /Root produced 50,000 stderr lines
+        # before its exception, flooding MCP client logs and anything reading
+        # stderr for the --json error object. The exception still reports.
+        logging.getLogger("pypdf").setLevel(logging.CRITICAL)
     try:
         cli(standalone_mode=False)
     except click.exceptions.Exit as e:
@@ -147,18 +148,26 @@ def main() -> None:
     except CarrelError as e:
         if debug:
             raise
-        fail(str(e), e.exit_code)
+        _last_resort(str(e), int(e.exit_code))
     except BrokenPipeError:
         sys.exit(0)
     except Exception as e:
         if debug:
             raise
-        # click's context is gone by now, so `error_line` cannot see --json
-        msg = f"unexpected error: {e} (re-run with --debug for details)"
-        if "--json" in sys.argv:
-            msg = json.dumps({"error": msg, "exit_code": 1})
-        click.echo(msg, err=True)
-        sys.exit(1)
+        _last_resort(f"unexpected error: {e} (re-run with --debug for details)", 1)
+
+
+def _last_resort(msg: str, code: int) -> None:
+    """An error that escaped every command's own handling.
+
+    click's context is gone by now, so `error_line` cannot see --json; the flag
+    is read from argv the way `--debug` always has been.
+    """
+    if "--json" in sys.argv:
+        click.echo(json.dumps({"error": msg, "exit_code": code}), err=True)
+    else:
+        click.echo(msg if msg.startswith("unexpected error") else f"error: {msg}", err=True)
+    sys.exit(code)
 
 
 if __name__ == "__main__":

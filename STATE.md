@@ -12,8 +12,9 @@
 - **In flight:** nothing. #48 (Context7) was the v0.5.0 wave's last PR. Of the two Dependabot
   PRs that opened after it, #49 (`setup-uv` 10.1.0) merged as `d4619cf`; #50 (pypdf 6.18.1,
   ruff 0.16.7, and the pre-commit hooks now run from `uv.lock`) is the change that wrote this
-  line. Their reviews' follow-ups were each their own PR: CI's uv cache and pin, the pypdf floor
-  (D-026) and the `.claude/settings.json` owner items. What is still open is under Open issues.
+  line. Their reviews' follow-ups: CI's uv cache and uv pin are fixed, and so is the pypdf floor
+  (D-026, with hostile PDFs now exiting 4); the `.claude/settings.json` owner items are still
+  under Also pending.
 - **Next:** MCP v3 (`specs/30-mcp-v3.md`) as **v0.6.0**: 11 new tools, 14 → 25, with `rename`,
   `intake`, `organize` and `ocr` first. That ordering is this wave's brief, not spec 30, which
   states none: `rename`/`intake`/`organize` are what stop the accounting-inbox pipeline being
@@ -410,10 +411,25 @@
   before it can be green — `pillow>=10.0` publishes no wheels past CPython 3.12, the oldest in
   carrel's matrix — which makes it a PR of its own.
 
-- **pypdf warnings are silenced wholesale.** `main` sets the `pypdf` logger to `ERROR` so a
+- **pypdf's log is silenced wholesale.** `main` sets the `pypdf` logger to `CRITICAL` so a
   hostile file cannot flood stderr (D-026). That also hides the occasional useful warning on an
   honest file; `--debug` restores them. A counted summary ("pypdf: 50,000 warnings suppressed")
   would keep the signal. Not done yet.
+
+- **A pypdf refusal does not name the file.** `edit pdf a.pdf --merge b.pdf` on a hostile `b.pdf`
+  prints `error: unreadable PDF: Maximum Root object recovery limit reached.` — which input is
+  left to the user, and the `--json` object has no path field. pypdf's exception carries no path,
+  so the fix is a shared PDF-opening helper that converts `PyPdfError` into
+  `CarrelInputError(path, …)` where the path is known; `handled` and the MCP server already
+  share the classification (`pdf_refusal`). Deferred from the pypdf-floor PR because it touches
+  every pypdf call site in seven commands, which is the same surface v0.6.0's confined accessor
+  rewrites.
+
+- **`main` reads `--json` and `--debug` from raw argv.** Its last-resort error handler and the
+  pypdf log switch run where click's context is gone, so a literal `--json` or `--debug` passed as
+  a positional after `--` is mistaken for the flag: JSON formatting of a last-resort error, or
+  pypdf's log left on. `--debug` already worked this way; `--json` joined it with the
+  pypdf-floor PR. Fix: invoke through `cli.make_context` so `main` can read `ctx.obj`.
 
 - **pypdf 6.18 changed what `form fill` writes, and no test looks at appearance streams.**
   Found reviewing #50 and confirmed by filling `tests/fixtures/form.pdf` (`name` = "Hello")

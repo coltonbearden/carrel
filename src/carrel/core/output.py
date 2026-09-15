@@ -120,26 +120,45 @@ def handled[**P, R](fn: Callable[P, R]) -> Callable[P, R | None]:
                 raise
             fail(str(e), e.exit_code)
         except Exception as e:
-            if debugging(ctx) or not _is_unreadable_pdf(e):
+            refused = pdf_refusal(e)
+            if debugging(ctx) or refused is None:
                 raise
-            fail(f"unreadable PDF: {e}", ExitCode.BAD_INPUT)
+            fail(*refused)
 
     return wrapper
 
 
-def _is_unreadable_pdf(exc: Exception) -> bool:
-    """pypdf refused the file: malformed, encrypted, or over one of its hardening limits.
+def pdf_refusal(exc: Exception) -> tuple[str, ExitCode] | None:
+    """The message and exit code for an error pypdf raised about its input, else None.
 
-    Every such error derives from `pypdf.errors.PyPdfError` — including
+    Every refusal of a file derives from `pypdf.errors.PyPdfError` — including
     `LimitReachedError`, which pypdf 6 raises for decompression bombs and
     oversized structures and which is a sibling of `PdfReadError`, not a
     subclass, so catching `PdfReadError` alone let hostile files exit 1 as
-    "unexpected error". pypdf's `DependencyError` and `DeprecationError` are
-    not `PyPdfError`s and still surface as the bugs they are.
-    """
-    from pypdf.errors import PyPdfError
+    "unexpected error". Three cases are split out: an encrypted file gets the
+    way to decrypt it, pypdf's `DependencyError` (AES needs `cryptography`, which
+    carrel does not depend on) is exit 3 like any missing optional dependency,
+    and the two `PyPdfError`s pypdf raises for API misuse rather than bad input
+    stay unexpected, because they mean a carrel bug.
 
-    return isinstance(exc, PyPdfError)
+    Looked up in `sys.modules` rather than imported: if pypdf was never imported,
+    the exception cannot be one of its errors, and importing it costs ~0.2 s.
+    """
+    errors = sys.modules.get("pypdf.errors")
+    if errors is None:
+        return None
+    if isinstance(exc, errors.DependencyError):
+        package = str(exc).split(">", 1)[0].split(" ", 1)[0] or "the package it names"
+        hint = f"`uv tool install carrel --with {package}` or `pipx inject carrel {package}`"
+        return f"{exc} — install {package} into carrel's environment ({hint})", ExitCode.MISSING_DEP
+    if isinstance(exc, errors.FileNotDecryptedError):
+        hint = "`carrel edit pdf FILE --decrypt PASSWORD -o OUT`"
+        return f"encrypted PDF: {exc} — decrypt it first with {hint}", ExitCode.BAD_INPUT
+    if isinstance(exc, (errors.PageSizeNotDefinedError, errors.XmpDocumentError)):
+        return None
+    if isinstance(exc, errors.PyPdfError):
+        return f"unreadable PDF: {exc}", ExitCode.BAD_INPUT
+    return None
 
 
 def root_of(ctx: click.Context) -> Path:

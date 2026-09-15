@@ -85,12 +85,9 @@ def ls(ctx: click.Context, path: Path) -> None:
 
 def _read_pdf(path: Path) -> Any:
     from pypdf import PdfReader
-    from pypdf.errors import PdfReadError
 
-    try:
-        return PdfReader(str(path))
-    except PdfReadError as e:
-        raise CarrelInputError(f"cannot read PDF {path}: {e}") from e
+    # a file pypdf refuses — here or lazily at `.pages` — is reported by `handled`
+    return PdfReader(str(path))
 
 
 def _pdf_annotations(path: Path) -> list[dict[str, Any]]:

@@ -3,21 +3,25 @@
 ## Unreleased
 
 - **Changed (behaviour, dependencies):** carrel now requires `pypdf>=6.18.1` (was `>=5.0`). carrel reads
-  PDFs it did not write through pypdf — `inspect`, `diff`, `edit`, `form`, `note`, `sign`,
-  `audiobook` — and pypdf 6.18.1 hardens the parser against hostile files: it tightens
+  PDFs it did not write through pypdf — `edit`, `form`, `note`, `sign`, `audiobook`, and the
+  page counts in `inspect` and `diff` — and pypdf 6.18.1 hardens the parser against hostile files: it tightens
   FlateDecode recovery and caps `/Widths` entry counts and `parse_bfchar` token lengths. A
   floor of 5.0 let `pip install carrel` keep an older pypdf already in the environment, so those
   fixes reached carrel's own test lock and not its users. One visible side effect comes with
   pypdf, not carrel: `form fill` now paints each field's own `/MK` background and border in the
   appearance it generates, and the text clip box shrinks by the border width. It is a behaviour
   change under D-023 because pypdf 6's limits refuse some files 5.x read (D-026).
-- **Fixed:** a PDF pypdf refuses exits **4** with `error: unreadable PDF: …` — or the `--json`
-  error object — instead of exit 1 and `unexpected error: …`. pypdf 6 reports its hardening
-  limits as `LimitReachedError`, which is not a `PdfReadError`, so the one command that caught
-  pypdf errors (`note`) missed it and the others caught nothing. pypdf's per-object warnings no
-  longer reach stderr unless `--debug` is given: a 156-byte PDF with no `/Root` wrote 50,000
-  lines before the error. `main`'s last-resort `unexpected error` line is JSON under `--json`
-  too.
+- **Fixed:** a PDF pypdf refuses exits **4** in `edit`, `form`, `note` and `sign` with
+  `error: unreadable PDF: …` — or the `--json` error object — instead of exit 1 and
+  `unexpected error: …`; `inspect` and `diff` keep folding a read failure into their report, and
+  the MCP server now answers with the same exit code the CLI gives. pypdf 6 reports its
+  hardening limits as `LimitReachedError`, which is not a `PdfReadError`, so the one command that
+  caught pypdf errors (`note`) missed it and the others caught nothing. An encrypted PDF says to
+  decrypt it with `carrel edit pdf --decrypt`, and an AES-encrypted one opened without
+  `cryptography` installed exits **3** with the install command, like any missing optional
+  dependency. pypdf's own log lines no longer reach stderr unless `--debug` is given: a 156-byte
+  PDF with no `/Root` wrote 50,000 before the error. An error that reaches `main` itself is JSON
+  under `--json` too.
 - **Added:** `context7.json` states what Context7 indexes and how agents should use carrel.
   It was serving carrel's docs to other people's coding agents with no configuration at all.
   Scope is `docs/` and `plugins/`; five `rules` give an agent something checkable (`--json`
