@@ -81,8 +81,9 @@ def test_context7_sync_rewrites_identity_only(tmp_path, monkeypatch):
 
     The first version asserted the committed file's content, so a regression in
     `sync_context7` that dropped `folders` or `rules` passed on any tree where the
-    script had not yet run — and CI's lint job, which does run it, diffs a pathspec
-    that does not include `context7.json`, so the damage was invisible there too.
+    script had not yet run. CI's lint job, which does run it, did not diff
+    `context7.json` until the workflows' drift pathspec was extended; this test
+    predates that and still guards the sync's own behaviour.
     """
     sys.path.insert(0, str(REPO_ROOT / "scripts"))
     import sync_product

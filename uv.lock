@@ -129,10 +129,12 @@ dev = [
     { name = "pytest-cov" },
     { name = "pyyaml" },
     { name = "ruff" },
-    { name = "uv" },
 ]
 docs = [
     { name = "mkdocs-material" },
+]
+uv-pin = [
+    { name = "uv" },
 ]
 
 [package.metadata]
@@ -160,9 +162,9 @@ dev = [
     { name = "pytest-cov", specifier = ">=6.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "ruff", specifier = ">=0.16" },
-    { name = "uv", specifier = ">=0.12.13" },
 ]
 docs = [{ name = "mkdocs-material", specifier = ">=9.5" }]
+uv-pin = [{ name = "uv", specifier = ">=0.12.13" }]
 
 [[package]]
 name = "certifi"

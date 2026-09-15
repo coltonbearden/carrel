@@ -65,10 +65,13 @@ Issues = "https://github.com/coltonbearden/carrel/issues"
 carrel = "carrel.cli:main"
 
 [dependency-groups]
-# `uv` is here so uv.lock pins the uv CI installs (setup-uv `version-file: uv.lock`)
-# and Dependabot bumps it through the same reviewed PR as every other tool.
-dev = ["pytest>=8.0", "pytest-cov>=6.0", "ruff>=0.16", "mypy>=1.14", "pyyaml>=6.0", "uv>=0.12.13"]
+dev = ["pytest>=8.0", "pytest-cov>=6.0", "ruff>=0.16", "mypy>=1.14", "pyyaml>=6.0"]
 docs = ["mkdocs-material>=9.5"]
+# Locked, never installed: uv.lock's `uv` entry is what setup-uv's
+# `version-file: uv.lock` installs in CI, and Dependabot bumps it like any other
+# tool. Nothing syncs this group — a second uv in `.venv/bin` would shadow the
+# developer's own and, on Windows, cannot replace itself mid-sync.
+uv-pin = ["uv>=0.12.13"]
 
 [build-system]
 requires = ["hatchling"]

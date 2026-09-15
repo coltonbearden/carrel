@@ -12,9 +12,8 @@
 - **In flight:** nothing. #48 (Context7) was the v0.5.0 wave's last PR. Of the two Dependabot
   PRs that opened after it, #49 (`setup-uv` 10.1.0) merged as `d4619cf`; #50 (pypdf 6.18.1,
   ruff 0.16.7, and the pre-commit hooks now run from `uv.lock`) is the change that wrote this
-  line. What their reviews found is fixed or under Open issues: CI's uv cache, uv pin and the
-  `context7.json` drift gate were fixed in the follow-up `ci:` PR; the pypdf floor and
-  `form fill`'s and `note pdf-add`'s appearance output are below.
+  line. Their reviews' follow-ups were each their own PR: CI's uv cache and pin, the pypdf floor
+  (D-026) and the `.claude/settings.json` owner items. What is still open is under Open issues.
 - **Next:** MCP v3 (`specs/30-mcp-v3.md`) as **v0.6.0**: 11 new tools, 14 → 25, with `rename`,
   `intake`, `organize` and `ocr` first. That ordering is this wave's brief, not spec 30, which
   states none: `rename`/`intake`/`organize` are what stop the accounting-inbox pipeline being
@@ -378,6 +377,19 @@
   bump because raising a runtime floor changes what users can co-install and belongs in a
   release with a CHANGELOG line. Decide the policy (floor at the newest security release, or at
   a tested minimum with a CI job that installs it) rather than chasing each patch.
+
+- **At the next release, confirm `publish.yml`'s build ran uncached on the locked uv.** The
+  `ci:` PR that took the release build off the shared uv cache and pinned uv through `uv.lock`
+  could not exercise `publish.yml` — it only runs on a published release. In that run's `build`
+  job, the setup-uv step should report the uv version `uv.lock` pins and restore no cache.
+  `tests/test_workflows.py` holds the configuration; only a release proves the behaviour.
+
+- **The setup-uv step is copied seven times across three workflows.** Folding it into a local
+  composite action was the last item of the #49 review's cache finding and was not done: the
+  parametrized `tests/test_workflows.py` now fails on any copy that drifts from the pin or
+  cache rules, which was the risk the duplication posed, and a composite action would also
+  need Dependabot's `github-actions` entry to list `.github/actions/*` so its pinned SHA keeps
+  moving. Worth doing when a fourth rule arrives.
 
 - **pypdf 6.18 changed what `form fill` writes, and no test looks at appearance streams.**
   Found reviewing #50 and confirmed by filling `tests/fixtures/form.pdf` (`name` = "Hello")
