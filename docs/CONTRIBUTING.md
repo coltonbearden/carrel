@@ -102,11 +102,13 @@ waiting for a human to approve the commands this repository's release loop
 actually uses: `uv run`/`sync`/`build`, `git switch`/`fetch`/`rebase`/`worktree`,
 `git add`/`git commit`/`git push` (the loop has to be able to land a branch),
 `git branch -d`/`-D`, the read-only and PR-management halves of `gh`,
-`claude plugin`, `mkdocs build`, and `scripts/github-harden.sh`. Two `gh` grants
-are deliberately narrow: `gh workflow run` is exactly `test.yml` or
-`context7-refresh.yml`, with no `--ref` (`docs.yml` deploys GitHub Pages when
-dispatched), and `gh repo edit` covers only `--description`, with nothing after it
-(D-027).
+`claude plugin`, `mkdocs build`, and `scripts/github-harden.sh`. `gh workflow
+run` is exactly `test.yml` or `context7-refresh.yml`, with no `--ref` (`docs.yml`
+deploys GitHub Pages when dispatched), and `gh repo edit` is not granted at all,
+because no rule can limit it to `--description` (D-027). The deny list is written
+as the unique prefixes git accepts for long options (`--for`, `--de`, …), and it is
+not a boundary: bundled short flags and quoting get past any text match, which is
+why a PreToolUse hook is the open fix.
 
 **A rule is a match against the whole command, with `*` standing in for any
 text** ([permissions reference](https://code.claude.com/docs/en/permissions)).

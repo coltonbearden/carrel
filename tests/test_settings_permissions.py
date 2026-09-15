@@ -129,6 +129,16 @@ MUST_BE_DENIED = [
     # arbitrary program execution on a local or file:// remote
     "git push --receive-pack=sh /tmp/repo",
     "git push --exec=sh /tmp/repo",
+    # git accepts any unique prefix of a long option (gitcli, "Abbreviating long
+    # options"), so the deny rules are written as those prefixes
+    "git push --for origin feature",
+    "git push origin feature --forc",
+    "git push --del origin feature",
+    "git push --mir origin",
+    "git push --ex=sh /tmp/repo",
+    "git push origin --rece=sh",
+    "git push --prune origin refs/heads/*:refs/heads/*",
+    "git push --pru origin refs/heads/*:refs/heads/*",
     # anything landing on main: the PR gate is the only documented way in
     "git push origin main",
     "git push origin HEAD:main",
@@ -152,8 +162,13 @@ MUST_STAY_USABLE = [
     "git push -u origin fix/pack-first-five-minutes",
     "git push origin docs/state-v0.5.0",
     "git push",
-    # `-d*` must not reach the long option that only looks like it
+    # the prefix rules must not reach the options that share a first letter
     "git push --dry-run origin feature",
+    "git push --follow-tags origin feature",
+    "git push --progress origin feature",
+    "git push --porcelain origin feature",
+    "git push --recurse-submodules=check origin feature",
+    "git push --atomic origin feature",
 ]
 
 
@@ -177,6 +192,7 @@ def test_the_destructive_git_verbs_stay_denied():
         "git commit -m wip --no-verify",
         "git commit -n -m wip",
         "git commit -m wip -n",
+        "git commit --no-veri -m wip",
         # stage-everything publishes whatever .gitignore happens to miss
         "git add -A",
         "git add --all",
@@ -191,6 +207,7 @@ def test_the_ordinary_forms_of_those_verbs_still_work():
     """A deny added above must not take the everyday spelling with it."""
     for cmd in (
         "git commit -m 'fix: thing'",
+        "git commit --no-verbose -m 'fix: thing'",
         "git add src/carrel/commands/pack.py tests/test_pack.py",
         "git worktree remove .claude/worktrees/x",
     ):
@@ -279,19 +296,21 @@ def test_workflow_dispatch_is_limited_to_workflows_that_publish_nothing():
         assert not _runs_unprompted(cmd), f"{cmd!r} runs unprompted"
 
 
-def test_repo_edit_is_limited_to_the_description():
-    assert _runs_unprompted(
-        'gh repo edit --description "Read, index, pack and file your documents"'
-    )
+def test_repo_edit_always_asks():
+    """No wildcard can say "only --description": a flag or a positional repository
+    rides along after it. The release loop runs it about once a positioning change."""
     for cmd in (
-        "gh repo edit coltonbearden/carrel --visibility private",
-        "gh repo edit --default-branch dev",
-        "gh repo edit --enable-issues=false",
-        # the allow rule's trailing wildcard would otherwise carry any flag along
-        "gh repo edit --description x --visibility public --accept-visibility-change-consequences",
-        "gh repo edit --description x --homepage https://example.invalid",
+        'gh repo edit --description "Read, index, pack and file your documents"',
+        "gh repo edit --description x someone/other-repo",
+        "gh repo edit --description x --visibility public",
     ):
         assert not _runs_unprompted(cmd), f"{cmd!r} runs unprompted"
+
+
+def test_update_branch_merges_but_never_rewrites():
+    """`--rebase` rewrites the PR branch on the server — a force update by another name."""
+    assert _runs_unprompted("gh pr update-branch 53")
+    assert not _runs_unprompted("gh pr update-branch 53 --rebase")
 
 
 def test_no_allow_rule_is_dead_under_the_deny_list():

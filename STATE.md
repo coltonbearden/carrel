@@ -424,13 +424,17 @@
   need Dependabot's `github-actions` entry to list `.github/actions/*` so its pinned SHA keeps
   moving. Worth doing when a fourth rule arrives.
 
-- **Two force/delete shapes the deny list cannot express.** Bundled short options with `f`
-  after the first letter (`git push -uf origin x`) and colon-refspec deletion
-  (`git push origin :feature`) run unprompted under `Bash(git push:*)`. The first is
-  combinatorial (every bundle of `-4 -6 -d -n -q -u -v` with `f`), the second is impossible:
-  no rule can end in a literal colon plus wildcard. Found reviewing D-027. `main` stays covered
-  by `git push *:main` and the ruleset; the real fix for the rest is a PreToolUse hook that
-  parses the push, which the permissions docs recommend for exactly this.
+- **`.claude/settings.json`'s deny list matches text, and git has more spellings than rules.**
+  Under `Bash(git push:*)`, `git add:*` and `git commit:*` these still run unprompted: bundled
+  short options with the flag after the first letter (`git push -uf`, `git commit -anm`),
+  `git add -f .` and other stage-everything spellings (`git add -- .`, `git add pyproject.toml .`),
+  quoted refspecs (`git push origin '+feature'`), colon-refspec deletion
+  (`git push origin :feature`), and arguments split by a newline or tab. Each of D-027's two
+  review rounds found more. The fix is the one the permissions docs recommend: a PreToolUse hook
+  that parses `git push`/`add`/`commit` arguments (git's own option parser rules: bundles,
+  unique prefixes, `+` and `:` refspecs) and refuses the destructive forms, with the deny list
+  kept as the readable first line. `main` itself stays protected by the ruleset. Deferred as
+  its own change: it is code with tests, not configuration.
 
 - **pypdf 6.18 changed what `form fill` writes, and no test looks at appearance streams.**
   Found reviewing #50 and confirmed by filling `tests/fixtures/form.pdf` (`name` = "Hello")
