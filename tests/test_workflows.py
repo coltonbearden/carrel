@@ -14,16 +14,17 @@ Found reviewing Dependabot #49 (setup-uv 10.1.0):
   names none.
 * The drift gate after `sync_product.py` diffed a hand-kept pathspec that did not
   include `context7.json`, which the script had been writing since #48, so a
-  mangled sync would have been repaired on disk and reported green.
+  mangled sync would have been repaired on disk and reported green. The gates
+  now diff the whole tree, so a new sync target cannot be left out of a list.
 
 The rules fail closed: an unknown workflow is uncached, an expression counts as
-a cache switched on, and a gate line the parser cannot read is a missing gate.
+a cache switched on, a local action is refused until this module can read it,
+and a gate that can be skipped or ignored is no gate.
 """
 
 from __future__ import annotations
 
-import hashlib
-import json
+import re
 import shlex
 import shutil
 import subprocess
@@ -35,7 +36,7 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = REPO_ROOT / ".github" / "workflows"
 
-# The sdist ships tests/ but not the workflows, uv.lock or scripts/ these read.
+# The sdist ships tests/ but not the workflows or uv.lock these read.
 pytestmark = pytest.mark.skipif(
     not WORKFLOWS.is_dir() or not (REPO_ROOT / "uv.lock").is_file(),
     reason="the workflows and uv.lock are not part of the sdist",
@@ -49,8 +50,8 @@ CACHED = {"test.yml"}
 #: What makes a cache key this job's own: job ids repeat across workflows.
 OWN_KEY = ("${{ github.workflow }}", "${{ github.job }}")
 
-#: Characters that turn a pathspec token into shell control flow (`|| true`).
-SHELL_CONTROL = set("|;&<>")
+#: The scripts that regenerate committed files; each must be followed by a gate.
+SYNC_SCRIPTS = ("scripts/sync_product.py", "scripts/sync_reference.py", "scripts/sync_plugins.py")
 
 
 def _workflow_files() -> list[Path]:
@@ -72,12 +73,13 @@ def _setup_uv_steps() -> list[tuple[str, str, dict, dict]]:
         (workflow, job_id, job, step.get("with") or {})
         for workflow, job_id, job in _jobs()
         for step in job.get("steps", [])
-        if str(step.get("uses", "")).startswith("astral-sh/setup-uv@")
+        # action references are case-insensitive on GitHub
+        if str(step.get("uses", "")).lower().startswith("astral-sh/setup-uv@")
     ]
 
 
-def _ids(steps: list[tuple]) -> list[str]:
-    return [f"{workflow}:{job}" for workflow, job, *_ in steps]
+SETUP_UV_STEPS = _setup_uv_steps()
+SETUP_UV_IDS = [f"{workflow}:{job}" for workflow, job, *_ in SETUP_UV_STEPS]
 
 
 def _switched_on(value: object) -> bool:
@@ -87,22 +89,18 @@ def _switched_on(value: object) -> bool:
 
 def test_the_setup_uv_scan_finds_steps():
     """Guard the guard: a renamed action or moved file must fail here."""
-    workflows = {workflow for workflow, *_ in _setup_uv_steps()}
+    workflows = {workflow for workflow, *_ in SETUP_UV_STEPS}
     assert {"test.yml", "publish.yml", "docs.yml"} <= workflows, workflows
 
 
-@pytest.mark.parametrize(
-    ("workflow", "job", "job_def", "inputs"), _setup_uv_steps(), ids=_ids(_setup_uv_steps())
-)
+@pytest.mark.parametrize(("workflow", "job", "job_def", "inputs"), SETUP_UV_STEPS, ids=SETUP_UV_IDS)
 def test_every_setup_uv_step_installs_the_locked_uv(workflow, job, job_def, inputs):
     assert inputs.get("version-file") == "uv.lock" and "version" not in inputs, (
         f"{workflow}:{job} must install uv with `version-file: uv.lock`, got {inputs}"
     )
 
 
-@pytest.mark.parametrize(
-    ("workflow", "job", "job_def", "inputs"), _setup_uv_steps(), ids=_ids(_setup_uv_steps())
-)
+@pytest.mark.parametrize(("workflow", "job", "job_def", "inputs"), SETUP_UV_STEPS, ids=SETUP_UV_IDS)
 def test_no_job_restores_a_cache_another_job_saved(workflow, job, job_def, inputs):
     # setup-uv's default is `auto`: on for GitHub-hosted runners except release,
     # tag-push, pull_request_target and workflow_run events. publish.yml had set
@@ -120,10 +118,14 @@ def test_no_job_restores_a_cache_another_job_saved(workflow, job, job_def, input
     )
     matrix = (job_def.get("strategy") or {}).get("matrix") or {}
     assert isinstance(matrix, dict), f"{workflow}:{job}: a computed matrix cannot be checked"
+    axes = {k for k in matrix if k not in ("include", "exclude")}
+    for extra in matrix.get("include") or []:
+        axes |= set(extra) if isinstance(extra, dict) else set()
     python = str(inputs.get("python-version", ""))  # already part of setup-uv's own key
-    for axis in (k for k in matrix if k not in ("include", "exclude")):
+    for axis in sorted(axes):
         ref = f"matrix.{axis}"
-        assert ref in suffix or ref in python, (
+        keyed = re.compile(rf"\bmatrix\.{re.escape(axis)}\b")
+        assert keyed.search(suffix) or keyed.search(python), (
             f"{workflow}:{job}: matrix legs differing in `{axis}` share one cache key; "
             f"add `${{{{ {ref} }}}}` to `cache-suffix`"
         )
@@ -131,15 +133,18 @@ def test_no_job_restores_a_cache_another_job_saved(workflow, job, job_def, input
 
 @pytest.mark.parametrize("workflow", sorted({p.name for p in _workflow_files()} - CACHED))
 def test_uncached_workflows_use_no_other_cache_either(workflow):
-    """`actions/cache` on ~/.cache/uv, or a setup action's `cache:`, is the same hole."""
+    """`actions/cache` on ~/.cache/uv, a setup action's `cache:`, or a local action
+    this module cannot see into, is the same hole."""
     offenders = []
     for wf, job_id, job in _jobs():
         if wf != workflow:
             continue
         for step in job.get("steps", []):
-            uses = str(step.get("uses", ""))
+            uses = str(step.get("uses", "")).lower()
             inputs = step.get("with") or {}
-            if uses.startswith("actions/cache"):
+            if uses.startswith("./"):
+                offenders.append(f"{job_id}: local action {uses} (teach this test to read it)")
+            elif uses.startswith("actions/cache"):
                 offenders.append(f"{job_id}: {uses}")
             elif (
                 "/setup-" in uses
@@ -186,107 +191,48 @@ def test_uv_lock_pins_uv():
     assert len(versions) == 1, f"uv.lock must pin exactly one uv, found {versions}"
 
 
-def _drift_gates(workflow: str) -> list[list[str]]:
-    """The pathspec of each `git diff --exit-code` that follows `sync_product.py` in a step.
-
-    Lines the shell parser cannot read are skipped, which fails closed: a gate
-    that cannot be read is a gate that is not found.
-    """
-    gates = []
+def _gate_problems(workflow: str) -> tuple[int, list[str]]:
+    """Count the sync steps in `workflow` and list every way their gate can fail open."""
+    steps, problems = 0, []
     for wf, job_id, job in _jobs():
         if wf != workflow:
             continue
         for step in job.get("steps", []):
             run = str(step.get("run", ""))
-            if "scripts/sync_product.py" not in run:
+            if not any(script in run for script in SYNC_SCRIPTS):
                 continue
-            assert not step.get("continue-on-error"), f"{workflow}:{job_id}: the gate cannot fail"
-            synced = False
+            steps += 1
+            where = f"{workflow}:{job_id}:{step.get('name', '?')}"
+            if job.get("continue-on-error") or step.get("continue-on-error"):
+                problems.append(f"{where}: continue-on-error")
+            if "if" in step:
+                problems.append(f"{where}: `if:` can skip it")
+            if "shell" in step:
+                problems.append(f"{where}: a custom shell may not stop on errors")
+            if "set +e" in run or "||" in run:
+                problems.append(f"{where}: `set +e` or `||` ignores a failure")
             # shell semantics: backslash-newline joins lines, `#` starts a comment
+            lines = []
             for line in run.replace("\\\n", " ").splitlines():
                 try:
-                    argv = shlex.split(line, comments=True)
+                    lines.append(shlex.split(line, comments=True))
                 except ValueError:
-                    continue
-                if "scripts/sync_product.py" in argv:
-                    synced = True
-                elif synced and argv[:3] == ["git", "diff", "--exit-code"] and "--" in argv:
-                    spec = argv[argv.index("--") + 1 :]
-                    controls = [t for t in spec if SHELL_CONTROL & set(t)]
-                    assert not controls, (
-                        f"{workflow}:{job_id}: the gate is neutralised by {controls}"
-                    )
-                    gates.append(spec)
-    return gates
+                    lines.append([])  # unreadable: counts as not the gate
+            lines = [argv for argv in lines if argv]
+            if not lines or lines[-1] != ["git", "diff", "--exit-code"]:
+                problems.append(
+                    f"{where}: must end with a whole-tree `git diff --exit-code`, got {lines[-1:]}"
+                )
+    return steps, problems
 
 
-def _tracked_files() -> list[str]:
-    try:
-        proc = subprocess.run(
-            ["git", "ls-files", "-z"], cwd=REPO_ROOT, capture_output=True, check=True, timeout=60
-        )
-    except (OSError, subprocess.CalledProcessError):
-        pytest.skip("not a git checkout")
-    return [p for p in proc.stdout.decode("utf-8").split("\0") if p]
+@pytest.mark.parametrize(("workflow", "expected"), [("test.yml", 3), ("publish.yml", 1)])
+def test_every_sync_ends_in_a_whole_tree_drift_gate(workflow: str, expected: int):
+    """A pathspec is a list to forget a file from; the whole tree cannot be.
 
-
-def _digests(root: Path, paths: list[str]) -> dict[str, str]:
-    return {
-        p: hashlib.sha256((root / p).read_bytes()).hexdigest()
-        for p in paths
-        if (root / p).is_file()
-    }
-
-
-@pytest.fixture(scope="module")
-def sync_targets(tmp_path_factory: pytest.TempPathFactory) -> list[str]:
-    """Every tracked file `sync_product.py` changes when product.json changes.
-
-    Observed, not declared: the script runs against a copy of the tracked tree
-    whose product.json has every identity field altered, and the files whose
-    bytes moved are the targets — however the script writes them, and without
-    touching the checkout.
+    The last command of the step is its exit status, so the gate has to be last,
+    unconditional, and not followed by anything that could swallow its failure.
     """
-    tracked = _tracked_files()
-    tree = tmp_path_factory.mktemp("sync") / "repo"
-    for rel in tracked:
-        src = REPO_ROOT / rel
-        if src.is_file() and not src.is_symlink():
-            (tree / rel).parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(src, tree / rel)
-
-    product = json.loads((tree / "product.json").read_text(encoding="utf-8"))
-    # `package` names the source directory the script writes into, so it stays
-    altered = {k: f"{v}probe" for k, v in product.items() if isinstance(v, str) and k != "package"}
-    assert {"version", "description", "repository"} <= altered.keys(), altered.keys()
-    product.update(altered)
-    (tree / "product.json").write_text(json.dumps(product, indent=2) + "\n", encoding="utf-8")
-
-    before = _digests(tree, tracked)
-    with pytest.MonkeyPatch.context() as mp:
-        mp.syspath_prepend(str(REPO_ROOT / "scripts"))
-        import sync_product
-
-        mp.setattr(sync_product, "ROOT", tree)
-        sync_product.main()
-    after = _digests(tree, tracked)
-    changed = sorted(p for p in after if before.get(p) != after[p] and p != "product.json")
-    assert "context7.json" in changed, f"the probe missed a known target: {changed}"
-    return changed
-
-
-@pytest.mark.parametrize("workflow", ["test.yml", "publish.yml"])
-def test_the_sync_drift_gate_diffs_every_file_the_sync_writes(workflow, sync_targets):
-    gates = _drift_gates(workflow)
-    assert len(gates) == 1, (
-        f"{workflow}: expected one drift gate after sync_product.py, got {gates}"
-    )
-    (spec,) = gates
-    uncovered = [
-        t
-        for t in sync_targets
-        if not any(t == s or t.startswith(s.rstrip("/") + "/") for s in spec)
-    ]
-    assert not uncovered, (
-        f"{workflow}: sync_product.py writes {uncovered} but the drift gate does not diff them"
-    )
+    steps, problems = _gate_problems(workflow)
+    assert steps == expected, f"{workflow}: expected {expected} sync steps, found {steps}"
+    assert not problems, "\n".join(problems)

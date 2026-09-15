@@ -9,11 +9,11 @@
   verification record is the v0.5.0 entry under Done. 33 commands, 14 MCP tools, 19 adapters,
   9 marketplace plugins, desk schema v2. Repo `coltonbearden/carrel`, docs at
   https://coltonbearden.github.io/carrel/, PyPI package `carrel`.
-- **In flight:** nothing. #48 (Context7) was the v0.5.0 wave's last PR. Of the two Dependabot
-  PRs that opened after it, #49 (`setup-uv` 10.1.0) merged as `d4619cf`; #50 (pypdf 6.18.1,
-  ruff 0.16.7, and the pre-commit hooks now run from `uv.lock`) is the change that wrote this
-  line. Their reviews' follow-ups: CI's uv cache and uv pin are fixed; the pypdf floor is under
-  Open issues and the `.claude/settings.json` owner items under Also pending.
+- **In flight:** nothing. #48 (Context7) was the v0.5.0 wave's last PR. The two Dependabot PRs
+  after it merged: #49 (`setup-uv` 10.1.0) as `d4619cf` and #50 (pypdf 6.18.1, ruff 0.16.7,
+  pre-commit hooks run from `uv.lock`) as `fe0695a`. CI's uv cache and uv pin, from #49's review,
+  are fixed; the pypdf floor, the `.claude/settings.json` owner items and everything else still
+  open are below.
 - **Next:** MCP v3 (`specs/30-mcp-v3.md`) as **v0.6.0**: 11 new tools, 14 → 25, with `rename`,
   `intake`, `organize` and `ocr` first. That ordering is this wave's brief, not spec 30, which
   states none: `rename`/`intake`/`organize` are what stop the accounting-inbox pipeline being
