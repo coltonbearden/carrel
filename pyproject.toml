@@ -39,7 +39,9 @@ classifiers = [
 dependencies = [
     "click>=8.1",
     "rich>=13.0",
-    "pypdf>=5.0",
+    # carrel parses untrusted PDFs, so this floor tracks pypdf's security releases
+    # rather than the oldest API that works (D-026; docs/RELEASING.md, "Runtime floors")
+    "pypdf>=6.18.1",
     "pillow>=10.0",
     "reportlab>=4.0",
     "watchdog>=4.0",
@@ -67,6 +69,12 @@ carrel = "carrel.cli:main"
 [dependency-groups]
 dev = ["pytest>=8.0", "pytest-cov>=6.0", "ruff>=0.16", "mypy>=1.14", "pyyaml>=6.0"]
 docs = ["mkdocs-material>=9.5"]
+# Locked, never installed: uv.lock's `uv` entry is what setup-uv's
+# `version-file: uv.lock` installs in CI, and Dependabot bumps it like any other
+# tool. Nothing in this repository syncs this group (`uv sync --all-groups` would):
+# a second uv in `.venv/bin` shadows the developer's own and, on Windows, cannot
+# replace itself mid-sync.
+uv-pin = ["uv>=0.12.13"]
 
 [build-system]
 requires = ["hatchling"]

@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import importlib
+import logging
 import sys
+from typing import NoReturn
 
 import click
 
 from carrel._product import PRODUCT
-from carrel.core.output import CarrelError, fail
+from carrel.core.output import CarrelError, ExitCode, error_line, pdf_refusal
 
 # command name -> module under carrel.commands (lazy: a broken optional import
 # only breaks its own command, and --help stays fast)
@@ -128,6 +130,12 @@ def cli(ctx: click.Context, as_json: bool, debug: bool, root: str) -> None:
 
 def main() -> None:
     debug = "--debug" in sys.argv
+    if not debug:
+        # pypdf logs a warning per broken object (and an error per unsupported
+        # font encoding); a 156-byte PDF with no /Root produced 50,000 stderr lines
+        # before its exception, flooding MCP client logs and anything reading
+        # stderr for the --json error object. The exception still reports.
+        logging.getLogger("pypdf").setLevel(logging.CRITICAL)
     try:
         cli(standalone_mode=False)
     except click.exceptions.Exit as e:
@@ -140,14 +148,29 @@ def main() -> None:
     except CarrelError as e:
         if debug:
             raise
-        fail(str(e), e.exit_code)
+        _last_resort(str(e), e.exit_code)
     except BrokenPipeError:
         sys.exit(0)
     except Exception as e:
         if debug:
             raise
-        click.echo(f"unexpected error: {e} (re-run with --debug for details)", err=True)
-        sys.exit(1)
+        if (refused := pdf_refusal(e)) is not None:  # a command without `handled`
+            _last_resort(*refused)
+        msg = f"unexpected error: {e} (re-run with --debug for details)"
+        _last_resort(msg, ExitCode.ERROR, plain=msg)
+
+
+def _last_resort(msg: str, code: ExitCode, *, plain: str | None = None) -> NoReturn:
+    """Report an error that escaped every command's own handling, and exit.
+
+    click's context is gone by now, so `--json` is read from argv the way
+    `--debug` always has been. `plain` keeps the historical `unexpected error:`
+    line, which has never carried the `error: ` prefix.
+    """
+    as_json = "--json" in sys.argv
+    line = plain if plain is not None and not as_json else error_line(msg, code, as_json=as_json)
+    click.echo(line, err=True)
+    sys.exit(int(code))
 
 
 if __name__ == "__main__":

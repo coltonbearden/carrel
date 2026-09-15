@@ -16,7 +16,7 @@ import click
 
 from carrel.core.db import DeskDB
 from carrel.core.filetypes import FileType, detect_or_die
-from carrel.core.output import CarrelError, CarrelInputError, emit, handled, root_of
+from carrel.core.output import CarrelError, CarrelInputError, emit, handled, pdf_refusal, root_of
 
 
 def _iso(ts: float) -> str:
@@ -85,12 +85,17 @@ def ls(ctx: click.Context, path: Path) -> None:
 
 def _read_pdf(path: Path) -> Any:
     from pypdf import PdfReader
-    from pypdf.errors import PdfReadError
+    from pypdf.errors import PyPdfError
 
     try:
-        return PdfReader(str(path))
-    except PdfReadError as e:
-        raise CarrelInputError(f"cannot read PDF {path}: {e}") from e
+        reader = PdfReader(str(path))
+        len(reader.pages)  # pypdf finds the root lazily; refuse here, with the path
+    except PyPdfError as e:
+        refused = pdf_refusal(e)
+        if refused is None:
+            raise
+        raise CarrelInputError(f"{path}: {refused[0]}") from e
+    return reader
 
 
 def _pdf_annotations(path: Path) -> list[dict[str, Any]]:

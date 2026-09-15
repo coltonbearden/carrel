@@ -232,3 +232,236 @@ def test_an_error_without_json_is_still_the_plain_line():
 
     assert result.exit_code == int(ExitCode.BAD_INPUT)
     assert result.stderr.strip() == "error: no such file: /nope"
+
+
+# ------------------------------------------- a PDF pypdf refuses to read
+
+#: 156 bytes: a cross-reference table claiming 200,000 objects and a trailer
+#: with no /Root. pypdf 6 walks for the root, logs one warning per missing
+#: object, and gives up with `LimitReachedError` — a sibling of `PdfReadError`.
+NO_ROOT_PDF = (
+    b"%PDF-1.7\n1 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n"
+    b"xref\n0 2\n0000000000 65535 f \n0000000009 00000 n \n"
+    b"trailer\n<< /Size 200000 >>\nstartxref\n66\n%%EOF\n"
+)
+
+
+def test_handled_maps_a_pypdf_limit_onto_exit_4() -> None:
+    from pypdf.errors import LimitReachedError, PdfReadError
+
+    assert not issubclass(LimitReachedError, PdfReadError), "the premise of this test changed"
+    result = CliRunner().invoke(_one_shot(LimitReachedError("too many objects")), ["boom"])
+
+    assert result.exit_code == int(ExitCode.BAD_INPUT), result.output
+    assert result.stderr.strip() == "error: unreadable PDF: too many objects"
+
+
+def test_handled_lets_a_pypdf_refusal_through_under_debug() -> None:
+    from pypdf.errors import LimitReachedError
+
+    sentinel = LimitReachedError("too many objects")
+    result = CliRunner().invoke(_one_shot(sentinel), ["--debug", "boom"])
+
+    assert result.exception is sentinel, "--debug must show pypdf's traceback, not a clean line"
+
+
+def test_an_encrypted_pdf_says_how_to_decrypt_it() -> None:
+    from pypdf.errors import FileNotDecryptedError
+
+    result = CliRunner().invoke(
+        _one_shot(FileNotDecryptedError("File has not been decrypted")), ["boom"]
+    )
+
+    assert result.exit_code == int(ExitCode.BAD_INPUT)
+    assert "edit pdf FILE --decrypt PASSWORD" in result.stderr, result.stderr
+
+
+def test_pypdf_missing_a_dependency_is_exit_3_naming_it() -> None:
+    """pypdf's message names what is missing — a package or a binary — so it is passed on."""
+    from pypdf.errors import DependencyError
+
+    for missing in (
+        "cryptography>=3.1 is required for AES algorithm",
+        "jbig2dec binary is not available.",
+    ):
+        result = CliRunner().invoke(_one_shot(DependencyError(missing)), ["boom"])
+        assert result.exit_code == int(ExitCode.MISSING_DEP), result.output
+        assert missing in result.stderr, result.stderr
+
+
+def test_a_real_aes_pdf_is_exit_3_or_4_never_an_unexpected_error(tmp_path: Path) -> None:
+    """AES needs `cryptography`: without it exit 3, with it the decrypt hint (exit 4)."""
+    import shutil
+    import subprocess
+    import sys
+
+    if shutil.which("qpdf") is None:
+        pytest.skip("qpdf is not installed")
+    src = Path(__file__).parent / "fixtures" / "form.pdf"
+    if not src.is_file():
+        pytest.skip("tests/fixtures/form.pdf is not generated")
+    aes = tmp_path / "aes.pdf"
+    subprocess.run(
+        ["qpdf", "--encrypt", "user", "owner", "256", "--", str(src), str(aes)],
+        check=True,
+        timeout=60,
+    )
+    proc = subprocess.run(
+        [sys.executable, "-m", "carrel.cli", "--json", "form", "fields", str(aes)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=60,
+    )
+    payload = json.loads(proc.stderr.splitlines()[-1])
+    assert (proc.returncode, "cryptography" in payload["error"]) == (3, True) or (
+        proc.returncode == 4 and "--decrypt" in payload["error"]
+    ), (proc.returncode, payload)
+
+
+def test_pypdf_api_misuse_is_still_a_bug_not_bad_input() -> None:
+    from pypdf.errors import PageSizeNotDefinedError
+
+    sentinel = PageSizeNotDefinedError()
+    result = CliRunner().invoke(_one_shot(sentinel), ["boom"])
+
+    assert result.exception is sentinel
+
+
+def test_classifying_an_error_does_not_import_pypdf() -> None:
+    """`handled` sees every exception; pypdf costs ~0.2 s to import for none of them."""
+    import subprocess
+    import sys
+
+    probe = (
+        "import sys; from carrel.core.output import pdf_refusal; "
+        "assert pdf_refusal(RuntimeError('x')) is None; print('pypdf' in sys.modules)"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", probe], capture_output=True, text=True, encoding="utf-8", timeout=60
+    )
+    assert proc.stdout.strip() == "False", proc.stdout + proc.stderr
+
+
+def test_the_mcp_server_reports_a_pypdf_refusal_as_the_cli_does() -> None:
+    """No MCP tool lets a pypdf error escape today (`inspect` and `diff` fold them into
+    their reports); MCP v3's document tools will, and this is the answer they get."""
+    from pypdf.errors import LimitReachedError
+
+    from carrel.commands.mcp import _tool_error
+
+    body = json.loads(_tool_error(LimitReachedError("too many objects"))["content"][0]["text"])
+    assert body == {
+        "error": "unreadable PDF: too many objects",
+        "exit_code": int(ExitCode.BAD_INPUT),
+    }
+
+
+def test_handled_still_lets_a_real_bug_through() -> None:
+    """Only pypdf's refusals are input errors; anything else stays unexpected."""
+    sentinel = RuntimeError("a carrel bug")
+    result = CliRunner().invoke(_one_shot(sentinel), ["boom"])
+
+    assert result.exception is sentinel
+
+
+def test_a_hostile_pdf_is_one_clean_json_error_not_a_stderr_flood(tmp_path: Path) -> None:
+    """Through the real entry point, which is where the logging and exit live."""
+    import subprocess
+    import sys
+
+    pdf = tmp_path / "noroot.pdf"
+    pdf.write_bytes(NO_ROOT_PDF)
+    proc = subprocess.run(
+        [sys.executable, "-m", "carrel.cli", "--json", "note", "pdf", str(pdf)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=60,
+    )
+
+    assert proc.returncode == int(ExitCode.BAD_INPUT), proc.stderr[-500:]
+    lines = proc.stderr.splitlines()
+    assert len(lines) == 1, f"{len(lines)} stderr lines; pypdf's warnings are leaking"
+    payload = json.loads(lines[0])
+    assert payload["exit_code"] == int(ExitCode.BAD_INPUT)
+    assert "unreadable PDF: " in payload["error"]
+    assert str(pdf) in payload["error"], "note names the file it could not read"
+
+
+@pytest.fixture
+def pypdf_logger_level():
+    """`main` silences pypdf's logger for the process; put it back for later tests."""
+    import logging
+
+    logger = logging.getLogger("pypdf")
+    before = logger.level
+    yield logger
+    logger.setLevel(before)
+
+
+def _run_main(monkeypatch, exc: Exception, *argv: str) -> int:
+    import sys
+
+    import carrel.cli as cli_module
+
+    def explode(**_kwargs):
+        raise exc
+
+    monkeypatch.setattr(cli_module, "cli", explode)
+    monkeypatch.setattr(sys, "argv", ["carrel", *argv])
+    with pytest.raises(SystemExit) as exit_info:
+        cli_module.main()
+    return int(exit_info.value.code)
+
+
+def test_an_unexpected_error_under_json_is_json_too(monkeypatch, capsys, pypdf_logger_level):
+    """`main`'s last-resort handler runs after click's context is gone."""
+    import logging
+
+    assert _run_main(monkeypatch, RuntimeError("a carrel bug"), "--json", "inspect", "x") == 1
+    payload = json.loads(capsys.readouterr().err)
+    assert payload["exit_code"] == 1
+    assert payload["error"].startswith("unexpected error: a carrel bug")
+    # and pypdf's error-level logs (one per unsupported font encoding) are off too
+    assert pypdf_logger_level.getEffectiveLevel() > logging.ERROR
+
+
+def test_a_carrel_error_reaching_main_under_json_is_json(monkeypatch, capsys, pypdf_logger_level):
+    """Commands without `handled` (convert, thumb, doctor, desk…) end up here."""
+    code = _run_main(monkeypatch, CarrelInputError("no such file: /nope"), "--json", "thumb", "x")
+
+    assert code == int(ExitCode.BAD_INPUT)
+    assert json.loads(capsys.readouterr().err) == {
+        "error": "no such file: /nope",
+        "exit_code": int(ExitCode.BAD_INPUT),
+    }
+
+
+def test_a_pypdf_refusal_reaching_main_is_classified_too(monkeypatch, capsys, pypdf_logger_level):
+    """Commands without `handled` send pypdf's errors straight to `main`."""
+    from pypdf.errors import LimitReachedError
+
+    code = _run_main(monkeypatch, LimitReachedError("too many objects"), "--json", "thumb", "x")
+
+    assert code == int(ExitCode.BAD_INPUT)
+    assert json.loads(capsys.readouterr().err) == {
+        "error": "unreadable PDF: too many objects",
+        "exit_code": int(ExitCode.BAD_INPUT),
+    }
+
+
+def test_an_unexpected_error_without_json_keeps_its_historical_line(
+    monkeypatch, capsys, pypdf_logger_level
+):
+    assert _run_main(monkeypatch, RuntimeError("a carrel bug"), "inspect", "x") == 1
+    assert capsys.readouterr().err.startswith("unexpected error: a carrel bug")
+
+
+def test_a_carrel_error_reaching_main_without_json_is_the_plain_line(
+    monkeypatch, capsys, pypdf_logger_level
+):
+    code = _run_main(monkeypatch, CarrelInputError("no such file: /nope"), "thumb", "x")
+
+    assert code == int(ExitCode.BAD_INPUT)
+    assert capsys.readouterr().err.strip() == "error: no such file: /nope"

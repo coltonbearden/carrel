@@ -373,39 +373,56 @@
   `test_redact_sign_form.py` and others). `tests/conftest.py` is the shared-plumbing home;
   hoisting it is a whole-suite edit, deliberately not bundled into a behaviour PR.
 
-- **CI's drift gates do not diff `context7.json`.** `scripts/sync_product.py` writes it since
-  #48, but the `git diff --exit-code` pathspecs in `.github/workflows/test.yml` and
-  `publish.yml` were not extended, so if the sync ever mangled the file the lint job would
-  repair it on disk and report green. Not changed in #48 because the v0.5.0 brief puts both
-  workflow files out of scope. The practical risk is covered meanwhile —
-  `test_context7_sync_rewrites_identity_only` runs the sync against a stale copy in the `test`
-  job — but the pathspec is the right home for it. Add `context7.json` to both.
+- **Pillow's floor is `>=10.0`, below its ImageCms fix.** Found reviewing the pypdf floor
+  (D-026). `color` and `proof` pass untrusted images to `ImageCms`, and Pillow 10.3.0 fixed a
+  buffer overflow there (CVE-2024-28219); `pip install carrel` keeps an older Pillow. Deferred
+  to the next release under the D-026 rule rather than raised here, because the rule wants each
+  parser's advisories reviewed together (`pillow`, `openpyxl`, `markdown-it-py`) and the lock
+  is already at Pillow 12.3.0, so the floor choice has room to be deliberate.
 
-- **CI's uv cache is shared across workflows, including the release build.** Found reviewing
-  #49; pre-existing, not introduced by the bump. setup-uv's cache key (v10.1.0,
-  `src/cache/restore-cache.ts::computeKeys`) is arch, platform, OS, Python version, prune/python
-  flags, the `uv.lock` hash and `cache-suffix` — no workflow or job name, and no job here sets a
-  suffix. So `publish.yml`'s `build` and `docs.yml`'s Pages build restore a cache that
-  `test.yml`'s jobs saved after running third-party dependency code, and `uv build`'s isolated
-  build environment is not covered by the lock's hashes (see the unpinned-backend entry above).
-  Three smaller findings ride with it: five ubuntu/py3.12 jobs race for that one key, so
-  whichever finishes first (often the lean `test-minimal`) decides what the rest restore; uv
-  itself is unpinned (no `version:` input, no `required-version`), and v10.1.0 now fails the
-  install outright when a just-released uv is missing from its checksum manifest; and the
-  checkout + setup-uv block is copied seven times across three workflows, so each of these is
-  seven edits. Deferred because none is the bump's, a change to `publish.yml` cannot be
-  exercised before the next tag, and the release pipeline gets its own `ci:` PR and review.
-  Fix, in priority order: `enable-cache: false` in `publish.yml` (and `docs.yml`);
-  `cache-suffix: ${{ github.job }}-${{ matrix.python }}` elsewhere; pin uv; then a local
-  composite action so the next change is one edit.
+- **No CI job installs the declared floors.** CI tests `uv.lock`, which equals the pypdf floor
+  today only by coincidence; the next Dependabot bump separates them, and code that uses a
+  newer API would pass CI and fail for a user at the floor. Fix: a job running the suite after
+  `uv pip install --resolution lowest-direct`. Deferred because other floors will need raises
+  before it can be green — `pillow>=10.0` publishes no wheels past CPython 3.12, the oldest in
+  carrel's matrix — which makes it a PR of its own.
 
-- **The runtime floor is `pypdf>=5.0`, so #50's pypdf security fixes reach the lock, not users.**
-  6.18.1 alone tightens FlateDecode recovery and caps `/Widths` entry counts and `parse_bfchar`
-  token lengths (its release notes, SEC section), and carrel reads untrusted PDFs; `pip install
-  carrel` into an environment that already has an older pypdf keeps it. Deferred from a lock
-  bump because raising a runtime floor changes what users can co-install and belongs in a
-  release with a CHANGELOG line. Decide the policy (floor at the newest security release, or at
-  a tested minimum with a CI job that installs it) rather than chasing each patch.
+- **pypdf's log is silenced wholesale.** `main` sets the `pypdf` logger to `CRITICAL` so a
+  hostile file cannot flood stderr (D-026). That also hides the occasional useful warning on an
+  honest file; `--debug` restores them. A counted summary ("pypdf: 50,000 warnings suppressed")
+  would keep the signal. Not done yet.
+
+- **carrel has no shared PDF-opening helper, so hostile-PDF handling stops at pypdf's own
+  errors.** `core.output.pdf_refusal` maps pypdf's `PyPdfError`s to exit 4 by type. Three gaps
+  remain, all found reviewing the pypdf-floor PR: (1) a malformed structure that makes pypdf
+  raise a plain `ValueError` (`/MediaBox [ 0 ]` in `sign stamp`) or carrel's own loops raise a
+  `TypeError` (`/Annots 9` in `note pdf`) is still exit 1 "unexpected error"; (2) the message
+  does not say which file — `edit pdf a.pdf --merge b.pdf` on a hostile `b.pdf` leaves the user
+  to guess (only `note` names it); (3) a pypdf error on a PDF carrel generated itself (`sign`'s
+  reportlab overlay, `note pdf-add`'s read-back) is reported as the user's bad input. The fix
+  for all three is one helper that opens *user input*, touches `.pages`, and converts pypdf's
+  refusals and structural `ValueError`/`TypeError`s into `CarrelInputError(path, …)` where the
+  path is known. Deferred because it touches every pypdf call site in seven commands — the same
+  surface v0.6.0's confined accessor rewrites.
+
+- **`main` reads `--json` and `--debug` from raw argv.** Its last-resort error handler and the
+  pypdf log switch run where click's context is gone, so a literal `--json` or `--debug` passed as
+  a positional after `--` is mistaken for the flag: JSON formatting of a last-resort error, or
+  pypdf's log left on. `--debug` already worked this way; `--json` joined it with the
+  pypdf-floor PR. Fix: invoke through `cli.make_context` so `main` can read `ctx.obj`.
+
+- **At the next release, confirm `publish.yml`'s build ran uncached on the locked uv.** The
+  `ci:` PR that took the release build off the shared uv cache and pinned uv through `uv.lock`
+  could not exercise `publish.yml` — it only runs on a published release. In that run's `build`
+  job, the setup-uv step should report the uv version `uv.lock` pins and restore no cache.
+  `tests/test_workflows.py` holds the configuration; only a release proves the behaviour.
+
+- **The setup-uv step is copied seven times across three workflows.** Folding it into a local
+  composite action was the last item of the #49 review's cache finding and was not done: the
+  parametrized `tests/test_workflows.py` now fails on any copy that drifts from the pin or
+  cache rules, which was the risk the duplication posed, and a composite action would also
+  need Dependabot's `github-actions` entry to list `.github/actions/*` so its pinned SHA keeps
+  moving. Worth doing when a fourth rule arrives.
 
 - **Two force/delete shapes the deny list cannot express.** Bundled short options with `f`
   after the first letter (`git push -uf origin x`) and colon-refspec deletion
@@ -423,8 +440,8 @@
   background their form declared, and a value that exactly fit before can now be clipped at
   the right edge. `NeedAppearances` stays true, so viewers that regenerate appearances are
   unaffected. Deferred rather than pinned because the change is upstream, honours the form's
-  own `/MK`, and already reaches every fresh `pip install carrel` whatever this lock says (the
-  floor is `>=5.0`); a byte-level assertion on pypdf's stream would break on its next
+  own `/MK`, and now reaches every install through the `pypdf>=6.18.1` floor (D-026) — a
+  documented, upstream behaviour change; a byte-level assertion on pypdf's stream would break on its next
   cosmetic change. Fix: a test that fills a field to its width and asserts the value's glyphs
   are inside the clip box, not the stream's bytes.
 

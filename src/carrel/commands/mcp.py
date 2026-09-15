@@ -39,7 +39,7 @@ from carrel._product import PRODUCT
 from carrel.core.db import DeskDB
 from carrel.core.filetypes import FileType, detect_or_die
 from carrel.core.fsops import OutsideRootError, confined_dest, within
-from carrel.core.output import CarrelError, CarrelInputError, ExitCode
+from carrel.core.output import CarrelError, CarrelInputError, ExitCode, pdf_refusal
 from carrel.core.patterns import PATTERNS
 from carrel.core.textextract import extract_text
 
@@ -1062,6 +1062,9 @@ def _tool_error(e: Exception) -> dict[str, Any]:
     body: dict[str, Any] = {"error": str(e), "exit_code": int(ExitCode.ERROR)}
     if isinstance(e, CarrelError):
         body["exit_code"] = int(e.exit_code)
+    elif (refused := pdf_refusal(e)) is not None:
+        # the CLI's answer for the same file, which this module promises
+        body["error"], body["exit_code"] = refused[0], int(refused[1])
     return {"content": [{"type": "text", "text": json.dumps(body)}], "isError": True}
 
 
