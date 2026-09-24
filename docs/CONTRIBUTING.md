@@ -110,6 +110,9 @@ as the unique prefixes git accepts for long options (`--for`, `--de`, …), and 
 not a boundary: bundled short flags and quoting get past any text match, which is
 why a PreToolUse hook is the open fix.
 
+- `Bash(gh repo delete:*)` stays denied: deleting the repo is irreversible and no release-loop step needs it.
+- `Bash(gh auth token:*)` stays denied: it prints the credential the run holds, and nothing in the loop needs the raw token.
+
 **A rule is a match against the whole command, with `*` standing in for any
 text** ([permissions reference](https://code.claude.com/docs/en/permissions)).
 Three properties of that matcher decide how this file has to be written, and

@@ -13,11 +13,11 @@ re-run it any time to re-assert this state).
 | Require linear history | squash or rebase merges only, no merge commits |
 | Require a pull request | direct pushes are rejected; 0 approvals required (solo maintainer), stale approvals dismissed, review threads must be resolved |
 | Require status checks | `lint`, `test (py3.12)`, `test (py3.13)`, `test (py3.14)`, `test-minimal`, `test-minimal (macos)` must pass on the PR head, and the branch must be up to date with `main`. **Pending:** promote `test-minimal (windows)` once it has been green on `main` for two consecutive weeks (from 2026-09-10, so on or after 2026-09-24) — drop `continue-on-error` in `.github/workflows/test.yml`, add the check to `REQUIRED_CHECKS`, re-run the script |
-| Bypass | repository **admin** role, always — for emergencies only; every other actor (bots, collaborators, tokens) is blocked |
+| Bypass | repository **admin** role, **through a pull request only** — the admin can merge a PR past failing or pending checks, never push directly; every other actor (bots, collaborators, tokens) is blocked |
 
 ## Tag ruleset `release tags` (active, `v*`)
 
-Release tags cannot be deleted, moved, or force-updated. Same admin bypass.
+Release tags cannot be deleted, moved, or force-updated. No bypass — nobody, including the admin, can move a published tag.
 
 ## Security & analysis
 

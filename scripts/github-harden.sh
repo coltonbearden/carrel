@@ -36,7 +36,8 @@ apply(){ [ "$VERIFY_ONLY" -eq 1 ] && return 0; api "$@" >/dev/null; }
 # test-minimal (windows) stays advisory (continue-on-error) until it has been green
 # on main for two consecutive weeks — that clock ends 2026-09-24.
 REQUIRED_CHECKS='["lint","test (py3.12)","test (py3.13)","test (py3.14)","test-minimal","test-minimal (macos)"]'
-ADMIN_BYPASS='[{"actor_id":5,"actor_type":"RepositoryRole","bypass_mode":"always"}]'
+MAIN_BYPASS='[{"actor_id":5,"actor_type":"RepositoryRole","bypass_mode":"pull_request"}]'
+TAG_BYPASS='[]'
 
 # ---------------------------------------------------------------- repository
 say "repository settings ($REPO)"
@@ -98,7 +99,7 @@ upsert_ruleset "main" "$(cat <<JSON
   "name": "main",
   "target": "branch",
   "enforcement": "active",
-  "bypass_actors": $ADMIN_BYPASS,
+  "bypass_actors": $MAIN_BYPASS,
   "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
   "rules": [
     {"type": "deletion"},
@@ -127,7 +128,7 @@ upsert_ruleset "release tags" "$(cat <<JSON
   "name": "release tags",
   "target": "tag",
   "enforcement": "active",
-  "bypass_actors": $ADMIN_BYPASS,
+  "bypass_actors": $TAG_BYPASS,
   "conditions": {"ref_name": {"include": ["refs/tags/v*"], "exclude": []}},
   "rules": [
     {"type": "deletion"},
@@ -195,15 +196,15 @@ verify_ruleset() {  # name, expected-rule-types(csv), expected-bypass(json), [ex
   got_rules="$(echo "$detail" | jq -r '[.rules[].type] | sort | join(",")')"
   [ "$got_rules" = "$(echo "$want_rules" | tr ',' '\n' | sort | paste -sd,)" ] && ok "ruleset '$name' rules: $got_rules" || bad "ruleset '$name' rules = $got_rules (want $want_rules)"
   got_bypass="$(echo "$detail" | jq -c '[.bypass_actors[] | {actor_id, actor_type, bypass_mode}] | sort_by(.actor_type, .actor_id)')"
-  [ "$got_bypass" = "$(echo "$want_bypass" | jq -c 'sort_by(.actor_type, .actor_id)')" ] && ok "ruleset '$name' bypass: repository admin only" || bad "ruleset '$name' bypass actors drifted: $got_bypass"
+  [ "$got_bypass" = "$(echo "$want_bypass" | jq -c 'sort_by(.actor_type, .actor_id)')" ] && ok "ruleset '$name' bypass: as designed" || bad "ruleset '$name' bypass actors drifted: $got_bypass"
   if [ -n "$want_checks" ]; then
     got_checks="$(echo "$detail" | jq -c '[.rules[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context] | sort')"
     [ "$got_checks" = "$(echo "$want_checks" | jq -c 'sort')" ] && ok "ruleset '$name' required checks: $(echo "$got_checks" | jq -r 'join(", ")')" || bad "ruleset '$name' required checks = $got_checks (want $want_checks)"
     [ "$(echo "$detail" | jq -r '[.rules[] | select(.type == "required_status_checks") | .parameters.strict_required_status_checks_policy] | first // false')" = "true" ] && ok "ruleset '$name' requires branch up to date" || bad "ruleset '$name' strict status checks off"
   fi
 }
-verify_ruleset "main" "deletion,non_fast_forward,pull_request,required_linear_history,required_status_checks" "$ADMIN_BYPASS" "$REQUIRED_CHECKS"
-verify_ruleset "release tags" "deletion,non_fast_forward,update" "$ADMIN_BYPASS"
+verify_ruleset "main" "deletion,non_fast_forward,pull_request,required_linear_history,required_status_checks" "$MAIN_BYPASS" "$REQUIRED_CHECKS"
+verify_ruleset "release tags" "deletion,non_fast_forward,update" "$TAG_BYPASS"
 
 pol="$(read_ "repos/$REPO/environments/pypi/deployment-branch-policies" | jq -r 'try ([.branch_policies[] | .type + ":" + .name] | join(",")) catch ""')"
 [ "$pol" = "tag:v*" ] && ok "pypi environment deploys only from tag v*" || bad "pypi deployment policy = '$pol'"
