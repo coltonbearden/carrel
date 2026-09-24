@@ -4,13 +4,13 @@
 
 ## Product name — single source of truth
 
-The product name, tagline, and version live ONLY in `product.json` at the repo root. Never hardcode the name in code. Docs/manifests may use the name in prose, but anything generated (CLI banner, `--version`, asset text) must read `product.json`. `scripts/finalize.sh` performs renames by updating `product.json` and regenerating derived references.
+The product name, tagline, and version live ONLY in `product.json` at the repo root. Never hardcode the name in code. Docs/manifests may use the name in prose, but anything generated (CLI banner, `--version`, asset text) must read `product.json`. Do not run `scripts/finalize.sh`: it was for the original hand-off only (it relocates the tree and creates a new repo; STATE.md).
 
 ## Stack & layout
 
 - Python ≥3.12 (dev box: 3.14), managed by **uv** (`pyproject.toml`, `uv run`, `uv sync`).
-- Core library in `src/<pkg>/`; umbrella CLI entry in `pyproject.toml [project.scripts]`.
-- All external binaries are called through the single adapter layer `src/<pkg>/core/adapters.py` — never `subprocess` directly from command modules. Adapters do capability detection and convert timeouts into a clean error. One documented exception: `core/actions.py` runs the user-authored `--run` shell actions of `watch` and `batch` (shell-quoted substitutions, `--action-timeout`; D-013).
+- Core library in `src/carrel/`; umbrella CLI entry in `pyproject.toml [project.scripts]`.
+- All external binaries are called through the single adapter layer `src/carrel/core/adapters.py` — never `subprocess` directly from command modules. Adapters do capability detection and convert timeouts into a clean error. One documented exception: `core/actions.py` runs the user-authored `--run` shell actions of `watch` and `batch` (shell-quoted substitutions, `--action-timeout`; D-013).
 - Repo root doubles as a Claude Code plugin marketplace: `.claude-plugin/marketplace.json` + `plugins/<name>/`.
 
 ## Coding standards
