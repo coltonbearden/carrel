@@ -9,15 +9,23 @@
   verification record is the v0.5.0 entry under Done. 33 commands, 14 MCP tools, 19 adapters,
   9 marketplace plugins, desk schema v2. Repo `coltonbearden/carrel`, docs at
   https://coltonbearden.github.io/carrel/, PyPI package `carrel`.
-- **In flight:** three Dependabot PRs are open and unreviewed: #57 (`setup-uv` 10.2.0), #58
-  (pypdf 6.19.0, ruff 0.16.10, mypy 2.4.0, uv 0.12.22) and #59 (urllib3 2.8.0, the fix for the
-  open Dependabot alert GHSA-gh4c-6fx4-qh6g). Each needs its own `/code-review <pr> high`
-  before it merges. Any branch that does not contain #60 (the intake test fix, Done
-  2026-10-08) fails `tests`, and the ruleset's up-to-date rule makes every open PR take it
-  anyway. Two ways to update a Dependabot branch: `@dependabot rebase` keeps the PR
+- **In flight:** four Dependabot PRs are open and unreviewed, and each needs its own
+  `/code-review <pr> high` before it merges: #57 (`setup-uv` 10.2.0), #58 (pypdf 6.19.0, ruff
+  0.16.10, mypy 2.4.0, uv 0.12.22), #61 (pypdf 6.19.0 alone) and #62 (uv 0.12.18 alone).
+  Dependabot opened the last two right after #59 merged, for four alerts raised against
+  `uv.lock` at the same moment: three high ones on pypdf below 6.19.0 (GHSA-v247-6f48-mgcj,
+  GHSA-php9-fj8v-98fj, GHSA-w23x-9jrw-r45c: long runtimes or large memory use on a crafted
+  PDF) and a medium one on uv 0.12.7 to 0.12.17 (GHSA-2cv4-cqwr-gwf7, path traversal on
+  Windows when a wheel is extracted). #58 carries both fixes, so #61 and #62 are subsets of
+  it. All three change `uv.lock` only; the runtime floor is a separate change (Open issues).
+  #59 (urllib3 2.8.0, the fix for Dependabot alert GHSA-gh4c-6fx4-qh6g) merged as `1a15026` on
+  2026-10-08, after its review completed with no findings, and that alert is closed.
+  Any branch that does not contain #60 (the intake test fix, Done 2026-10-08) fails
+  `tests`, and the ruleset's up-to-date rule makes every open PR take `main`'s head before it
+  merges anyway. Two ways to update a Dependabot branch: `@dependabot rebase` keeps the PR
   Dependabot's own; `gh pr update-branch` adds a merge commit that is not Dependabot's, after
-  which it stops rebasing that PR by itself (`@dependabot recreate` restores it). #58 and #59
-  both rewrite `uv.lock`, so whichever merges second has to be updated again after the first.
+  which it stops rebasing that PR by itself (`@dependabot recreate` restores it). #58 was
+  updated the second way, so it is brought up to date by hand after each merge to `main`.
   #48 (Context7) was the v0.5.0 wave's last PR. The two Dependabot PRs
   after it merged: #49 (`setup-uv` 10.1.0) as `d4619cf` and #50 (pypdf 6.18.1, ruff 0.16.7,
   pre-commit hooks run from `uv.lock`) as `fe0695a`. The owner items their reviews raised are
@@ -392,6 +400,16 @@
   (also in `test_refs.py`, `test_desk_db_cmds.py`, `test_watch_org_dedupe.py`,
   `test_redact_sign_form.py` and others). `tests/conftest.py` is the shared-plumbing home;
   hoisting it is a whole-suite edit, deliberately not bundled into a behaviour PR.
+
+- **The pypdf floor is one security release behind.** `pyproject.toml` requires
+  `pypdf>=6.18.1`, and 6.19.0 fixes three high advisories published on 2026-10-01
+  (GHSA-v247-6f48-mgcj, GHSA-php9-fj8v-98fj, GHSA-w23x-9jrw-r45c). The floor is meant to track
+  pypdf's security releases (D-026): until it moves, `pip install carrel` into an environment
+  that already holds 6.18.1 keeps it. Not raised yet because D-026 also says the floor may not
+  exceed what `uv.lock` pins, and the lock stays at 6.18.1 until #58 or #61 merges. After that
+  the raise is a `pyproject.toml` change classified under D-023 (6.19.0 adds limits, which
+  D-026 reads as a minor bump), and it reaches users only with a release, whose timing is the
+  owner's call.
 
 - **Pillow's floor is `>=10.0`, below its ImageCms fix.** Found reviewing the pypdf floor
   (D-026). `color` and `proof` pass untrusted images to `ImageCms`, and Pillow 10.3.0 fixed a
