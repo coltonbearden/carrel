@@ -97,6 +97,22 @@ def test_the_setup_uv_scan_finds_steps():
     assert {"test.yml", "publish.yml", "docs.yml"} <= workflows, workflows
 
 
+def test_every_setup_uv_step_uses_the_same_pin():
+    """Dependabot moves all the steps together; a pasted job or a hand-resolved merge may not.
+
+    The step is copied into every job rather than shared, and a copy left on an
+    older ref still passes the pin and cache rules above, so `publish.yml` could
+    run a setup-uv no pull request exercised.
+    """
+    refs = {
+        str(step["uses"])
+        for _workflow, _job_id, job in _jobs()
+        for step in job.get("steps", [])
+        if str(step.get("uses", "")).lower().startswith("astral-sh/setup-uv@")
+    }
+    assert len(refs) == 1, f"setup-uv is pinned to more than one ref: {sorted(refs)}"
+
+
 @pytest.mark.parametrize(("workflow", "job", "job_def", "inputs"), SETUP_UV_STEPS, ids=SETUP_UV_IDS)
 def test_every_setup_uv_step_installs_the_locked_uv(workflow, job, job_def, inputs):
     assert inputs.get("version-file") == "uv.lock" and "version" not in inputs, (
