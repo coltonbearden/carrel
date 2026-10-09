@@ -112,8 +112,9 @@ actually uses: `uv run`/`sync`/`build`, `git switch`/`fetch`/`rebase`/`worktree`
 `git add`/`git commit`/`git push` (the loop has to be able to land a branch),
 `git branch -d`/`-D`, the read-only and PR-management halves of `gh`,
 `claude plugin`, `mkdocs build`, and `scripts/github-harden.sh`. `gh workflow
-run` and `gh repo edit` are `ask` rules, so those two commands stop for a person
-however they are allowed elsewhere: `docs.yml` deploys GitHub Pages when
+run` and `gh repo edit` are `ask` rules, so those two commands prompt however they
+are allowed elsewhere (a headless `claude -p` run has nobody to ask: the command is
+refused and the run carries on): `docs.yml` deploys GitHub Pages when
 dispatched, `--ref` runs a branch's copy of any workflow, and no rule can limit
 `gh repo edit` to `--description`. An ask rule is read before every allow rule, so
 neither a user-level `Bash(gh:*)` nor an exact allow in this file answers it

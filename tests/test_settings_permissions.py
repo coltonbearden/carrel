@@ -74,9 +74,10 @@ def _covered(kind: str, command: str) -> bool:
 
 
 #: What a user-level settings file can add: the owner's own allows every `gh`
-#: command. Rules from all settings files are read together, so anything this
-#: file merely leaves unallowed, that one approves.
-USER_LEVEL_ALLOW = ("gh:*", "gh api:*", "gh repo edit:*")
+#: command (it also lists `gh api` and `gh repo edit`, which this one rule
+#: already covers). Rules from all settings files are read together, so anything
+#: this file merely leaves unallowed, that one approves.
+USER_LEVEL_ALLOW = ("gh:*",)
 
 
 def _runs_unprompted(command: str, also_allowed: tuple[str, ...] = ()) -> bool:
@@ -192,6 +193,8 @@ MUST_STAY_USABLE = [
 def test_the_deny_rules_do_not_swallow_an_ordinary_branch_push():
     broken = [cmd for cmd in MUST_STAY_USABLE if _covered("deny", cmd)]
     assert not broken, "\n".join(["a deny rule blocks an ordinary feature-branch push:", *broken])
+    stalled = [cmd for cmd in MUST_STAY_USABLE if not _runs_unprompted(cmd)]
+    assert not stalled, "\n".join(["these ordinary pushes ask first or are not allowed:", *stalled])
 
 
 def test_the_destructive_git_verbs_stay_denied():
@@ -230,6 +233,7 @@ def test_the_ordinary_forms_of_those_verbs_still_work():
     ):
         assert not _covered("deny", cmd), f"a deny rule blocks the ordinary {cmd!r}"
         assert _covered("allow", cmd), f"no allow rule covers {cmd!r}"
+        assert not _covered("ask", cmd), f"an ask rule makes the ordinary {cmd!r} prompt"
 
 
 def test_the_release_loop_commands_are_allowed():
@@ -343,7 +347,9 @@ def test_repo_edit_always_asks():
 
 #: Spellings the two ask rules do not catch. A rule matches the command text, so
 #: these run with no prompt today. Listed so the gap is on the record, and so
-#: this test fails on the day a rule or a hook closes one (D-029, STATE.md).
+#: this test fails on the day a rule closes one. It reads settings.json only: a
+#: PreToolUse hook that closes them will not show here, so whoever lands the
+#: hook retires this list with it (D-029, STATE.md).
 PAST_THE_ASK_RULES = [
     # under this file's own allows: a runner or a git option in front of the command
     "uv run gh workflow run docs.yml --ref feature",

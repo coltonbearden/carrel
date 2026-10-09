@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # github-harden.sh — assert the GitHub repository configuration documented in
 # docs/REPO_SETTINGS.md. Idempotent: every call is a PUT/PATCH or a
-# create-or-update by name, so re-running only re-asserts state.
+# create-or-update by name, so re-running only re-asserts state. The one deletion:
+# a deployment pattern other than the intended one, named as it is removed.
 #
 # Usage: scripts/github-harden.sh [--repo owner/name] [--verify-only]
 # Needs: gh (authenticated as a repo admin), jq. Read-only with --verify-only.
@@ -14,7 +15,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --repo)        REPO="${2:?}"; shift 2 ;;
     --verify-only) VERIFY_ONLY=1; shift ;;
-    -h|--help)     sed -n '2,7p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help)     sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown flag: $1" >&2; exit 2 ;;
   esac
 done
@@ -140,33 +141,39 @@ JSON
 )"
 
 # -------------------------------------------------------------- environments
-# An environment deploys from exactly one pattern: custom policies on, the wanted
-# pattern present, every other one deleted. Adding without deleting cannot bring a
-# drifted environment back, and a leftover `*` deploys from anywhere.
-ensure_env_policy() {  # environment, pattern-name, pattern-type (branch|tag)
-  local env="$1" name="$2" type="$3" policies wanted
+# Each environment deploys from exactly one pattern, written once here for apply and
+# for verify: environment, pattern type, pattern. docs.yml deploys on every event but
+# pull_request, and a dispatched workflow is whatever its branch says; the Pages
+# policy keeps a branch from deploying through the `github-pages` environment, which
+# is the one docs.yml names. A workflow naming another environment is not covered (D-029).
+DEFAULT_BRANCH="$(read_ "repos/$REPO" | jq -r '.default_branch // empty')"
+[ -n "$DEFAULT_BRANCH" ] || { echo "cannot read repos/$REPO (is gh authenticated?)" >&2; exit 1; }
+env_policies() { printf '%s\n' "pypi tag v*" "github-pages branch $DEFAULT_BRANCH"; }
+
+# Custom policies on, the wanted pattern present, every other one deleted: adding
+# without deleting cannot bring a drifted environment back, and a leftover `*`
+# deploys from anywhere.
+ensure_env_policy() {  # environment, pattern-type (branch|tag), pattern
+  local env="$1" type="$2" name="$3" policies wanted
   say "environment: $env (deploy only from $type $name)"
   [ "$VERIFY_ONLY" -eq 1 ] && return 0
   api -X PUT "repos/$REPO/environments/$env" --input - >/dev/null <<'JSON'
 {"deployment_branch_policy": {"protected_branches": false, "custom_branch_policies": true}}
 JSON
-  policies="$(read_ "repos/$REPO/environments/$env/deployment-branch-policies")"
-  wanted="$(echo "$policies" | jq -r --arg n "$name" --arg t "$type" 'try (.branch_policies[] | select(.name == $n and .type == $t) | .id) catch ""' | head -1)"
+  # `api`, not `read_`: a failed read must stop here, not pass for an empty list
+  policies="$(api "repos/$REPO/environments/$env/deployment-branch-policies?per_page=100")"
+  wanted="$(echo "$policies" | jq -r --arg n "$name" --arg t "$type" '[.branch_policies[] | select(.name == $n and .type == $t) | .id] | first // empty')"
   if [ -z "$wanted" ]; then
     jq -n --arg n "$name" --arg t "$type" '{name: $n, type: $t}' \
       | api -X POST "repos/$REPO/environments/$env/deployment-branch-policies" --input - >/dev/null
   fi
-  echo "$policies" | jq -r --arg n "$name" --arg t "$type" 'try (.branch_policies[] | select(.name != $n or .type != $t) | .id) catch empty' \
-    | while read -r id; do
+  echo "$policies" | jq -r --arg n "$name" --arg t "$type" '.branch_policies[] | select(.name != $n or .type != $t) | [.id, .type + ":" + .name] | @tsv' \
+    | while IFS=$'\t' read -r id pattern; do
         api -X DELETE "repos/$REPO/environments/$env/deployment-branch-policies/$id" >/dev/null
+        printf '   removed deployment pattern %s from %s\n' "$pattern" "$env"
       done
 }
-ensure_env_policy pypi "v*" tag
-# docs.yml deploys on every event but pull_request, and a dispatched workflow is
-# whatever its branch says. This policy keeps a branch from deploying through the
-# `github-pages` environment, which is what docs.yml names; a workflow that names
-# another environment is not covered by it (D-029).
-ensure_env_policy github-pages main branch
+while read -r env type name <&3; do ensure_env_policy "$env" "$type" "$name"; done 3< <(env_policies)
 
 # ------------------------------------------------------------------- verify
 say "verify"
@@ -222,18 +229,18 @@ verify_ruleset "main" "deletion,non_fast_forward,pull_request,required_linear_hi
 verify_ruleset "release tags" "deletion,non_fast_forward,update" "$TAG_BYPASS"
 
 # the pattern list means nothing unless the environment is in custom-policy mode
-verify_env_policy() {  # environment, wanted "type:name"
-  local env="$1" want="$2" custom pol
+verify_env_policy() {  # environment, pattern-type, pattern
+  local env="$1" type="$2" name="$3" custom pol
   custom="$(read_ "repos/$REPO/environments/$env" | jq -r '(.deployment_branch_policy // {}) | (.protected_branches == false and .custom_branch_policies == true)')"
-  pol="$(read_ "repos/$REPO/environments/$env/deployment-branch-policies" | jq -r 'try ([.branch_policies[] | .type + ":" + .name] | sort | join(",")) catch ""')"
-  if [ "$custom" = "true" ] && [ "$pol" = "$want" ]; then
-    ok "$env environment deploys only from ${want/:/ }"
+  pol="$(read_ "repos/$REPO/environments/$env/deployment-branch-policies?per_page=100" | jq -r 'try ([.branch_policies[] | .type + ":" + .name] | sort | join(",")) catch ""')"
+  if [ "$custom" = "true" ] && [ "$pol" = "$type:$name" ]; then
+    ok "$env environment deploys only from $type $name"
   else
-    bad "$env deployment policy = '$pol' (want '$want'), custom policies in force = $custom"
+    bad "$env deployment policy = '$pol' (want '$type:$name'), custom policies in force = $custom"
   fi
 }
-verify_env_policy pypi "tag:v*"
-verify_env_policy github-pages "branch:main"
+# a redirect, not a pipe: `bad` has to set FAILED in this shell
+while read -r env type name <&3; do verify_env_policy "$env" "$type" "$name"; done 3< <(env_policies)
 
 if [ "$FAILED" -ne 0 ]; then echo "some checks failed" >&2; exit 1; fi
 say "all settings verified"
