@@ -35,7 +35,8 @@ Release tags cannot be deleted, moved, or force-updated. No bypass — nobody, i
 - Default `GITHUB_TOKEN` permissions: read-only; Actions cannot approve PRs.
 - Environment `pypi`: deployments only from `v*` tags.
 - Environment `github-pages`: deployments only from `main`. `docs.yml` deploys on every
-  event but `pull_request`, so this is what keeps a dispatched branch off the site.
+  event but `pull_request`, so this keeps a dispatched branch from deploying through it. A
+  workflow that names another environment is not covered (D-029).
 
 ## Secrets
 
@@ -63,7 +64,8 @@ required checks (`lint`, `test (py3.12/3.13/3.14)`, `test-minimal`, `test-minima
 
 2026-10-09: `scripts/github-harden.sh --verify-only` read every setting above back again,
 the `github-pages` policy included. That policy was already `main` only; the script had
-not set or checked it before.
+not set or checked it before. For both environments it now checks that custom policies are
+in force as well as which patterns exist, and applying it deletes any other pattern.
 
 ## Not enforced (deliberately)
 

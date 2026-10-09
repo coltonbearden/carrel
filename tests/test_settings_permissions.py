@@ -43,8 +43,9 @@ SETTINGS = REPO_ROOT / ".claude" / "settings.json"
 
 @functools.cache
 def _rules(kind: str) -> tuple[str, ...]:
+    assert kind in ("allow", "ask", "deny"), kind
     data = json.loads(SETTINGS.read_text(encoding="utf-8"))
-    return tuple(data["permissions"].get(kind, ()))
+    return tuple(data["permissions"][kind])
 
 
 def _bash_rules(kind: str) -> list[str]:
@@ -243,8 +244,7 @@ def test_the_release_loop_commands_are_allowed():
         "gh pr update-branch 53",
         "claude plugin validate .",
     ):
-        assert _covered("allow", cmd), f"no allow rule covers {cmd!r}"
-        assert not _covered("ask", cmd), f"an ask rule stops the release loop at {cmd!r}"
+        assert _runs_unprompted(cmd), f"{cmd!r} is denied, asks, or is not allowed"
 
 
 def test_contributing_describes_the_git_grant_it_actually_ships():
@@ -299,12 +299,12 @@ def test_no_deny_rule_is_already_covered_by_another():
 
 
 def test_the_user_level_allow_would_approve_what_this_file_only_leaves_out():
-    """Guard the guard: the two tests below prove nothing if this stand-in is too narrow."""
+    """Guard the guard: the gap test below proves nothing if this stand-in is too narrow."""
     for cmd in ("gh workflow run docs.yml", "gh repo edit --visibility public", "gh pr view 1"):
         assert any(_matches(rule, cmd) for rule in USER_LEVEL_ALLOW), cmd
 
 
-def test_every_workflow_dispatch_asks_whatever_else_is_allowed():
+def test_every_plain_workflow_dispatch_asks():
     """`docs.yml` deploys GitHub Pages on any non-pull_request event, dispatch included.
 
     Leaving a dispatch unallowed was not enough: a user-level `Bash(gh:*)` allow
@@ -327,7 +327,6 @@ def test_every_workflow_dispatch_asks_whatever_else_is_allowed():
         "gh workflow run test.yml --ref feature",
     ):
         assert _covered("ask", cmd), f"no ask rule covers {cmd!r}"
-        assert not _runs_unprompted(cmd, USER_LEVEL_ALLOW), f"{cmd!r} runs unprompted"
 
 
 def test_repo_edit_always_asks():
@@ -340,7 +339,33 @@ def test_repo_edit_always_asks():
         "gh repo edit --description x --visibility public",
     ):
         assert _covered("ask", cmd), f"no ask rule covers {cmd!r}"
-        assert not _runs_unprompted(cmd, USER_LEVEL_ALLOW), f"{cmd!r} runs unprompted"
+
+
+#: Spellings the two ask rules do not catch. A rule matches the command text, so
+#: these run with no prompt today. Listed so the gap is on the record, and so
+#: this test fails on the day a rule or a hook closes one (D-029, STATE.md).
+PAST_THE_ASK_RULES = [
+    # under this file's own allows: a runner or a git option in front of the command
+    "uv run gh workflow run docs.yml --ref feature",
+    "uv run gh repo edit --description x",
+    "git rebase --exec 'gh workflow run docs.yml' HEAD~1",
+]
+PAST_THE_ASK_RULES_UNDER_A_USER_LEVEL_GH_ALLOW = [
+    "gh workflow -R someone/repo run docs.yml --ref feature",
+    "gh api -X POST repos/someone/repo/actions/workflows/docs.yml/dispatches -f ref=feature",
+    "gh api -X PATCH repos/someone/repo -f has_wiki=true",
+]
+
+
+def test_the_ask_rules_match_text_and_these_spellings_get_past_them():
+    """What the ask rules are: a prompt on the spelling an agent ordinarily writes, not a boundary."""
+    for cmd in PAST_THE_ASK_RULES:
+        assert _runs_unprompted(cmd), f"{cmd!r} is caught now: move it to a test that says so"
+    for cmd in PAST_THE_ASK_RULES_UNDER_A_USER_LEVEL_GH_ALLOW:
+        assert not _runs_unprompted(cmd), f"{cmd!r} is allowed by this file itself"
+        assert _runs_unprompted(cmd, USER_LEVEL_ALLOW), (
+            f"{cmd!r} is caught now: move it to a test that says so"
+        )
 
 
 def test_update_branch_merges_but_never_rewrites():

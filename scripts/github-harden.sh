@@ -140,33 +140,33 @@ JSON
 )"
 
 # -------------------------------------------------------------- environments
-say "environment: pypi (deploy only from v* tags)"
-apply -X PUT "repos/$REPO/environments/pypi" --input - <<'JSON'
+# An environment deploys from exactly one pattern: custom policies on, the wanted
+# pattern present, every other one deleted. Adding without deleting cannot bring a
+# drifted environment back, and a leftover `*` deploys from anywhere.
+ensure_env_policy() {  # environment, pattern-name, pattern-type (branch|tag)
+  local env="$1" name="$2" type="$3" policies wanted
+  say "environment: $env (deploy only from $type $name)"
+  [ "$VERIFY_ONLY" -eq 1 ] && return 0
+  api -X PUT "repos/$REPO/environments/$env" --input - >/dev/null <<'JSON'
 {"deployment_branch_policy": {"protected_branches": false, "custom_branch_policies": true}}
 JSON
-if [ "$VERIFY_ONLY" -eq 0 ]; then
-  existing="$(read_ "repos/$REPO/environments/pypi/deployment-branch-policies" | jq -r 'try (.branch_policies[] | select(.name == "v*" and .type == "tag") | .id) catch ""' | head -1)"
-  if [ -z "$existing" ]; then
-    api -X POST "repos/$REPO/environments/pypi/deployment-branch-policies" --input - >/dev/null <<'JSON'
-{"name": "v*", "type": "tag"}
-JSON
+  policies="$(read_ "repos/$REPO/environments/$env/deployment-branch-policies")"
+  wanted="$(echo "$policies" | jq -r --arg n "$name" --arg t "$type" 'try (.branch_policies[] | select(.name == $n and .type == $t) | .id) catch ""' | head -1)"
+  if [ -z "$wanted" ]; then
+    jq -n --arg n "$name" --arg t "$type" '{name: $n, type: $t}' \
+      | api -X POST "repos/$REPO/environments/$env/deployment-branch-policies" --input - >/dev/null
   fi
-fi
-
+  echo "$policies" | jq -r --arg n "$name" --arg t "$type" 'try (.branch_policies[] | select(.name != $n or .type != $t) | .id) catch empty' \
+    | while read -r id; do
+        api -X DELETE "repos/$REPO/environments/$env/deployment-branch-policies/$id" >/dev/null
+      done
+}
+ensure_env_policy pypi "v*" tag
 # docs.yml deploys on every event but pull_request, and a dispatched workflow is
-# whatever its branch says, so only this policy keeps a branch off the site (D-029).
-say "environment: github-pages (deploy only from main)"
-apply -X PUT "repos/$REPO/environments/github-pages" --input - <<'JSON'
-{"deployment_branch_policy": {"protected_branches": false, "custom_branch_policies": true}}
-JSON
-if [ "$VERIFY_ONLY" -eq 0 ]; then
-  existing="$(read_ "repos/$REPO/environments/github-pages/deployment-branch-policies" | jq -r 'try (.branch_policies[] | select(.name == "main" and .type == "branch") | .id) catch ""' | head -1)"
-  if [ -z "$existing" ]; then
-    api -X POST "repos/$REPO/environments/github-pages/deployment-branch-policies" --input - >/dev/null <<'JSON'
-{"name": "main", "type": "branch"}
-JSON
-  fi
-fi
+# whatever its branch says. This policy keeps a branch from deploying through the
+# `github-pages` environment, which is what docs.yml names; a workflow that names
+# another environment is not covered by it (D-029).
+ensure_env_policy github-pages main branch
 
 # ------------------------------------------------------------------- verify
 say "verify"
@@ -221,11 +221,19 @@ verify_ruleset() {  # name, expected-rule-types(csv), expected-bypass(json), [ex
 verify_ruleset "main" "deletion,non_fast_forward,pull_request,required_linear_history,required_status_checks" "$MAIN_BYPASS" "$REQUIRED_CHECKS"
 verify_ruleset "release tags" "deletion,non_fast_forward,update" "$TAG_BYPASS"
 
-pol="$(read_ "repos/$REPO/environments/pypi/deployment-branch-policies" | jq -r 'try ([.branch_policies[] | .type + ":" + .name] | join(",")) catch ""')"
-[ "$pol" = "tag:v*" ] && ok "pypi environment deploys only from tag v*" || bad "pypi deployment policy = '$pol'"
-
-pol="$(read_ "repos/$REPO/environments/github-pages/deployment-branch-policies" | jq -r 'try ([.branch_policies[] | .type + ":" + .name] | join(",")) catch ""')"
-[ "$pol" = "branch:main" ] && ok "github-pages environment deploys only from branch main" || bad "github-pages deployment policy = '$pol'"
+# the pattern list means nothing unless the environment is in custom-policy mode
+verify_env_policy() {  # environment, wanted "type:name"
+  local env="$1" want="$2" custom pol
+  custom="$(read_ "repos/$REPO/environments/$env" | jq -r '(.deployment_branch_policy // {}) | (.protected_branches == false and .custom_branch_policies == true)')"
+  pol="$(read_ "repos/$REPO/environments/$env/deployment-branch-policies" | jq -r 'try ([.branch_policies[] | .type + ":" + .name] | sort | join(",")) catch ""')"
+  if [ "$custom" = "true" ] && [ "$pol" = "$want" ]; then
+    ok "$env environment deploys only from ${want/:/ }"
+  else
+    bad "$env deployment policy = '$pol' (want '$want'), custom policies in force = $custom"
+  fi
+}
+verify_env_policy pypi "tag:v*"
+verify_env_policy github-pages "branch:main"
 
 if [ "$FAILED" -ne 0 ]; then echo "some checks failed" >&2; exit 1; fi
 say "all settings verified"
