@@ -9,7 +9,16 @@
   verification record is the v0.5.0 entry under Done. 33 commands, 14 MCP tools, 19 adapters,
   9 marketplace plugins, desk schema v2. Repo `coltonbearden/carrel`, docs at
   https://coltonbearden.github.io/carrel/, PyPI package `carrel`.
-- **In flight:** nothing. #48 (Context7) was the v0.5.0 wave's last PR. The two Dependabot PRs
+- **In flight:** three Dependabot PRs are open and unreviewed: #57 (`setup-uv` 10.2.0), #58
+  (pypdf 6.19.0, ruff 0.16.10, mypy 2.4.0, uv 0.12.22) and #59 (urllib3 2.8.0, the fix for the
+  open Dependabot alert GHSA-gh4c-6fx4-qh6g). Each needs its own `/code-review <pr> high`
+  before it merges. Any branch that does not contain #60 (the intake test fix, Done
+  2026-10-08) fails `tests`, and the ruleset's up-to-date rule makes every open PR take it
+  anyway. Two ways to update a Dependabot branch: `@dependabot rebase` keeps the PR
+  Dependabot's own; `gh pr update-branch` adds a merge commit that is not Dependabot's, after
+  which it stops rebasing that PR by itself (`@dependabot recreate` restores it). #58 and #59
+  both rewrite `uv.lock`, so whichever merges second has to be updated again after the first.
+  #48 (Context7) was the v0.5.0 wave's last PR. The two Dependabot PRs
   after it merged: #49 (`setup-uv` 10.1.0) as `d4619cf` and #50 (pypdf 6.18.1, ruff 0.16.7,
   pre-commit hooks run from `uv.lock`) as `fe0695a`. The owner items their reviews raised are
   decided and landed — CI's uv cache and uv pin, the pypdf floor (D-026) and the
@@ -34,7 +43,9 @@
     owner's go-ahead in that session: drop
     `continue-on-error` in `.github/workflows/test.yml`, add the check to `REQUIRED_CHECKS`,
     then run `scripts/github-harden.sh`. (`test-minimal (macos)` was added on 2026-09-11 under
-    the owner's authorisation in the v0.4.1 brief.)
+    the owner's authorisation in the v0.4.1 brief.) `main` had no `tests` run between
+    2026-09-24 and #60's merge, so that stretch is no evidence either way; the red PR runs
+    inside it (#58, #59) failed on the intake clock test (Done) in every job, not on Windows.
   - **Owner's step:** restrict the `github-pages` environment to deployments from `main`
     (Settings → Environments → github-pages → Deployment branches), and teach
     `scripts/github-harden.sh` to set and verify it as it does for `pypi`. D-027 narrowed
@@ -46,6 +57,15 @@
 
 ## Done
 
+- 2026-10-08: `tests/test_intake.py::test_layout_and_fallback_options` no longer depends on the
+  day it runs. The `inbox` fixture's `note.md` has no date of its own, so `intake` dates it by
+  mtime, and the test expected the quarter that was current when it was written (`FY2027/Q1`
+  with `--fiscal-start 7`, true only from July to September 2026). From 2026-10-01 it failed on
+  every branch, while `main` still showed its last run, a green one from 2026-09-24. The code
+  was right: October is Q2 of a July fiscal year. The fixture now pins the note's mtime, and
+  the rule is written down in `docs/CONTRIBUTING.md` (How to add a command, step 4): a file
+  that a test dates by mtime gets `os.utime`, as the `organize` date tests already do. Two
+  findings of #60's review are deferred under Open issues.
 - 2026-09-12 (v0.5.0): released in seven PRs (#40–#46) plus the two Step-0 PRs (#38, #39).
   The GitHub Release is pinned to the release PR's merge commit `cda1aa8`; PyPI via Trusted
   Publishing. **Verified from PyPI in a clean `/tmp` venv:** `carrel 0.5.0`; `doctor --json`
@@ -457,6 +477,25 @@
   notice a regression in colour or font. Fix: assert `/DA` and `/DS` in
   `tests/test_desk_db_cmds.py`, and set the font in `/DA` ourselves if a viewer is found that
   mis-renders it.
+
+- **`test_ocr_requested_without_the_binary_exits_3` cannot fail** (#60's review; it predates
+  #60). It runs `intake --ocr` without `--apply` and asserts `not (dest / "2026").exists()`. A
+  dry run creates nothing under `dest` whether or not the `ocrmypdf` pre-flight fires, so
+  deleting `adapters.require("ocrmypdf")` leaves it green, and from 2027 the year no longer
+  names the folder the scan would land in. The guard its comment claims ("exits before
+  anything moved") needs `--apply`, the inbox asserted intact and `dest` asserted to hold no
+  files (`dest` itself is created before the pre-flight), revert-checked against the
+  pre-flight. Deferred from #60: that PR repaired a red `main` and changed only what the
+  clock decided.
+
+- **`main` is tested only when something is pushed to it.** `.github/workflows/test.yml` runs
+  on `push` to `main`, `pull_request` and `workflow_dispatch`. With no merge between 2026-09-24
+  and #60, `main` showed its last green run for eight days while every branch failed the
+  intake clock test, and the failure was first read as the Dependabot bumps'. A weekly
+  `schedule:` run on `main` would show a calendar-coupled test, or a tool drifting on the
+  runners, on `main` itself, and would give the Windows promotion rule (Now) data in a quiet
+  week. Deferred from #60's review: a workflow change with its own review, and how often it
+  runs is the owner's call.
 
 ## Key facts for a fresh session
 
