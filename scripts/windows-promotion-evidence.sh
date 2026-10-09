@@ -50,7 +50,8 @@ for workflow in test.yml weekly.yml; do
   done <<<"$runs"
 done
 
-age_days=$(( ( $(date -u +%s) - $(date -u -d "$SINCE" +%s) ) / 86400 ))
+# python, not `date -d`: BSD date has no -d
+age_days="$(python3 -c 'import datetime as d, sys; since = d.datetime.fromisoformat(sys.argv[1].replace("Z", "+00:00")); print((d.datetime.now(d.timezone.utc) - since).days)' "$SINCE")"
 echo "---"
 echo "$seen attempt(s) since $SINCE ($age_days day(s) ago); $failed with a failed Windows job"
 if [ "$failed" -gt 0 ]; then

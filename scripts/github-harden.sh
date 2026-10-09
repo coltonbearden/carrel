@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # github-harden.sh — assert the GitHub repository configuration documented in
 # docs/REPO_SETTINGS.md. Idempotent: every call is a PUT/PATCH or a
-# create-or-update by name, so re-running only re-asserts state.
+# create-or-update by name, so re-running only re-asserts state. The one deletion:
+# a deployment pattern other than the intended one, named as it is removed.
 #
 # Usage: scripts/github-harden.sh [--repo owner/name] [--verify-only]
 # Needs: gh (authenticated as a repo admin), jq. Read-only with --verify-only.
@@ -14,7 +15,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --repo)        REPO="${2:?}"; shift 2 ;;
     --verify-only) VERIFY_ONLY=1; shift ;;
-    -h|--help)     sed -n '2,7p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help)     sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown flag: $1" >&2; exit 2 ;;
   esac
 done
@@ -140,18 +141,39 @@ JSON
 )"
 
 # -------------------------------------------------------------- environments
-say "environment: pypi (deploy only from v* tags)"
-apply -X PUT "repos/$REPO/environments/pypi" --input - <<'JSON'
+# Each environment deploys from exactly one pattern, written once here for apply and
+# for verify: environment, pattern type, pattern. docs.yml deploys on every event but
+# pull_request, and a dispatched workflow is whatever its branch says; the Pages
+# policy keeps a branch from deploying through the `github-pages` environment, which
+# is the one docs.yml names. A workflow naming another environment is not covered (D-029).
+DEFAULT_BRANCH="$(read_ "repos/$REPO" | jq -r '.default_branch // empty')"
+[ -n "$DEFAULT_BRANCH" ] || { echo "cannot read repos/$REPO (is gh authenticated?)" >&2; exit 1; }
+env_policies() { printf '%s\n' "pypi tag v*" "github-pages branch $DEFAULT_BRANCH"; }
+
+# Custom policies on, the wanted pattern present, every other one deleted: adding
+# without deleting cannot bring a drifted environment back, and a leftover `*`
+# deploys from anywhere.
+ensure_env_policy() {  # environment, pattern-type (branch|tag), pattern
+  local env="$1" type="$2" name="$3" policies wanted
+  say "environment: $env (deploy only from $type $name)"
+  [ "$VERIFY_ONLY" -eq 1 ] && return 0
+  api -X PUT "repos/$REPO/environments/$env" --input - >/dev/null <<'JSON'
 {"deployment_branch_policy": {"protected_branches": false, "custom_branch_policies": true}}
 JSON
-if [ "$VERIFY_ONLY" -eq 0 ]; then
-  existing="$(read_ "repos/$REPO/environments/pypi/deployment-branch-policies" | jq -r 'try (.branch_policies[] | select(.name == "v*" and .type == "tag") | .id) catch ""' | head -1)"
-  if [ -z "$existing" ]; then
-    api -X POST "repos/$REPO/environments/pypi/deployment-branch-policies" --input - >/dev/null <<'JSON'
-{"name": "v*", "type": "tag"}
-JSON
+  # `api`, not `read_`: a failed read must stop here, not pass for an empty list
+  policies="$(api "repos/$REPO/environments/$env/deployment-branch-policies?per_page=100")"
+  wanted="$(echo "$policies" | jq -r --arg n "$name" --arg t "$type" '[.branch_policies[] | select(.name == $n and .type == $t) | .id] | first // empty')"
+  if [ -z "$wanted" ]; then
+    jq -n --arg n "$name" --arg t "$type" '{name: $n, type: $t}' \
+      | api -X POST "repos/$REPO/environments/$env/deployment-branch-policies" --input - >/dev/null
   fi
-fi
+  echo "$policies" | jq -r --arg n "$name" --arg t "$type" '.branch_policies[] | select(.name != $n or .type != $t) | [.id, .type + ":" + .name] | @tsv' \
+    | while IFS=$'\t' read -r id pattern; do
+        api -X DELETE "repos/$REPO/environments/$env/deployment-branch-policies/$id" >/dev/null
+        printf '   removed deployment pattern %s from %s\n' "$pattern" "$env"
+      done
+}
+while read -r env type name <&3; do ensure_env_policy "$env" "$type" "$name"; done 3< <(env_policies)
 
 # ------------------------------------------------------------------- verify
 say "verify"
@@ -194,7 +216,7 @@ verify_ruleset() {  # name, expected-rule-types(csv), expected-bypass(json), [ex
   detail="$(read_ "repos/$REPO/rulesets/$rid")"
   [ "$(echo "$detail" | jq -r '.enforcement // "?"')" = "active" ] || { bad "ruleset '$name' not active"; return; }
   got_rules="$(echo "$detail" | jq -r '[.rules[].type] | sort | join(",")')"
-  [ "$got_rules" = "$(echo "$want_rules" | tr ',' '\n' | sort | paste -sd,)" ] && ok "ruleset '$name' rules: $got_rules" || bad "ruleset '$name' rules = $got_rules (want $want_rules)"
+  [ "$got_rules" = "$(echo "$want_rules" | tr ',' '\n' | sort | paste -sd, -)" ] && ok "ruleset '$name' rules: $got_rules" || bad "ruleset '$name' rules = $got_rules (want $want_rules)"
   got_bypass="$(echo "$detail" | jq -c '[.bypass_actors[] | {actor_id, actor_type, bypass_mode}] | sort_by(.actor_type, .actor_id)')"
   [ "$got_bypass" = "$(echo "$want_bypass" | jq -c 'sort_by(.actor_type, .actor_id)')" ] && ok "ruleset '$name' bypass: as designed" || bad "ruleset '$name' bypass actors drifted: $got_bypass"
   if [ -n "$want_checks" ]; then
@@ -206,8 +228,19 @@ verify_ruleset() {  # name, expected-rule-types(csv), expected-bypass(json), [ex
 verify_ruleset "main" "deletion,non_fast_forward,pull_request,required_linear_history,required_status_checks" "$MAIN_BYPASS" "$REQUIRED_CHECKS"
 verify_ruleset "release tags" "deletion,non_fast_forward,update" "$TAG_BYPASS"
 
-pol="$(read_ "repos/$REPO/environments/pypi/deployment-branch-policies" | jq -r 'try ([.branch_policies[] | .type + ":" + .name] | join(",")) catch ""')"
-[ "$pol" = "tag:v*" ] && ok "pypi environment deploys only from tag v*" || bad "pypi deployment policy = '$pol'"
+# the pattern list means nothing unless the environment is in custom-policy mode
+verify_env_policy() {  # environment, pattern-type, pattern
+  local env="$1" type="$2" name="$3" custom pol
+  custom="$(read_ "repos/$REPO/environments/$env" | jq -r '(.deployment_branch_policy // {}) | (.protected_branches == false and .custom_branch_policies == true)')"
+  pol="$(read_ "repos/$REPO/environments/$env/deployment-branch-policies?per_page=100" | jq -r 'try ([.branch_policies[] | .type + ":" + .name] | sort | join(",")) catch ""')"
+  if [ "$custom" = "true" ] && [ "$pol" = "$type:$name" ]; then
+    ok "$env environment deploys only from $type $name"
+  else
+    bad "$env deployment policy = '$pol' (want '$type:$name'), custom policies in force = $custom"
+  fi
+}
+# a redirect, not a pipe: `bad` has to set FAILED in this shell
+while read -r env type name <&3; do verify_env_policy "$env" "$type" "$name"; done 3< <(env_policies)
 
 if [ "$FAILED" -ne 0 ]; then echo "some checks failed" >&2; exit 1; fi
 say "all settings verified"

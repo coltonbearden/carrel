@@ -112,9 +112,16 @@ actually uses: `uv run`/`sync`/`build`, `git switch`/`fetch`/`rebase`/`worktree`
 `git add`/`git commit`/`git push` (the loop has to be able to land a branch),
 `git branch -d`/`-D`, the read-only and PR-management halves of `gh`,
 `claude plugin`, `mkdocs build`, and `scripts/github-harden.sh`. `gh workflow
-run` is exactly `test.yml` or `context7-refresh.yml`, with no `--ref` (`docs.yml`
-deploys GitHub Pages when dispatched), and `gh repo edit` is not granted at all,
-because no rule can limit it to `--description` (D-027). The deny list is written
+run` and `gh repo edit` are `ask` rules, so those two commands prompt however they
+are allowed elsewhere (a headless `claude -p` run has nobody to ask: the command is
+refused and the run carries on): `docs.yml` deploys GitHub Pages when
+dispatched, `--ref` runs a branch's copy of any workflow, and no rule can limit
+`gh repo edit` to `--description`. An ask rule is read before every allow rule, so
+neither a user-level `Bash(gh:*)` nor an exact allow in this file answers it
+(D-027, D-029). It is a prompt on the usual spelling, not a boundary: `gh api`,
+`gh workflow -R <repo> run` and a runner in front (`uv run gh ...`) are other
+routes to the same thing, and `tests/test_settings_permissions.py` lists the ones
+known to get past. The deny list is written
 as the unique prefixes git accepts for long options (`--for`, `--de`, …), and it is
 not a boundary: bundled short flags and quoting get past any text match, which is
 why a PreToolUse hook is the open fix.
@@ -153,8 +160,10 @@ Three further consequences are easy to get wrong:
   `-X` can appear anywhere in the line. The narrow "read-only GET" grant this
   file originally tried to express cannot be expressed. `scripts/github-harden.sh`
   is allow-listed instead — it is the audited wrapper that performs the ruleset
-  work, and it has a `--verify-only` mode. Ad-hoc `gh api` still prompts, which
-  is correct.
+  work, and it has a `--verify-only` mode. Its apply mode writes repository
+  settings and is covered by the same allow. Ad-hoc `gh api` still prompts as far
+  as this file goes, which is correct; a user-level `Bash(gh:*)` or `Bash(gh api:*)`
+  allow removes that prompt on the machine that has it.
 - **`gh pr merge` is allowed, and the merge gate is not enforced here.** A
   prefix matcher cannot tell "merged after the review completed and its findings
   were fixed" from "merged the instant CI went green" — it only sees the command

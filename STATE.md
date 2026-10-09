@@ -58,17 +58,21 @@
     `weekly.yml` into `test.yml` was run once on #65 through a temporary `pull_request`
     trigger, removed before the merge. Confirm a scheduled run exists:
     `gh run list --workflow weekly.yml --event schedule`.
-  - **Owner's step:** restrict the `github-pages` environment to deployments from `main`
-    (Settings → Environments → github-pages → Deployment branches), and teach
-    `scripts/github-harden.sh` to set and verify it as it does for `pypi`. D-027 narrowed
-    `gh workflow run` to exact commands, but a workflow file is whatever the dispatched branch
-    says, so only an environment policy stops a branch deploying Pages.
-  - **Owner's call:** the user-level `~/.claude/settings.json` allows `Bash(gh:*)`, which
-    re-grants every `gh` command the project file narrows (D-027) — workflow dispatch and
-    `gh repo edit` included — in the owner's own sessions. Narrowing it is the owner's file.
 
 ## Done
 
+- 2026-10-09: the two things D-027 left open were taken up (#66, D-029). The `github-pages`
+  environment deploys only from `main`: the policy was already set on GitHub, and
+  `scripts/github-harden.sh` now converges both environments to one pattern each, naming
+  any pattern it removes, and verifies them, mode included (`--verify-only` read every
+  setting back green;
+  `tests/test_github_harden.py` runs the script against a stand-in `gh`, which is how its
+  ruleset check turned out never to have passed on macOS: BSD `paste` wants a file operand). `gh workflow run`
+  and `gh repo edit` are `ask` rules in `.claude/settings.json`, which hold against the
+  owner's user-level `Bash(gh:*)` allow where D-027's "not allowed" did not; checked live,
+  the one matching command stopped for approval. Every plain dispatch asks now, so the two
+  exact dispatch allows are gone. Neither is a boundary; what still gets past is under Open
+  issues.
 - 2026-10-09: `main` is tested every Monday at 06:17 UTC as well as on push (#65, D-028), so
   a failure that arrives with the calendar shows up there within a week, as a red
   `tests (weekly)` run. The schedule is in a workflow of its own,
@@ -534,8 +538,11 @@
   `{"libraryName": "/<owner>/<repo>"}`), and its docs give 400 as "invalid parameters". The
   workflow prints the status code only, by design, because the log is public, so the reason
   is not visible from here. Nothing depends on it: the check is not required and Context7
-  re-indexes on its own schedule. Next: see whether the next merge that touches `docs/`
-  repeats it, and if it does, read the response body in a session that holds the key.
+  re-indexes on its own schedule. It repeated on #65's merge, so three 400s on 2026-10-09,
+  all within a day of the 200 at 01:10Z, which would fit a once-a-day refresh limit
+  (unverified); Context7 still serves `/coltonbearden/carrel`. Next: see whether a run more
+  than a day after the last 200 succeeds, and if not, read the response body in a session
+  that holds the key.
 
 - **A red weekly run does not show on the README.** The `tests` badge reads `test.yml` on
   `main`, which is the last push's result, and `gh run list --workflow test.yml` says the
@@ -611,6 +618,22 @@
   need Dependabot's `github-actions` entry to list `.github/actions/*` so its pinned SHA keeps
   moving. Worth doing when a fourth rule arrives.
 
+- **The `gh` ask rules are a prompt on two spellings, not a boundary, and the Pages policy
+  covers one environment.** `tests/test_settings_permissions.py` lists what gets past
+  `Bash(gh workflow run:*)` and `Bash(gh repo edit:*)`: under this file's own allows, a
+  runner or a git option in front (`uv run gh workflow run ...`, `git rebase --exec '...'`);
+  under the owner's user-level `Bash(gh:*)` and `Bash(gh api:*)`, the same command with a
+  flag in the middle (`gh workflow -R <repo> run`) and `gh api`, which can dispatch a
+  workflow, edit the repository or delete a deployment policy. `scripts/github-harden.sh` is
+  allowed whole, and its apply mode writes repository settings. On the GitHub side the
+  deploy-from-`main` policy applies to jobs that name the `github-pages` environment;
+  `actions/deploy-pages` accepts another name, so a pushed branch with its own workflow file
+  could still publish. Found by #66's review, which replaced "an unattended run cannot" with
+  what the rules actually do. Fix: the PreToolUse hook of the next entry, extended to `gh`;
+  narrower `uv run` allows; and for the script, allowing only `--verify-only`. Deferred
+  because each changes what the release loop may do without a prompt, which the owner
+  decides (he chose the two ask rules on 2026-10-09 and nothing wider).
+
 - **`.claude/settings.json`'s deny list matches text, and git has more spellings than rules.**
   Under `Bash(git push:*)`, `git add:*` and `git commit:*` these still run unprompted: bundled
   short options with the flag after the first letter (`git push -uf`, `git commit -anm`),
@@ -681,6 +704,10 @@
   → `claude plugin install <plugin>@carrel`.
 - `HANDOFF.md` at the repo root is session-local (regenerated by the handoff skill) and
   git-ignored.
+- `gh workflow run` and `gh repo edit` prompt in an interactive session, whatever else is
+  allowed (ask rules, D-029). A headless run (`claude -p`) has nobody to ask: the command is
+  refused and the run carries on. The weekly run needs no dispatch. The rules match those two
+  spellings only (Open issues).
 - `weekly.yml` (`tests (weekly)`) runs `test.yml` on `main` every Monday at 06:17 UTC (D-028).
   In a public repository GitHub disables a scheduled workflow after 60 days without
   repository activity: if `gh run list --workflow weekly.yml --event schedule` goes quiet,

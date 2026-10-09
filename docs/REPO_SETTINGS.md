@@ -34,6 +34,9 @@ Release tags cannot be deleted, moved, or force-updated. No bypass — nobody, i
 - SHA pinning required (all workflows pin to commit SHAs with a version comment).
 - Default `GITHUB_TOKEN` permissions: read-only; Actions cannot approve PRs.
 - Environment `pypi`: deployments only from `v*` tags.
+- Environment `github-pages`: deployments only from `main`. `docs.yml` deploys on every
+  event but `pull_request`, so this keeps a dispatched branch from deploying through it. A
+  workflow that names another environment is not covered (D-029).
 
 ## Secrets
 
@@ -58,6 +61,11 @@ vulnerability reporting on, CodeQL default setup configured (extended), Actions
 restricted to the allow-list with SHA pinning required, `pypi` environment
 limited to `v*` tags. PR #7 itself was the first change to land under the
 required checks (`lint`, `test (py3.12/3.13/3.14)`, `test-minimal`, `test-minimal (macos)`).
+
+2026-10-09: `scripts/github-harden.sh --verify-only` read every setting above back again,
+the `github-pages` policy included. That policy was already `main` only; the script had
+not set or checked it before. For both environments it now checks that custom policies are
+in force as well as which patterns exist, and applying it deletes any other pattern.
 
 ## Not enforced (deliberately)
 
