@@ -9,7 +9,11 @@
   verification record is the v0.5.0 entry under Done. 33 commands, 14 MCP tools, 19 adapters,
   9 marketplace plugins, desk schema v2. Repo `coltonbearden/carrel`, docs at
   https://coltonbearden.github.io/carrel/, PyPI package `carrel`.
-- **In flight:** nothing. #48 (Context7) was the v0.5.0 wave's last PR. The two Dependabot PRs
+- **In flight:** three Dependabot PRs are open and unreviewed: #57 (`setup-uv` 10.2.0), #58
+  (pypdf 6.19.0, ruff 0.16.10, mypy 2.4.0, uv 0.12.22) and #59 (urllib3 2.8.0). Each needs its
+  own `/code-review <pr> high` before it merges, and a branch opened before 2026-10-08 needs
+  `gh pr update-branch` first to pick up the intake test fix (Done, 2026-10-08).
+  #48 (Context7) was the v0.5.0 wave's last PR. The two Dependabot PRs
   after it merged: #49 (`setup-uv` 10.1.0) as `d4619cf` and #50 (pypdf 6.18.1, ruff 0.16.7,
   pre-commit hooks run from `uv.lock`) as `fe0695a`. The owner items their reviews raised are
   decided and landed — CI's uv cache and uv pin, the pypdf floor (D-026) and the
@@ -34,7 +38,8 @@
     owner's go-ahead in that session: drop
     `continue-on-error` in `.github/workflows/test.yml`, add the check to `REQUIRED_CHECKS`,
     then run `scripts/github-harden.sh`. (`test-minimal (macos)` was added on 2026-09-11 under
-    the owner's authorisation in the v0.4.1 brief.)
+    the owner's authorisation in the v0.4.1 brief.) Discount the red runs of 2026-10-01 to
+    2026-10-08: every test job failed on the intake clock test (Done), not on Windows.
   - **Owner's step:** restrict the `github-pages` environment to deployments from `main`
     (Settings → Environments → github-pages → Deployment branches), and teach
     `scripts/github-harden.sh` to set and verify it as it does for `pypi`. D-027 narrowed
@@ -46,6 +51,13 @@
 
 ## Done
 
+- 2026-10-08: `tests/test_intake.py::test_layout_and_fallback_options` no longer depends on the
+  day it runs. The `inbox` fixture's `note.md` has no date of its own, so `intake` dates it by
+  mtime, and the test expected the quarter that was current when it was written (`FY2027/Q1`
+  with `--fiscal-start 7`, true only from July to September 2026). From 2026-10-01 it failed on
+  every branch, while `main` still showed its last run, a green one from 2026-09-24. The code
+  was right: October is Q2 of a July fiscal year. The fixture now pins the note's mtime. A file
+  that a test dates by mtime needs `os.utime`, as the `organize` date tests already do.
 - 2026-09-12 (v0.5.0): released in seven PRs (#40–#46) plus the two Step-0 PRs (#38, #39).
   The GitHub Release is pinned to the release PR's merge commit `cda1aa8`; PyPI via Trusted
   Publishing. **Verified from PyPI in a clean `/tmp` venv:** `carrel 0.5.0`; `doctor --json`
