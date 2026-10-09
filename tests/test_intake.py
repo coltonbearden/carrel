@@ -7,12 +7,12 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
-from conftest import needs
+from conftest import PINNED_MTIME, needs
 
 from carrel.cli import cli
 from carrel.commands.intake import (
@@ -26,10 +26,6 @@ from carrel.commands.intake import (
 from carrel.core.db import DeskDB
 from carrel.core.filetypes import FileType, detect
 from carrel.core.output import CarrelInputError
-
-# For files that carry no date of their own. Noon local time, so the date read back from the
-# mtime is 2020-09-13 in every timezone, and it can never be the day the suite runs.
-PINNED_MTIME = datetime(2020, 9, 13, 12, 0).timestamp()
 
 
 def run(*args: str, expect: int = 0):

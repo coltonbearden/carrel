@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import shutil
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,11 @@ import pytest
 from carrel.core import adapters
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
+
+# For files that carry no date of their own: `os.utime(path, (PINNED_MTIME, PINNED_MTIME))`.
+# Noon local time, so the date read back from the mtime is 2020-09-13 in every timezone
+# (the commands read it in local time), and it can never be the day the suite runs.
+PINNED_MTIME = datetime(2020, 9, 13, 12, 0).timestamp()
 
 
 @pytest.fixture(scope="session")

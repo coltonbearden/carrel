@@ -41,18 +41,12 @@
     the rule as written rather than promote on the runs of one evening. The job has been green
     in all six `main` runs since, the run cancelled on #64's merge included, and
     `tests (weekly)` adds a run on 2026-10-12 and 2026-10-19 even if nothing merges. Count by
-    the job, not by the run: `continue-on-error` keeps a run green when this job fails, so
-    `gh run list` cannot show it. This prints the job's result for every run in the window:
-
-    ```sh
-    for w in test.yml weekly.yml; do
-      gh run list --workflow "$w" --branch main --created '>=2026-10-09' --limit 200 \
-        --json databaseId --jq '.[].databaseId'
-    done | xargs -I{} gh run view {} --json createdAt,jobs --jq \
-      '[.createdAt, (.jobs[] | select(.name | endswith("test-minimal (windows)")) | .conclusion)] | @tsv'
-    ```
-
-    A `failure` restarts the count; `cancelled`, or a run with no line for the job, is no
+    the job, not by the run: `continue-on-error` keeps a run green when this job fails, and a
+    re-run hides the first attempt, so `gh run list` cannot show either.
+    `scripts/windows-promotion-evidence.sh` (read-only) prints the job's result for every
+    attempt of every `main` run of both workflows since the count started, leaves out pull
+    requests, and exits 0 only when the window is 14 days old and nothing failed. A `failure`
+    restarts the count (pass `--since` the next green run); `cancelled` or `absent` is no
     evidence either way. Settle the `kill_tree` flake first (Open issues): it failed this job
     once on a pull request on 2026-10-09, and a required job that fails at random blocks
     merges at random. Promotion changes branch protection, so it needs the owner's go-ahead
@@ -76,7 +70,8 @@
 ## Done
 
 - 2026-10-09: `main` is tested every Monday at 06:17 UTC as well as on push (#65, D-028), so
-  it no longer shows only its last merge's result. The schedule is in a workflow of its own,
+  a failure that arrives with the calendar shows up there within a week, as a red
+  `tests (weekly)` run. The schedule is in a workflow of its own,
   `weekly.yml` (`tests (weekly)`), which calls `test.yml`: GitHub can disable a scheduled
   workflow in a quiet repository, and `test.yml` reports the required checks.
   `tests/test_workflows.py` lists every workflow's triggers exactly, so none gains a timer
@@ -541,6 +536,22 @@
   is not visible from here. Nothing depends on it: the check is not required and Context7
   re-indexes on its own schedule. Next: see whether the next merge that touches `docs/`
   repeats it, and if it does, read the response body in a session that holds the key.
+
+- **A red weekly run does not show on the README.** The `tests` badge reads `test.yml` on
+  `main`, which is the last push's result, and `gh run list --workflow test.yml` says the
+  same; only the Actions tab and `gh run list --workflow weekly.yml` show `tests (weekly)`.
+  Fix: a second badge for `weekly.yml`. Deferred from #65's review: until the first
+  scheduled run exists (2026-10-12) the badge would read "no status", and the header is
+  brand surface (D-024).
+
+- **The weekly run cannot use the push runs' caches.** Called through `weekly.yml`,
+  `github.workflow` is the caller's name, so every `setup-uv` step in `test.yml` gets a
+  `tests (weekly)-<job>` cache key: each Monday's run starts mostly cold and saves about
+  300 MB of caches that only the next weekly run could restore, if GitHub has not evicted
+  them (the repository held 97 caches, 4.4 GB, on 2026-10-09). Nothing breaks. Fix: skip the
+  cache save on `schedule`, or key by a literal name. Deferred from #65's review because the
+  key shape is one of the rules #49's review set (`tests/test_workflows.py`), and changing it
+  wants its own look.
 
 - **`setup-uv`'s built-in checksums trail the uv that `uv.lock` pins.** The action checks the
   uv it downloads against a table compiled into it, and for a version the table lacks it

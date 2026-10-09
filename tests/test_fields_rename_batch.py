@@ -8,13 +8,13 @@ import os
 import shutil
 import subprocess
 import sys
-from datetime import date, datetime
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
-from conftest import needs, not_as_root
+from conftest import PINNED_MTIME, needs, not_as_root
 
 from carrel.cli import cli
 from carrel.commands.batch import collect_files, load_manifest_done, run_batch
@@ -291,9 +291,7 @@ def test_rename_cli_plan_apply_and_desk_follow(fixtures: Path, tmp_path: Path):
     inv.write_bytes((fixtures / "invoice.txt").read_bytes())
     note = tmp_path / "note.md"
     note.write_text("# a note\n\nno references here\n", encoding="utf-8")
-    # no date of its own, so rename dates it by mtime: noon local time on a fixed past day
-    pinned = datetime(2020, 9, 13, 12, 0).timestamp()
-    os.utime(note, (pinned, pinned))
+    os.utime(note, (PINNED_MTIME, PINNED_MTIME))  # no date of its own: rename dates it by mtime
     run("--root", str(tmp_path), "tag", "add", str(inv), "keepme")
     plan = run_json("--root", str(tmp_path), "rename", str(tmp_path))
     by_src = {Path(e["src"]).name: e for e in plan}
