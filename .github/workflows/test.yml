@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  # weekly.yml calls this file every Monday. The schedule is not here on purpose:
+  # GitHub disables a scheduled workflow in a quiet public repository, and this
+  # one reports the required checks (D-028).
+  workflow_call:
 
 permissions:
   contents: read
@@ -161,7 +165,7 @@ jobs:
         run: uv run carrel doctor
 
   test-minimal-windows:
-    # advisory until green for one release (BUILD_PLAN scope guard)
+    # advisory until promoted; the rule and its date are in D-028 (docs/DECISIONS.md)
     name: test-minimal (windows)
     runs-on: windows-latest
     timeout-minutes: 30
@@ -198,5 +202,5 @@ jobs:
         # D-f: the whole suite runs here so every push records the current
         # Windows failure list; the per-module table is in docs/BUILD_PLAN.md.
         # continue-on-error above keeps the job advisory until it has been
-        # green on main for two consecutive weeks (docs/REPO_SETTINGS.md).
+        # green on main for two consecutive weeks (D-028, docs/DECISIONS.md).
         run: uv run pytest
