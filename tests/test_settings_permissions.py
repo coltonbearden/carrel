@@ -311,12 +311,15 @@ def test_every_workflow_dispatch_asks_whatever_else_is_allowed():
     approved it. An ask rule is read before every allow rule, so it holds against
     that one, and against a more specific allow in this file too, which is why
     `test.yml` asks as well and no dispatch is allowed here any more (D-029).
+    With the Pages branch policy verified by `scripts/github-harden.sh`, the
+    prompt is the second control on a deploy, not the only one.
     `--ref <branch>` would run that branch's copy of the workflow, which an
     unattended run can push first.
     """
     for cmd in (
         "gh workflow run",
         "gh workflow run test.yml",
+        "gh workflow run weekly.yml",
         "gh workflow run context7-refresh.yml",
         "gh workflow run docs.yml",
         "gh workflow run publish.yml",
