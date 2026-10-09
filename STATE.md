@@ -9,16 +9,14 @@
   verification record is the v0.5.0 entry under Done. 33 commands, 14 MCP tools, 19 adapters,
   9 marketplace plugins, desk schema v2. Repo `coltonbearden/carrel`, docs at
   https://coltonbearden.github.io/carrel/, PyPI package `carrel`.
-- **In flight:** #57 (`setup-uv` 10.2.0) is open and unreviewed, and needs its own
-  `/code-review 57 high` before it merges. Its green checks are from 2026-09-28, before the
-  intake test began failing on 2026-10-01 (Done, #60), and it is behind `main`; the ruleset's
-  up-to-date rule makes every PR take `main`'s head before it merges, which reruns them. Two
-  ways to update a Dependabot branch: `@dependabot rebase` keeps the PR Dependabot's own;
+- **In flight:** no Dependabot PR is open. #57 (`setup-uv` 10.2.0) merged on 2026-10-09
+  (Done), and Dependabot closed #61 and #62 itself once #58 had fixed their alerts. Its Monday
+  run should propose pypdf 6.20.0 and `setup-uv` 10.3.0, both under Open issues. The ruleset's
+  up-to-date rule makes every PR take `main`'s head before it merges, which reruns its checks.
+  Two ways to update a Dependabot branch: `@dependabot rebase` keeps the PR Dependabot's own;
   `gh pr update-branch` adds a merge commit that is not Dependabot's, after which it stops
   rebasing that PR by itself (`@dependabot recreate` restores it).
-  #61 (pypdf 6.19.0 alone) and #62 (uv 0.12.18 alone), which Dependabot opened for the alerts
-  #58 closed (Done), have nothing left to add. If either is still open, close it; do not
-  merge it.
+  #65 (the weekly `tests` run) is open and is reviewed next.
   #48 (Context7) was the v0.5.0 wave's last PR. The two Dependabot PRs
   after it merged: #49 (`setup-uv` 10.1.0) as `d4619cf` and #50 (pypdf 6.18.1, ruff 0.16.7,
   pre-commit hooks run from `uv.lock`) as `fe0695a`. The owner items their reviews raised are
@@ -58,6 +56,17 @@
 
 ## Done
 
+- 2026-10-09: #57 (`setup-uv` 10.1.0 to 10.2.0, all seven steps in `test.yml`, `docs.yml` and
+  `publish.yml`) merged. `/code-review 57 high` found no defect in the bump. The pin is
+  upstream's signed `v10.2.0` tag commit; the built bundle differs from 10.1.0's in a
+  `save-cache: auto` default that skips saving on `merge_group` events only (no workflow here
+  has one), in built-in checksums for uv 0.12.13 to 0.12.17, and in `smol-toml` 1.8.0, which
+  reads `uv.lock`; and every job installed uv 0.12.22 from `uv.lock` on Linux, macOS and
+  Windows. Fixed with the PR: `tests/test_workflows.py` now fails when the `setup-uv` steps
+  are not all on one pin, and the `ci` label that `.github/dependabot.yml` names but the
+  repository lacked exists, so Dependabot stops posting a label error on every Actions PR.
+  Two findings are deferred under Open issues: a Windows process-tree flake that this PR's
+  CI surfaced, and the checksum table that trails `uv.lock`.
 - 2026-10-09: #58 (Dependabot's `python-deps` group) merged as `ff9debc`, and the pypdf floor
   followed it in #64. `uv.lock` moved to pypdf 6.19.0, ruff 0.16.10, mypy 2.4.0 and uv
   0.12.22, and two compiled packages mypy already depended on moved with it: ast-serialize
@@ -459,6 +468,32 @@
   before anyone had time to notice it. Fix: a `cooldown` block with `default-days` for both
   ecosystems, which delays version updates only, never security updates. Deferred from #58's
   review because how long to wait is the owner's call.
+
+- **On Windows a timed-out `--run` action can outlive `kill_tree`.**
+  `tests/test_core_cli.py::test_watch_timeout_orphan_check` failed once in #57's
+  `test-minimal (windows)` job and passed on the re-run of the same commit: the watcher
+  reported exit 124, and the worker still wrote its marker 4.5 s later. `core/actions.py`
+  runs `taskkill /F /T` on the shell's pid and discards its exit code and output, so nothing
+  says why the tree survived; the runner was slow (148 s for the suite against about 100 s),
+  and a child created after taskkill's snapshot of the tree is the likely cause, unverified.
+  A Windows user of `watch` or `batch --run --action-timeout` can get a worker that keeps
+  writing after carrel reports it killed. It also bears on promoting `test-minimal (windows)`
+  (Now): #57's review counted this as one failure in roughly the last sixty Windows jobs, and
+  a required job that fails that often blocks merges at random. Fix: put the action in a
+  Windows job object so the kill cannot miss a child, and report what taskkill said when it
+  fails. Deferred from #57, a pin bump: the fix is Windows-only process code that can be
+  tested only in CI.
+
+- **`setup-uv`'s built-in checksums trail the uv that `uv.lock` pins.** The action checks the
+  uv it downloads against a table compiled into it, and for a version the table lacks it
+  takes both the download URL and the sha256 from a manifest fetched at run time
+  (`astral-sh/versions`). 10.2.0's table ends at uv 0.12.17 and the lock pins 0.12.22, so
+  every job, the release build in `publish.yml` included, trusts that manifest; the action's
+  SHA pin does not cover it. Nothing is wrong today: 10.3.0 (published 2026-10-09) carries
+  0.12.22, and #57's review found its three hashes equal to what the manifest serves.
+  Dependabot's next run should propose 10.3.0, but uv moves weekly and the table moves only
+  with the action, so the gap reopens unless the two are bumped together. Deferred from
+  #57's review: 10.3.0 came out after the branch was reviewed and wants its own review.
 
 - **No CI job installs the declared floors.** CI tests `uv.lock`, and every declared floor
   but one sits well below it: pillow 10.0 against 12.3.0, click 8.1 against 8.5.0, rich 13.0
