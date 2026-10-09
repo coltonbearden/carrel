@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import pytest
@@ -27,9 +27,9 @@ from carrel.core.db import DeskDB
 from carrel.core.filetypes import FileType, detect
 from carrel.core.output import CarrelInputError
 
-# 2020-09-13 12:26 UTC, for files that carry no date of their own. Mid-month and mid-day, so no
-# timezone moves it out of September 2020, and it can never be the day the suite runs.
-PINNED_MTIME = 1_600_000_000
+# For files that carry no date of their own. Noon local time, so the date read back from the
+# mtime is 2020-09-13 in every timezone, and it can never be the day the suite runs.
+PINNED_MTIME = datetime(2020, 9, 13, 12, 0).timestamp()
 
 
 def run(*args: str, expect: int = 0):
