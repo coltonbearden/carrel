@@ -16,7 +16,6 @@
   Two ways to update a Dependabot branch: `@dependabot rebase` keeps the PR Dependabot's own;
   `gh pr update-branch` adds a merge commit that is not Dependabot's, after which it stops
   rebasing that PR by itself (`@dependabot recreate` restores it).
-  #65 (the weekly `tests` run) is open and is reviewed next.
   #48 (Context7) was the v0.5.0 wave's last PR. The two Dependabot PRs
   after it merged: #49 (`setup-uv` 10.1.0) as `d4619cf` and #50 (pypdf 6.18.1, ruff 0.16.7,
   pre-commit hooks run from `uv.lock`) as `fe0695a`. The owner items their reviews raised are
@@ -40,13 +39,17 @@
     2026-10-08: `main` had no `tests` run between 2026-09-24 and #60's merge, and on 2026-10-09
     the owner chose to wait for the rule as written rather than promote on the runs of one
     evening. Its Windows job has been green on every `main` run since (#60, #59 and #63 on
-    2026-10-08, #58 on 2026-10-09), and `tests` now also runs on `main` every Monday at 06:17
-    UTC, so 2026-10-12 and 2026-10-19 each add a run even if nothing merges. Read
-    `gh run list --workflow tests --branch main` before promoting: a red Windows job restarts
-    the count. Promotion changes branch protection, so it needs the owner's go-ahead in that
-    session: drop `continue-on-error` in `.github/workflows/test.yml`, add the check to
-    `REQUIRED_CHECKS`, then run `scripts/github-harden.sh`. (`test-minimal (macos)` was added
-    on 2026-09-11 under the owner's authorisation in the v0.4.1 brief.)
+    2026-10-08; #58, #64 and #57 on 2026-10-09), and `tests` now also runs on `main` every
+    Monday at 06:17 UTC, so 2026-10-12 and 2026-10-19 each add a run even if nothing merges.
+    Read `gh run list --workflow tests --branch main` before promoting, and count by the
+    Windows job, not by the run: a red Windows job restarts the count, a run that is red or
+    cancelled for another reason (a slow package mirror, a newer push) does not. Settle the
+    `kill_tree` flake first (Open issues): it failed this job once on a pull request on
+    2026-10-09, and a required job that fails at random blocks merges at random. Promotion
+    changes branch protection, so it needs the owner's go-ahead in that session: drop
+    `continue-on-error` in `.github/workflows/test.yml`, add the check to `REQUIRED_CHECKS`,
+    then run `scripts/github-harden.sh`. (`test-minimal (macos)` was added on 2026-09-11 under
+    the owner's authorisation in the v0.4.1 brief.)
   - **Dated check, 2026-10-12:** the first scheduled `tests` run. GitHub fires a schedule only
     from the default branch, so nothing could exercise it before the merge. Confirm a run
     exists: `gh run list --workflow tests --event schedule`.
@@ -61,6 +64,11 @@
 
 ## Done
 
+- 2026-10-09: `tests` also runs on `main` every Monday at 06:17 UTC (#65, D-028), so `main`
+  no longer shows only its last merge's result. `tests/test_workflows.py` holds the schedule
+  to one weekly run and keeps every other workflow off a timer. The rule that a test never
+  depends on the day it runs is in `CLAUDE.md`'s Testing section as well as
+  `docs/CONTRIBUTING.md`. The first scheduled run is 2026-10-12 (Also pending).
 - 2026-10-09: #57 (`setup-uv` 10.1.0 to 10.2.0, all seven steps in `test.yml`, `docs.yml` and
   `publish.yml`) merged. `/code-review 57 high` found no defect in the bump. The pin is
   upstream's signed `v10.2.0` tag commit; the built bundle differs from 10.1.0's in a
@@ -488,6 +496,36 @@
   Windows job object so the kill cannot miss a child, and report what taskkill said when it
   fails. Deferred from #57, a pin bump: the fix is Windows-only process code that can be
   tested only in CI.
+
+- **A `watch` test with a four-second budget failed once on macOS, in a required job.**
+  `tests/test_fields_rename_batch.py::test_watch_existing_stable_done_error_dirs_and_log`
+  runs `watch --existing --timeout 4 --stable 0.2` and expects both files handled before the
+  timeout. In #57's `test-minimal (macos)` job on 2026-10-09 the watcher printed its
+  `watching` line and nothing else; the re-run of the same commit passed. With the Windows
+  failure above that is two `watch` tests in one day that depend on how fast a runner is.
+  `test-minimal (macos)` is required, so each such failure costs a manual re-run before a
+  merge. Fix: give the test a budget that a slow runner meets, or wait on the event instead
+  of the clock. Deferred from #65, which changes when CI runs, not what the tests assume.
+
+- **The full-capability jobs depend on the runner's package mirror.** Each `test (py3.x)` job
+  installs about 160 packages with `apt-get` before any test runs, usually in about a
+  minute. In three runs on 2026-10-09 a job was still in that step ten minutes in; the one
+  log read showed the Azure Ubuntu mirror serving packages slowly, not a hang. Two were
+  cancelled and re-run by hand and the third was cancelled by the next push to `main`, which
+  is why `main`'s `tests` run on #64's merge commit reads cancelled with six of seven jobs
+  green. Left alone such a job ends at its 30-minute timeout as a red run that says nothing
+  about carrel, and the weekly scheduled run has nobody watching it. Fix: a short timeout on
+  the install step with one retry, or a cached package set. Deferred from #65: it needs its
+  own look at what the allowed-actions list permits.
+
+- **`context7-refresh` got HTTP 400 on 2026-10-09.** The run for #64's merge commit and its
+  re-run both failed at `Request a refresh`; the run for #60's merge the night before
+  returned 200. The request is the one Context7 documents (`POST /api/v1/refresh` with
+  `{"libraryName": "/<owner>/<repo>"}`), and its docs give 400 as "invalid parameters". The
+  workflow prints the status code only, by design, because the log is public, so the reason
+  is not visible from here. Nothing depends on it: the check is not required and Context7
+  re-indexes on its own schedule. Next: see whether the next merge that touches `docs/`
+  repeats it, and if it does, read the response body in a session that holds the key.
 
 - **`setup-uv`'s built-in checksums trail the uv that `uv.lock` pins.** The action checks the
   uv it downloads against a table compiled into it, and for a version the table lacks it
