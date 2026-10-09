@@ -106,9 +106,12 @@ actually uses: `uv run`/`sync`/`build`, `git switch`/`fetch`/`rebase`/`worktree`
 `git add`/`git commit`/`git push` (the loop has to be able to land a branch),
 `git branch -d`/`-D`, the read-only and PR-management halves of `gh`,
 `claude plugin`, `mkdocs build`, and `scripts/github-harden.sh`. `gh workflow
-run` is exactly `test.yml` or `context7-refresh.yml`, with no `--ref` (`docs.yml`
-deploys GitHub Pages when dispatched), and `gh repo edit` is not granted at all,
-because no rule can limit it to `--description` (D-027). The deny list is written
+run` and `gh repo edit` are `ask` rules, so every dispatch and every repository
+edit stops for a person: `docs.yml` deploys GitHub Pages when dispatched, `--ref`
+runs a branch's copy of any workflow, and no rule can limit `gh repo edit` to
+`--description`. An ask rule is read before every allow rule, so neither a
+user-level `Bash(gh:*)` nor an exact allow in this file answers it (D-027,
+D-029). The deny list is written
 as the unique prefixes git accepts for long options (`--for`, `--de`, …), and it is
 not a boundary: bundled short flags and quoting get past any text match, which is
 why a PreToolUse hook is the open fix.

@@ -153,6 +153,21 @@ JSON
   fi
 fi
 
+# docs.yml deploys on every event but pull_request, and a dispatched workflow is
+# whatever its branch says, so only this policy keeps a branch off the site (D-029).
+say "environment: github-pages (deploy only from main)"
+apply -X PUT "repos/$REPO/environments/github-pages" --input - <<'JSON'
+{"deployment_branch_policy": {"protected_branches": false, "custom_branch_policies": true}}
+JSON
+if [ "$VERIFY_ONLY" -eq 0 ]; then
+  existing="$(read_ "repos/$REPO/environments/github-pages/deployment-branch-policies" | jq -r 'try (.branch_policies[] | select(.name == "main" and .type == "branch") | .id) catch ""' | head -1)"
+  if [ -z "$existing" ]; then
+    api -X POST "repos/$REPO/environments/github-pages/deployment-branch-policies" --input - >/dev/null <<'JSON'
+{"name": "main", "type": "branch"}
+JSON
+  fi
+fi
+
 # ------------------------------------------------------------------- verify
 say "verify"
 r="$(read_ "repos/$REPO")"
@@ -208,6 +223,9 @@ verify_ruleset "release tags" "deletion,non_fast_forward,update" "$TAG_BYPASS"
 
 pol="$(read_ "repos/$REPO/environments/pypi/deployment-branch-policies" | jq -r 'try ([.branch_policies[] | .type + ":" + .name] | join(",")) catch ""')"
 [ "$pol" = "tag:v*" ] && ok "pypi environment deploys only from tag v*" || bad "pypi deployment policy = '$pol'"
+
+pol="$(read_ "repos/$REPO/environments/github-pages/deployment-branch-policies" | jq -r 'try ([.branch_policies[] | .type + ":" + .name] | join(",")) catch ""')"
+[ "$pol" = "branch:main" ] && ok "github-pages environment deploys only from branch main" || bad "github-pages deployment policy = '$pol'"
 
 if [ "$FAILED" -ne 0 ]; then echo "some checks failed" >&2; exit 1; fi
 say "all settings verified"

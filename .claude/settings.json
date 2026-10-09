@@ -46,8 +46,6 @@
       "Bash(gh repo view:*)",
       "Bash(gh workflow view:*)",
       "Bash(gh workflow list:*)",
-      "Bash(gh workflow run test.yml)",
-      "Bash(gh workflow run context7-refresh.yml)",
       "Bash(scripts/github-harden.sh:*)",
       "Bash(claude plugin validate:*)",
       "Bash(claude plugin list:*)",
@@ -55,6 +53,10 @@
       "Bash(claude plugin marketplace list:*)",
       "Bash(claude plugin install:*)",
       "Bash(mkdocs build:*)"
+    ],
+    "ask": [
+      "Bash(gh workflow run:*)",
+      "Bash(gh repo edit:*)"
     ],
     "deny": [
       "Bash(rm -rf /bin:*)",

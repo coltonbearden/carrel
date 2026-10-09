@@ -23,6 +23,11 @@ https://code.claude.com/docs/en/permissions ("Wildcard patterns"):
 Tests assert on real command strings rather than on rule spellings, so a rule
 rewritten into a different but equivalent shape keeps passing and a rule that
 stops covering a command fails.
+
+Rules are read deny, then ask, then allow, and the first match decides
+("Manage permissions"): a more specific allow rule does not lift an ask rule,
+and neither does an allow rule from another settings file. `_runs_unprompted`
+follows that order.
 """
 
 from __future__ import annotations
@@ -39,7 +44,7 @@ SETTINGS = REPO_ROOT / ".claude" / "settings.json"
 @functools.cache
 def _rules(kind: str) -> tuple[str, ...]:
     data = json.loads(SETTINGS.read_text(encoding="utf-8"))
-    return tuple(data["permissions"][kind])
+    return tuple(data["permissions"].get(kind, ()))
 
 
 def _bash_rules(kind: str) -> list[str]:
@@ -67,9 +72,20 @@ def _covered(kind: str, command: str) -> bool:
     return any(_matches(rule, command) for rule in _bash_rules(kind))
 
 
-def _runs_unprompted(command: str) -> bool:
-    """Deny beats allow: what an unattended run can actually do."""
-    return _covered("allow", command) and not _covered("deny", command)
+#: What a user-level settings file can add: the owner's own allows every `gh`
+#: command. Rules from all settings files are read together, so anything this
+#: file merely leaves unallowed, that one approves.
+USER_LEVEL_ALLOW = ("gh:*", "gh api:*", "gh repo edit:*")
+
+
+def _runs_unprompted(command: str, also_allowed: tuple[str, ...] = ()) -> bool:
+    """Deny, then ask, then allow: what a run can do with no human in the loop.
+
+    `also_allowed` stands for allow rules merged in from another settings file.
+    """
+    if _covered("deny", command) or _covered("ask", command):
+        return False
+    return _covered("allow", command) or any(_matches(rule, command) for rule in also_allowed)
 
 
 def test_the_matcher_reproduces_the_documented_examples():
@@ -228,6 +244,7 @@ def test_the_release_loop_commands_are_allowed():
         "claude plugin validate .",
     ):
         assert _covered("allow", cmd), f"no allow rule covers {cmd!r}"
+        assert not _covered("ask", cmd), f"an ask rule stops the release loop at {cmd!r}"
 
 
 def test_contributing_describes_the_git_grant_it_actually_ships():
@@ -241,7 +258,9 @@ def test_contributing_describes_the_git_grant_it_actually_ships():
 
 def test_no_rule_needs_two_spaces_to_match():
     """The `Bash(git push * :*)` trap: a rule no real command line can satisfy."""
-    dead = [r for kind in ("allow", "deny") for r in _bash_rules(kind) if "  " in _normalized(r)]
+    dead = [
+        r for kind in ("allow", "ask", "deny") for r in _bash_rules(kind) if "  " in _normalized(r)
+    ]
     assert not dead, f"these rules only match a command with a double space: {dead}"
 
 
@@ -279,32 +298,46 @@ def test_no_deny_rule_is_already_covered_by_another():
     assert not redundant, "\n".join(f"{r!r} is already covered by {o!r}" for r, o in redundant)
 
 
-def test_workflow_dispatch_is_limited_to_workflows_that_publish_nothing():
+def test_the_user_level_allow_would_approve_what_this_file_only_leaves_out():
+    """Guard the guard: the two tests below prove nothing if this stand-in is too narrow."""
+    for cmd in ("gh workflow run docs.yml", "gh repo edit --visibility public", "gh pr view 1"):
+        assert any(_matches(rule, cmd) for rule in USER_LEVEL_ALLOW), cmd
+
+
+def test_every_workflow_dispatch_asks_whatever_else_is_allowed():
     """`docs.yml` deploys GitHub Pages on any non-pull_request event, dispatch included.
 
-    Exact commands, not prefixes: `--ref <branch>` would run that branch's copy
-    of the workflow, which an unattended run can push first.
+    Leaving a dispatch unallowed was not enough: a user-level `Bash(gh:*)` allow
+    approved it. An ask rule is read before every allow rule, so it holds against
+    that one, and against a more specific allow in this file too, which is why
+    `test.yml` asks as well and no dispatch is allowed here any more (D-029).
+    `--ref <branch>` would run that branch's copy of the workflow, which an
+    unattended run can push first.
     """
-    assert _runs_unprompted("gh workflow run context7-refresh.yml")
-    assert _runs_unprompted("gh workflow run test.yml")
     for cmd in (
+        "gh workflow run",
+        "gh workflow run test.yml",
+        "gh workflow run context7-refresh.yml",
         "gh workflow run docs.yml",
         "gh workflow run publish.yml",
         "gh workflow run 12345",
         "gh workflow run test.yml --ref feature",
     ):
-        assert not _runs_unprompted(cmd), f"{cmd!r} runs unprompted"
+        assert _covered("ask", cmd), f"no ask rule covers {cmd!r}"
+        assert not _runs_unprompted(cmd, USER_LEVEL_ALLOW), f"{cmd!r} runs unprompted"
 
 
 def test_repo_edit_always_asks():
     """No wildcard can say "only --description": a flag or a positional repository
     rides along after it. The release loop runs it about once a positioning change."""
     for cmd in (
+        "gh repo edit",
         'gh repo edit --description "Read, index, pack and file your documents"',
         "gh repo edit --description x someone/other-repo",
         "gh repo edit --description x --visibility public",
     ):
-        assert not _runs_unprompted(cmd), f"{cmd!r} runs unprompted"
+        assert _covered("ask", cmd), f"no ask rule covers {cmd!r}"
+        assert not _runs_unprompted(cmd, USER_LEVEL_ALLOW), f"{cmd!r} runs unprompted"
 
 
 def test_update_branch_merges_but_never_rewrites():
@@ -322,3 +355,18 @@ def test_no_allow_rule_is_dead_under_the_deny_list():
         if all(any(_matches(d, w) for d in deny) for w in _witnesses(rule))
     ]
     assert not dead, f"allow rules every command of which is denied: {dead}"
+
+
+def test_no_allow_rule_is_dead_under_the_ask_list():
+    """An ask rule wins over a more specific allow rule, so an allow inside one never applies.
+
+    `Bash(gh workflow run test.yml)` would read as an exception to the dispatch
+    rule and be none.
+    """
+    ask = _bash_rules("ask")
+    dead = [
+        rule
+        for rule in _bash_rules("allow")
+        if all(any(_matches(a, w) for a in ask) for w in _witnesses(rule))
+    ]
+    assert not dead, f"allow rules every command of which asks first: {dead}"
