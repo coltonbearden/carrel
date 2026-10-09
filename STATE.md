@@ -9,26 +9,25 @@
   verification record is the v0.5.0 entry under Done. 33 commands, 14 MCP tools, 19 adapters,
   9 marketplace plugins, desk schema v2. Repo `coltonbearden/carrel`, docs at
   https://coltonbearden.github.io/carrel/, PyPI package `carrel`.
-- **In flight:** four Dependabot PRs are open and unreviewed, and each needs its own
-  `/code-review <pr> high` before it merges: #57 (`setup-uv` 10.2.0), #58 (pypdf 6.19.0, ruff
-  0.16.10, mypy 2.4.0, uv 0.12.22), #61 (pypdf 6.19.0 alone) and #62 (uv 0.12.18 alone).
-  Dependabot opened the last two right after #59 merged (Done), for four alerts raised against
-  `uv.lock` at the same moment: three high ones on pypdf below 6.19.0 (Open issues, with the
-  runtime floor they also bear on) and a medium one on uv 0.12.7 to 0.12.17
-  (GHSA-2cv4-cqwr-gwf7, path traversal on Windows when a wheel is extracted). uv is CI's own
-  tool here, not something carrel ships: every `setup-uv` step installs the version `uv.lock`
-  pins, the `windows-latest` job included, so the lock bump is the whole fix for that one.
-  Merging #58 closes all four alerts and leaves #61 and #62 nothing to add: it carries pypdf
-  6.19.0 and a newer uv than #62's. Do not merge #62 ahead of it: the two rewrite the same
-  `uv.lock` lines, and #58 then conflicts in a way `gh pr update-branch` cannot resolve (#61
-  and #58 merge clean). #58, #61 and #62 change `uv.lock` only.
-  #57's green checks are from 2026-09-28, before the intake test began failing on 2026-10-01
-  (Done, #60), and it is behind `main`; the ruleset's up-to-date rule makes every PR take
-  `main`'s head before it merges, which reruns them. Two ways to update a Dependabot branch:
-  `@dependabot rebase` keeps the PR Dependabot's own; `gh pr update-branch` adds a merge
-  commit that is not Dependabot's, after which it stops rebasing that PR by itself
-  (`@dependabot recreate` restores it). #58 was updated the second way, so it is brought up
-  to date by hand after each merge to `main`.
+- **In flight:** #58 (Dependabot's `python-deps` group, 2026-10-09) moved `uv.lock` to pypdf
+  6.19.0, ruff 0.16.10, mypy 2.4.0 and uv 0.12.22, and with mypy to the two compiled packages
+  it now depends on, ast-serialize 0.12.1 and librt 0.16.0. Those are the versions the four
+  alerts raised against `uv.lock` on 2026-10-08 ask for: three high ones on pypdf below 6.19.0
+  (Open issues, with the runtime floor they also bear on) and a medium one on uv 0.12.7 to
+  0.12.17 (GHSA-2cv4-cqwr-gwf7, path traversal on Windows when a wheel is extracted). uv is
+  CI's own tool here, not something carrel ships: every `setup-uv` step installs the version
+  `uv.lock` pins, the `windows-latest` job included, so the lock bump is the whole fix for
+  that one, and the `uv-pin` group's floor is `>=0.12.18` so that a relock cannot take CI's uv
+  back into the affected range.
+  #61 (pypdf 6.19.0 alone) and #62 (uv 0.12.18 alone), which Dependabot opened for the same
+  alerts, have nothing left to add: close them, do not merge them.
+  #57 (`setup-uv` 10.2.0) is open and unreviewed, and needs its own `/code-review 57 high`
+  before it merges. Its green checks are from 2026-09-28, before the intake test began failing
+  on 2026-10-01 (Done, #60), and it is behind `main`; the ruleset's up-to-date rule makes
+  every PR take `main`'s head before it merges, which reruns them. Two ways to update a
+  Dependabot branch: `@dependabot rebase` keeps the PR Dependabot's own; `gh pr update-branch`
+  adds a merge commit that is not Dependabot's, after which it stops rebasing that PR by
+  itself (`@dependabot recreate` restores it). #58 was updated the second way.
   #48 (Context7) was the v0.5.0 wave's last PR. The two Dependabot PRs
   after it merged: #49 (`setup-uv` 10.1.0) as `d4619cf` and #50 (pypdf 6.18.1, ruff 0.16.7,
   pre-commit hooks run from `uv.lock`) as `fe0695a`. The owner items their reviews raised are
@@ -418,15 +417,19 @@
   reading embedded files), GHSA-php9-fj8v-98fj (long runtimes generating appearance streams
   when form fields are updated with flattening on) and GHSA-w23x-9jrw-r45c (large memory use
   reading alphabetical page labels). carrel reads neither embedded files nor page labels
-  through pypdf, and `form fill` calls `update_page_form_field_values` without `flatten`;
-  whether its appearance generation reaches the slow path anyway has not been checked. Not
-  raised yet because D-026 keeps the floor at or below what `uv.lock` pins, and the lock stays
-  at 6.18.1 until a Dependabot PR that carries 6.19.0 merges (In flight). The raise then
+  through pypdf, but `form fill` does reach the third. It calls
+  `update_page_form_field_values` without `flatten`, and pypdf builds the appearance stream
+  of every text and choice field either way: filling a list box that offers 40,000 options
+  took about 2.6 s on 6.18.1 and 0.3 s on 6.19.0, and about 145 s against 1.2 s at 160,000
+  (a 1.5 MB PDF, timed twice), so an install at the floor can be stalled by a form someone
+  else wrote (#58's review).
+  Not raised in #58 itself: D-026 keeps the floor at or below what `uv.lock` pins, the lock
+  reached 6.19.0 only with that PR, and the raise is the next PR, with a review of its own. It
   touches `pyproject.toml`, the `pypdf` specifier in `uv.lock` and the Unreleased
   `CHANGELOG.md` bullet that names the floor, as #52 did, and is classified at release by
   what it does (`docs/RELEASING.md` step 1). The 6.18.1 raise already crosses a hardening
-  release, which D-026 reads as a minor bump, so the next release is a minor either way; when
-  to cut it is the owner's call.
+  release, which D-026 reads as a minor bump, so the next release is a minor either way; the
+  owner decided on 2026-10-09 that the raise ships with v0.6.0, not in a release of its own.
 
 - **Pillow's floor is `>=10.0`, below its ImageCms fix.** Found reviewing the pypdf floor
   (D-026). `color` and `proof` pass untrusted images to `ImageCms`, and Pillow 10.3.0 fixed a
@@ -435,9 +438,27 @@
   parser's advisories reviewed together (`pillow`, `openpyxl`, `markdown-it-py`) and the lock
   is already at Pillow 12.3.0, so the floor choice has room to be deliberate.
 
-- **No CI job installs the declared floors.** CI tests `uv.lock`, which equals the pypdf floor
-  today only by coincidence; the next Dependabot bump separates them, and code that uses a
-  newer API would pass CI and fail for a user at the floor. Fix: a job running the suite after
+- **pypdf 6.20.0 came out the day #58 was reviewed, and `uv.lock` pins 6.19.0.** Published on
+  2026-10-09, its one security item limits the work a single stream may cost (filter count
+  and accumulated decoding work, pypdf #4173); 6.19.0 has no such limit. No advisory is
+  published for it, so no alert is open. Not taken in #58: that PR was reviewed at 6.19.0 and
+  closes four open alerts as it stands, it carries hand-made merge commits so Dependabot no
+  longer refreshes it, and 6.20.0 also flattens the page tree differently and drops a null
+  `/Kids` entry instead of raising, which wants a review of its own. Dependabot's weekly run
+  (Mondays) should propose it; the floor follows the lock again when it lands (D-026).
+
+- **Dependabot proposes a release as soon as it is published.** `.github/dependabot.yml` sets
+  no `cooldown`, and #58 locked ast-serialize 0.12.1 two days after its upload to PyPI
+  (2026-10-03). #58's review compared every changed lock entry with PyPI's hashes and found
+  nothing wrong; the gap is that a bad release would be proposed, and run in CI on the PR,
+  before anyone had time to notice it. Fix: a `cooldown` block with `default-days` for both
+  ecosystems, which delays version updates only, never security updates. Deferred from #58's
+  review because how long to wait is the owner's call.
+
+- **No CI job installs the declared floors.** CI tests `uv.lock`, which #58 moved to pypdf
+  6.19.0 while the declared floor is still 6.18.1 (the raise above brings them level again,
+  until the next bump), so code that uses a newer API would pass CI and fail for a user at the
+  floor. Fix: a job running the suite after
   `uv pip install --resolution lowest-direct`. Deferred because other floors will need raises
   before it can be green — `pillow>=10.0` publishes no wheels past CPython 3.12, the oldest in
   carrel's matrix — which makes it a PR of its own.
@@ -558,6 +579,10 @@
   → `claude plugin install <plugin>@carrel`.
 - `HANDOFF.md` at the repo root is session-local (regenerated by the handoff skill) and
   git-ignored.
+- `uv.lock`'s `revision` line may flip between 3 and 5: the uv this lock pins (0.12.22) writes
+  5 on any relock, Dependabot's updater wrote 3. uv documents a revision as a
+  backwards-compatible addition that older versions read without error; only `version` is a
+  breaking change.
 - `carrel index` indexes source/config files as type `code` (`--no-source` opts out) and
   honours `.gitignore` (`--no-gitignore` opts out). `files.type` must stay a `FileType` value:
   `desk/app.py` calls `FileType(info["type"])` on it (D-010).

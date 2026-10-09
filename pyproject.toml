@@ -73,8 +73,9 @@ docs = ["mkdocs-material>=9.5"]
 # `version-file: uv.lock` installs in CI, and Dependabot bumps it like any other
 # tool. Nothing in this repository syncs this group (`uv sync --all-groups` would):
 # a second uv in `.venv/bin` shadows the developer's own and, on Windows, cannot
-# replace itself mid-sync.
-uv-pin = ["uv>=0.12.13"]
+# replace itself mid-sync. The floor is the first release outside
+# GHSA-2cv4-cqwr-gwf7's range, so a relock cannot take CI's uv back into it.
+uv-pin = ["uv>=0.12.18"]
 
 [build-system]
 requires = ["hatchling"]

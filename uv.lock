@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.15'",
@@ -164,7 +164,7 @@ dev = [
     { name = "ruff", specifier = ">=0.16" },
 ]
 docs = [{ name = "mkdocs-material", specifier = ">=9.5" }]
-uv-pin = [{ name = "uv", specifier = ">=0.12.13" }]
+uv-pin = [{ name = "uv", specifier = ">=0.12.18" }]
 
 [[package]]
 name = "certifi"
