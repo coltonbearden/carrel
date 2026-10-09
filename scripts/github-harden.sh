@@ -216,7 +216,7 @@ verify_ruleset() {  # name, expected-rule-types(csv), expected-bypass(json), [ex
   detail="$(read_ "repos/$REPO/rulesets/$rid")"
   [ "$(echo "$detail" | jq -r '.enforcement // "?"')" = "active" ] || { bad "ruleset '$name' not active"; return; }
   got_rules="$(echo "$detail" | jq -r '[.rules[].type] | sort | join(",")')"
-  [ "$got_rules" = "$(echo "$want_rules" | tr ',' '\n' | sort | paste -sd,)" ] && ok "ruleset '$name' rules: $got_rules" || bad "ruleset '$name' rules = $got_rules (want $want_rules)"
+  [ "$got_rules" = "$(echo "$want_rules" | tr ',' '\n' | sort | paste -sd, -)" ] && ok "ruleset '$name' rules: $got_rules" || bad "ruleset '$name' rules = $got_rules (want $want_rules)"
   got_bypass="$(echo "$detail" | jq -c '[.bypass_actors[] | {actor_id, actor_type, bypass_mode}] | sort_by(.actor_type, .actor_id)')"
   [ "$got_bypass" = "$(echo "$want_bypass" | jq -c 'sort_by(.actor_type, .actor_id)')" ] && ok "ruleset '$name' bypass: as designed" || bad "ruleset '$name' bypass actors drifted: $got_bypass"
   if [ -n "$want_checks" ]; then
