@@ -53,6 +53,10 @@ OWN_KEY = ("${{ github.workflow }}", "${{ github.job }}")
 #: The scripts that regenerate committed files; each must be followed by a gate.
 SYNC_SCRIPTS = ("scripts/sync_product.py", "scripts/sync_reference.py", "scripts/sync_plugins.py")
 
+#: The only workflow that runs on a timer. Fail closed: `docs.yml` deploys Pages
+#: on every event but `pull_request`, and `publish.yml` uploads to PyPI.
+SCHEDULED = {"test.yml"}
+
 
 def _workflow_files() -> list[Path]:
     return sorted([*WORKFLOWS.glob("*.yml"), *WORKFLOWS.glob("*.yaml")])
@@ -236,3 +240,42 @@ def test_every_sync_ends_in_a_whole_tree_drift_gate(workflow: str, expected: int
     steps, problems = _gate_problems(workflow)
     assert steps == expected, f"{workflow}: expected {expected} sync steps, found {steps}"
     assert not problems, "\n".join(problems)
+
+
+def _triggers(workflow: str) -> dict:
+    """The workflow's `on:` block as a mapping, whichever way it was written."""
+    data = yaml.safe_load((WORKFLOWS / workflow).read_text(encoding="utf-8")) or {}
+    # YAML 1.1 reads a bare `on` key as the boolean True, and PyYAML follows it
+    on = data.get("on", data.get(True))
+    if isinstance(on, str):
+        return {on: None}
+    if isinstance(on, list):
+        return dict.fromkeys(on)
+    return dict(on or {})
+
+
+def test_main_is_tested_weekly_as_well_as_on_push():
+    """A push-only `main` is only as fresh as its last merge.
+
+    With no merge between 2026-09-24 and 2026-10-08, `main` showed a green run
+    while a test tied to the calendar failed on every branch from 2026-10-01.
+    One run a week: a wildcard hour would be hourly, a wildcard day daily.
+    """
+    triggers = _triggers("test.yml")
+    assert {"push", "pull_request"} <= set(triggers), sorted(triggers)
+    crons = [entry.get("cron") for entry in triggers.get("schedule") or []]
+    assert len(crons) == 1, f"test.yml must have exactly one schedule, found {crons}"
+    fields = str(crons[0]).split()
+    assert len(fields) == 5, crons
+    minute, hour, day_of_month, month, day_of_week = fields
+    assert minute.isdigit() and hour.isdigit(), f"{crons[0]!r} runs more than once on its day"
+    assert (day_of_month, month) == ("*", "*"), f"{crons[0]!r} is not weekly"
+    assert re.fullmatch(r"[0-6]|[A-Za-z]{3}", day_of_week), f"{crons[0]!r} is not one day a week"
+
+
+@pytest.mark.parametrize("workflow", sorted({p.name for p in _workflow_files()} - SCHEDULED))
+def test_no_other_workflow_runs_on_a_timer(workflow):
+    assert "schedule" not in _triggers(workflow), (
+        f"{workflow} would run unattended every time its cron fires; "
+        "add it to SCHEDULED only if it publishes and deploys nothing"
+    )
