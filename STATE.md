@@ -16,7 +16,6 @@
   Two ways to update a Dependabot branch: `@dependabot rebase` keeps the PR Dependabot's own;
   `gh pr update-branch` adds a merge commit that is not Dependabot's, after which it stops
   rebasing that PR by itself (`@dependabot recreate` restores it).
-  #65 (the weekly `tests` run) is open and is reviewed next.
   #48 (Context7) was the v0.5.0 wave's last PR. The two Dependabot PRs
   after it merged: #49 (`setup-uv` 10.1.0) as `d4619cf` and #50 (pypdf 6.18.1, ruff 0.16.7,
   pre-commit hooks run from `uv.lock`) as `fe0695a`. The owner items their reviews raised are
@@ -35,16 +34,30 @@
   Five review rounds on v0.5.0 each found one more caller that had been missed; the flag is
   the reason, and MCP v3 adds callers to the same surface.
 - **Also pending:**
-  - **Owner's step, on or after 2026-09-24:** promote `test-minimal (windows)` to required once
-    it has been green on `main` for two consecutive weeks. Note what the evidence so far is:
-    green on every v0.5.0 *PR* check, which runs a merge simulation, not `main`'s post-merge
-    runs — check those before promoting. That changes branch protection, so it needs the
-    owner's go-ahead in that session: drop
-    `continue-on-error` in `.github/workflows/test.yml`, add the check to `REQUIRED_CHECKS`,
-    then run `scripts/github-harden.sh`. (`test-minimal (macos)` was added on 2026-09-11 under
-    the owner's authorisation in the v0.4.1 brief.) `main` had no `tests` run between
-    2026-09-24 and #60's merge, so that stretch is no evidence either way; the red PR runs
-    inside it (#58, #59) failed on the intake clock test (Done) in every job, not on Windows.
+  - **Owner's step, not before 2026-10-23:** promote `test-minimal (windows)` to required once
+    it has been green on `main` for two consecutive weeks (D-028). The count starts at
+    2026-10-09T01:10Z, the first `main` run after a gap with none since 2026-09-24 (#60's
+    merge; dates here are UTC, as `gh` prints them): on 2026-10-09 the owner chose to wait for
+    the rule as written rather than promote on the runs of one evening. The job has been green
+    in all six `main` runs since, the run cancelled on #64's merge included, and
+    `tests (weekly)` adds a run on 2026-10-12 and 2026-10-19 even if nothing merges. Count by
+    the job, not by the run: `continue-on-error` keeps a run green when this job fails, and a
+    re-run hides the first attempt, so `gh run list` cannot show either.
+    `scripts/windows-promotion-evidence.sh` (read-only) prints the job's result for every
+    attempt of every `main` run of both workflows since the count started, leaves out pull
+    requests, and exits 0 only when the window is 14 days old and nothing failed. A `failure`
+    restarts the count (pass `--since` the next green run); `cancelled` or `absent` is no
+    evidence either way. Settle the `kill_tree` flake first (Open issues): it failed this job
+    once on a pull request on 2026-10-09, and a required job that fails at random blocks
+    merges at random. Promotion changes branch protection, so it needs the owner's go-ahead
+    in that session: drop `continue-on-error` in `.github/workflows/test.yml`, add the check
+    to `REQUIRED_CHECKS`, then run `scripts/github-harden.sh`. (`test-minimal (macos)` was
+    added on 2026-09-11 under the owner's authorisation in the v0.4.1 brief.)
+  - **Dated check, 2026-10-12:** the first scheduled run. GitHub fires a schedule only from
+    the default branch, so no pull request could exercise the timer; the call from
+    `weekly.yml` into `test.yml` was run once on #65 through a temporary `pull_request`
+    trigger, removed before the merge. Confirm a scheduled run exists:
+    `gh run list --workflow weekly.yml --event schedule`.
   - **Owner's step:** restrict the `github-pages` environment to deployments from `main`
     (Settings → Environments → github-pages → Deployment branches), and teach
     `scripts/github-harden.sh` to set and verify it as it does for `pypi`. D-027 narrowed
@@ -56,6 +69,16 @@
 
 ## Done
 
+- 2026-10-09: `main` is tested every Monday at 06:17 UTC as well as on push (#65, D-028), so
+  a failure that arrives with the calendar shows up there within a week, as a red
+  `tests (weekly)` run. The schedule is in a workflow of its own,
+  `weekly.yml` (`tests (weekly)`), which calls `test.yml`: GitHub can disable a scheduled
+  workflow in a quiet repository, and `test.yml` reports the required checks.
+  `tests/test_workflows.py` lists every workflow's triggers exactly, so none gains a timer
+  directly or by being chained to this one. The rule that no test depends on the day it runs
+  is in `CLAUDE.md`'s Testing section as well as `docs/CONTRIBUTING.md`, and the one test
+  that still dated a file by an unpinned mtime (`rename`'s plan-and-apply test) is pinned.
+  The first scheduled run is 2026-10-12 (Also pending).
 - 2026-10-09: #57 (`setup-uv` 10.1.0 to 10.2.0, all seven steps in `test.yml`, `docs.yml` and
   `publish.yml`) merged. `/code-review 57 high` found no defect in the bump. The pin is
   upstream's signed `v10.2.0` tag commit; the built bundle differs from 10.1.0's in a
@@ -484,6 +507,52 @@
   fails. Deferred from #57, a pin bump: the fix is Windows-only process code that can be
   tested only in CI.
 
+- **A `watch` test with a four-second budget failed once on macOS, in a required job.**
+  `tests/test_fields_rename_batch.py::test_watch_existing_stable_done_error_dirs_and_log`
+  runs `watch --existing --timeout 4 --stable 0.2` and expects both files handled before the
+  timeout. In #57's `test-minimal (macos)` job on 2026-10-09 the watcher printed its
+  `watching` line and nothing else; the re-run of the same commit passed. With the Windows
+  failure above that is two `watch` tests in one day that depend on how fast a runner is.
+  `test-minimal (macos)` is required, so each such failure costs a manual re-run before a
+  merge. Fix: give the test a budget that a slow runner meets, or wait on the event instead
+  of the clock. Deferred from #65, which changes when CI runs, not what the tests assume.
+
+- **The full-capability jobs depend on the runner's package mirror.** Each `test (py3.x)` job
+  installs about 160 packages with `apt-get` before any test runs, usually in about a
+  minute. In three runs on 2026-10-09 a job was still in that step ten minutes in; the one
+  log read showed the Azure Ubuntu mirror serving packages slowly, not a hang. Two were
+  cancelled and re-run by hand and the third was cancelled by the next push to `main`, which
+  is why `main`'s `tests` run on #64's merge commit reads cancelled with six of seven jobs
+  green. Left alone such a job ends at its 30-minute timeout as a red run that says nothing
+  about carrel, and the weekly scheduled run has nobody watching it. Fix: a short timeout on
+  the install step with one retry, or a cached package set. Deferred from #65: it needs its
+  own look at what the allowed-actions list permits.
+
+- **`context7-refresh` got HTTP 400 on 2026-10-09.** The run for #64's merge commit and its
+  re-run both failed at `Request a refresh`; the run for #60's merge the night before
+  returned 200. The request is the one Context7 documents (`POST /api/v1/refresh` with
+  `{"libraryName": "/<owner>/<repo>"}`), and its docs give 400 as "invalid parameters". The
+  workflow prints the status code only, by design, because the log is public, so the reason
+  is not visible from here. Nothing depends on it: the check is not required and Context7
+  re-indexes on its own schedule. Next: see whether the next merge that touches `docs/`
+  repeats it, and if it does, read the response body in a session that holds the key.
+
+- **A red weekly run does not show on the README.** The `tests` badge reads `test.yml` on
+  `main`, which is the last push's result, and `gh run list --workflow test.yml` says the
+  same; only the Actions tab and `gh run list --workflow weekly.yml` show `tests (weekly)`.
+  Fix: a second badge for `weekly.yml`. Deferred from #65's review: until the first
+  scheduled run exists (2026-10-12) the badge would read "no status", and the header is
+  brand surface (D-024).
+
+- **The weekly run cannot use the push runs' caches.** Called through `weekly.yml`,
+  `github.workflow` is the caller's name, so every `setup-uv` step in `test.yml` gets a
+  `tests (weekly)-<job>` cache key: each Monday's run starts mostly cold and saves about
+  300 MB of caches that only the next weekly run could restore, if GitHub has not evicted
+  them (the repository held 97 caches, 4.4 GB, on 2026-10-09). Nothing breaks. Fix: skip the
+  cache save on `schedule`, or key by a literal name. Deferred from #65's review because the
+  key shape is one of the rules #49's review set (`tests/test_workflows.py`), and changing it
+  wants its own look.
+
 - **`setup-uv`'s built-in checksums trail the uv that `uv.lock` pins.** The action checks the
   uv it downloads against a table compiled into it, and for a version the table lacks it
   takes both the download URL and the sha256 from a manifest fetched at run time
@@ -586,15 +655,6 @@
   pre-flight. Deferred from #60: that PR repaired a red `main` and changed only what the
   clock decided.
 
-- **`main` is tested only when something is pushed to it.** `.github/workflows/test.yml` runs
-  on `push` to `main`, `pull_request` and `workflow_dispatch`. With no merge between 2026-09-24
-  and #60, `main` showed its last green run for eight days while every branch failed the
-  intake clock test, and the failure was first read as the Dependabot bumps'. A weekly
-  `schedule:` run on `main` would show a calendar-coupled test, or a tool drifting on the
-  runners, on `main` itself, and would give the Windows promotion rule (Now) data in a quiet
-  week. Deferred from #60's review: a workflow change with its own review, and how often it
-  runs is the owner's call.
-
 ## Key facts for a fresh session
 
 - Stack: Python ≥3.12 + uv; click CLI; Textual TUI (`carrel desk`); hatchling build.
@@ -621,6 +681,11 @@
   → `claude plugin install <plugin>@carrel`.
 - `HANDOFF.md` at the repo root is session-local (regenerated by the handoff skill) and
   git-ignored.
+- `weekly.yml` (`tests (weekly)`) runs `test.yml` on `main` every Monday at 06:17 UTC (D-028).
+  In a public repository GitHub disables a scheduled workflow after 60 days without
+  repository activity: if `gh run list --workflow weekly.yml --event schedule` goes quiet,
+  `gh workflow enable weekly.yml`. The schedule is kept out of `test.yml` so that rule can
+  never reach the required checks.
 - `uv.lock`'s `revision` line may flip between 3 and 5: the uv this lock pins (0.12.22) writes
   5 on any relock, Dependabot's updater wrote 3. uv documents a revision as a
   backwards-compatible addition that older versions read without error; only `version` is a
