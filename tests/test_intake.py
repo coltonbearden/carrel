@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import pytest
@@ -26,6 +26,10 @@ from carrel.commands.intake import (
 from carrel.core.db import DeskDB
 from carrel.core.filetypes import FileType, detect
 from carrel.core.output import CarrelInputError
+
+# For files that carry no date of their own. Noon local time, so the date read back from the
+# mtime is 2020-09-13 in every timezone, and it can never be the day the suite runs.
+PINNED_MTIME = datetime(2020, 9, 13, 12, 0).timestamp()
 
 
 def run(*args: str, expect: int = 0):
@@ -55,7 +59,11 @@ def inbox(tmp_path: Path, fixtures: Path) -> Path:
     box.mkdir()
     (box / "whatever.txt").write_bytes((fixtures / "invoice.txt").read_bytes())
     (box / "mail.eml").write_bytes((fixtures / "sample.eml").read_bytes())
-    (box / "note.md").write_text("# a note\n\nnothing to reference here\n", encoding="utf-8")
+    note = box / "note.md"
+    note.write_text("# a note\n\nnothing to reference here\n", encoding="utf-8")
+    # the note has no date of its own, so intake dates it by mtime: left alone, that is the
+    # moment this fixture ran, and where the note is filed would follow the calendar
+    os.utime(note, (PINNED_MTIME, PINNED_MTIME))
     return box
 
 
@@ -132,7 +140,9 @@ def test_layout_and_fallback_options(inbox: Path, dest: Path):
     dests = {
         Path(r["src"]).name: Path(r["dest"]).parent.relative_to(dest).as_posix() for r in records
     }
-    assert dests == {"whatever.txt": "FY2027/Q1", "mail.eml": "FY2021/Q4", "note.md": "FY2027/Q1"}
+    # one period per file, each from the file itself: the invoice's text (2026-09-10), the
+    # mail's Date header (2021-06-15) and the note's pinned mtime (2020-09-13)
+    assert dests == {"whatever.txt": "FY2027/Q1", "mail.eml": "FY2021/Q4", "note.md": "FY2021/Q1"}
     flat = run_json("intake", str(inbox), "--to", str(dest), "--by", "flat", "--fallback", "misc")
     assert all(Path(r["dest"]).parent == dest for r in flat)
     named = run_json(
@@ -397,7 +407,7 @@ def test_a_scan_keeps_its_own_date_and_the_plan_matches_apply(
 
     scan = inbox / "scan.pdf"
     scan.write_bytes((fixtures / "scanned.pdf").read_bytes())
-    os.utime(scan, (1_600_000_000, 1_600_000_000))  # 2020-09-13
+    os.utime(scan, (PINNED_MTIME, PINNED_MTIME))  # 2020-09-13
     for f in inbox.iterdir():
         if f != scan:
             f.unlink()
