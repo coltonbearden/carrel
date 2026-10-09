@@ -66,7 +66,8 @@
   `scripts/github-harden.sh` now converges both environments to one pattern each, naming
   any pattern it removes, and verifies them, mode included (`--verify-only` read every
   setting back green;
-  `tests/test_github_harden.py` runs the script against a stand-in `gh`). `gh workflow run`
+  `tests/test_github_harden.py` runs the script against a stand-in `gh`, which is how its
+  ruleset check turned out never to have passed on macOS: BSD `paste` wants a file operand). `gh workflow run`
   and `gh repo edit` are `ask` rules in `.claude/settings.json`, which hold against the
   owner's user-level `Bash(gh:*)` allow where D-027's "not allowed" did not; checked live,
   the one matching command stopped for approval. Every plain dispatch asks now, so the two
