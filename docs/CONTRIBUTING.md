@@ -68,7 +68,10 @@ running user-supplied shell actions.
    conftest. A test gives the same result on any day it runs: a file with no date of
    its own is dated by its mtime (`rename`, `intake`, `organize`, `fields`), so pin it
    with `os.utime` to a fixed past time before asserting where it lands or what it is
-   named. Run them: `uv run pytest tests/test_<name>.py -q`.
+   named, and prove the pin by removing it and watching the test fail. Code that reads
+   the clock itself (`sign`, `catalog export`) gets a fixed or injected time, or the test
+   does not assert on what the clock decided. Run them:
+   `uv run pytest tests/test_<name>.py -q`.
 5. **Verify by hand** before claiming done: `uv run carrel <name> --help`, one real
    fixture invocation, `--json` piped through `python -m json.tool`, and the failure
    paths (missing file → 4; missing binary → 3).

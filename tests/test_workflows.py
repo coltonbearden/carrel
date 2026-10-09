@@ -24,6 +24,7 @@ and a gate that can be skipped or ignored is no gate.
 
 from __future__ import annotations
 
+import functools
 import re
 import shlex
 import shutil
@@ -53,23 +54,50 @@ OWN_KEY = ("${{ github.workflow }}", "${{ github.job }}")
 #: The scripts that regenerate committed files; each must be followed by a gate.
 SYNC_SCRIPTS = ("scripts/sync_product.py", "scripts/sync_reference.py", "scripts/sync_plugins.py")
 
-#: The only workflow that runs on a timer. Fail closed: `docs.yml` deploys Pages
-#: on every event but `pull_request`, and `publish.yml` uploads to PyPI.
-SCHEDULED = {"test.yml"}
+#: Every way each workflow can start, exactly. Fail closed: a new workflow, or a
+#: new trigger on an old one, is refused until it is argued for here. `docs.yml`
+#: deploys Pages on every event but `pull_request` and `publish.yml` uploads to
+#: PyPI, so neither may gain a timer, and a timer by proxy (`workflow_run` after
+#: a scheduled workflow, or being called by one) is a timer.
+TRIGGERS = {
+    "context7-refresh.yml": {"push", "workflow_dispatch"},
+    "docs.yml": {"push", "pull_request", "workflow_dispatch"},
+    "publish.yml": {"release"},
+    "test.yml": {"push", "pull_request", "workflow_dispatch", "workflow_call"},
+    "weekly.yml": {"schedule", "workflow_dispatch"},
+}
+
+#: The only reusable-workflow call: the weekly run is `test.yml` and nothing else.
+CALLS = {("weekly.yml", "tests", "./.github/workflows/test.yml")}
 
 
 def _workflow_files() -> list[Path]:
     return sorted([*WORKFLOWS.glob("*.yml"), *WORKFLOWS.glob("*.yaml")])
 
 
+@functools.cache
+def _load(workflow: str) -> dict:
+    return yaml.safe_load((WORKFLOWS / workflow).read_text(encoding="utf-8")) or {}
+
+
 def _jobs() -> list[tuple[str, str, dict]]:
     return [
         (path.name, job_id, job)
         for path in _workflow_files()
-        for job_id, job in (yaml.safe_load(path.read_text(encoding="utf-8")) or {})
-        .get("jobs", {})
-        .items()
+        for job_id, job in _load(path.name).get("jobs", {}).items()
     ]
+
+
+def _triggers(workflow: str) -> dict:
+    """The workflow's `on:` block as a mapping, whichever way it was written."""
+    data = _load(workflow)
+    # YAML 1.1 reads a bare `on` key as the boolean True, and PyYAML follows it
+    on = data.get("on", data.get(True))
+    if isinstance(on, str):
+        return {on: None}
+    if isinstance(on, list):
+        return dict.fromkeys(on)
+    return dict(on or {})
 
 
 def _setup_uv_steps() -> list[tuple[str, str, dict, dict]]:
@@ -258,40 +286,50 @@ def test_every_sync_ends_in_a_whole_tree_drift_gate(workflow: str, expected: int
     assert not problems, "\n".join(problems)
 
 
-def _triggers(workflow: str) -> dict:
-    """The workflow's `on:` block as a mapping, whichever way it was written."""
-    data = yaml.safe_load((WORKFLOWS / workflow).read_text(encoding="utf-8")) or {}
-    # YAML 1.1 reads a bare `on` key as the boolean True, and PyYAML follows it
-    on = data.get("on", data.get(True))
-    if isinstance(on, str):
-        return {on: None}
-    if isinstance(on, list):
-        return dict.fromkeys(on)
-    return dict(on or {})
+@pytest.mark.parametrize("workflow", [path.name for path in _workflow_files()])
+def test_every_workflow_starts_only_the_ways_listed(workflow):
+    assert workflow in TRIGGERS, f"{workflow} is new: list its triggers in TRIGGERS, with a reason"
+    assert set(_triggers(workflow)) == TRIGGERS[workflow], (
+        f"{workflow} starts on {sorted(_triggers(workflow))}, expected {sorted(TRIGGERS[workflow])}"
+    )
+
+
+def test_the_weekly_run_is_the_only_reusable_call():
+    """A job that calls a workflow runs it on the caller's events, a timer included."""
+    calls = {
+        (workflow, job_id, str(job["uses"])) for workflow, job_id, job in _jobs() if "uses" in job
+    }
+    assert calls == CALLS, f"reusable-workflow calls changed: {sorted(calls)}"
 
 
 def test_main_is_tested_weekly_as_well_as_on_push():
     """A push-only `main` is only as fresh as its last merge.
 
-    With no merge between 2026-09-24 and 2026-10-08, `main` showed a green run
+    With no merge between 2026-09-24 and 2026-10-09, `main` showed a green run
     while a test tied to the calendar failed on every branch from 2026-10-01.
-    One run a week: a wildcard hour would be hourly, a wildcard day daily.
+    One run a week: a wildcard hour would be hourly, a wildcard day daily. The
+    cron lives in `weekly.yml`, which GitHub may disable in a quiet repository,
+    and never in `test.yml`, which reports the required checks (D-028).
     """
-    triggers = _triggers("test.yml")
-    assert {"push", "pull_request"} <= set(triggers), sorted(triggers)
-    crons = [entry.get("cron") for entry in triggers.get("schedule") or []]
-    assert len(crons) == 1, f"test.yml must have exactly one schedule, found {crons}"
+    assert _triggers("test.yml")["push"] == {"branches": ["main"]}
+    crons = [entry.get("cron") for entry in _triggers("weekly.yml")["schedule"]]
+    assert len(crons) == 1, f"weekly.yml must have exactly one schedule, found {crons}"
     fields = str(crons[0]).split()
     assert len(fields) == 5, crons
     minute, hour, day_of_month, month, day_of_week = fields
-    assert minute.isdigit() and hour.isdigit(), f"{crons[0]!r} runs more than once on its day"
+    assert re.fullmatch(r"[0-5]?[0-9]", minute), f"{crons[0]!r}: minute is not one of 0-59"
+    assert re.fullmatch(r"1?[0-9]|2[0-3]", hour), f"{crons[0]!r}: hour is not one of 0-23"
     assert (day_of_month, month) == ("*", "*"), f"{crons[0]!r} is not weekly"
-    assert re.fullmatch(r"[0-6]|[A-Za-z]{3}", day_of_week), f"{crons[0]!r} is not one day a week"
-
-
-@pytest.mark.parametrize("workflow", sorted({p.name for p in _workflow_files()} - SCHEDULED))
-def test_no_other_workflow_runs_on_a_timer(workflow):
-    assert "schedule" not in _triggers(workflow), (
-        f"{workflow} would run unattended every time its cron fires; "
-        "add it to SCHEDULED only if it publishes and deploys nothing"
+    assert re.fullmatch(r"[0-6]|SUN|MON|TUE|WED|THU|FRI|SAT", day_of_week, re.IGNORECASE), (
+        f"{crons[0]!r} is not one day a week"
     )
+
+
+def test_no_job_can_sit_out_the_weekly_run():
+    """A job-level `if:` could skip it on `schedule`, leaving a green run that tested nothing."""
+    gated = [
+        f"{workflow}:{job_id}"
+        for workflow, job_id, job in _jobs()
+        if workflow in ("test.yml", "weekly.yml") and "if" in job
+    ]
+    assert not gated, f"jobs with a condition: {gated}"

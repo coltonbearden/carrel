@@ -34,25 +34,36 @@
   Five review rounds on v0.5.0 each found one more caller that had been missed; the flag is
   the reason, and MCP v3 adds callers to the same surface.
 - **Also pending:**
-  - **Owner's step, on or after 2026-10-22:** promote `test-minimal (windows)` to required once
-    it has been green on `main` for two consecutive weeks (D-028). The count starts on
-    2026-10-08: `main` had no `tests` run between 2026-09-24 and #60's merge, and on 2026-10-09
-    the owner chose to wait for the rule as written rather than promote on the runs of one
-    evening. Its Windows job has been green on every `main` run since (#60, #59 and #63 on
-    2026-10-08; #58, #64 and #57 on 2026-10-09), and `tests` now also runs on `main` every
-    Monday at 06:17 UTC, so 2026-10-12 and 2026-10-19 each add a run even if nothing merges.
-    Read `gh run list --workflow tests --branch main` before promoting, and count by the
-    Windows job, not by the run: a red Windows job restarts the count, a run that is red or
-    cancelled for another reason (a slow package mirror, a newer push) does not. Settle the
-    `kill_tree` flake first (Open issues): it failed this job once on a pull request on
-    2026-10-09, and a required job that fails at random blocks merges at random. Promotion
-    changes branch protection, so it needs the owner's go-ahead in that session: drop
-    `continue-on-error` in `.github/workflows/test.yml`, add the check to `REQUIRED_CHECKS`,
-    then run `scripts/github-harden.sh`. (`test-minimal (macos)` was added on 2026-09-11 under
-    the owner's authorisation in the v0.4.1 brief.)
-  - **Dated check, 2026-10-12:** the first scheduled `tests` run. GitHub fires a schedule only
-    from the default branch, so nothing could exercise it before the merge. Confirm a run
-    exists: `gh run list --workflow tests --event schedule`.
+  - **Owner's step, not before 2026-10-23:** promote `test-minimal (windows)` to required once
+    it has been green on `main` for two consecutive weeks (D-028). The count starts at
+    2026-10-09T01:10Z, the first `main` run after a gap with none since 2026-09-24 (#60's
+    merge; dates here are UTC, as `gh` prints them): on 2026-10-09 the owner chose to wait for
+    the rule as written rather than promote on the runs of one evening. The job has been green
+    in all six `main` runs since, the run cancelled on #64's merge included, and
+    `tests (weekly)` adds a run on 2026-10-12 and 2026-10-19 even if nothing merges. Count by
+    the job, not by the run: `continue-on-error` keeps a run green when this job fails, so
+    `gh run list` cannot show it. This prints the job's result for every run in the window:
+
+    ```sh
+    for w in test.yml weekly.yml; do
+      gh run list --workflow "$w" --branch main --created '>=2026-10-09' --limit 200 \
+        --json databaseId --jq '.[].databaseId'
+    done | xargs -I{} gh run view {} --json createdAt,jobs --jq \
+      '[.createdAt, (.jobs[] | select(.name | endswith("test-minimal (windows)")) | .conclusion)] | @tsv'
+    ```
+
+    A `failure` restarts the count; `cancelled`, or a run with no line for the job, is no
+    evidence either way. Settle the `kill_tree` flake first (Open issues): it failed this job
+    once on a pull request on 2026-10-09, and a required job that fails at random blocks
+    merges at random. Promotion changes branch protection, so it needs the owner's go-ahead
+    in that session: drop `continue-on-error` in `.github/workflows/test.yml`, add the check
+    to `REQUIRED_CHECKS`, then run `scripts/github-harden.sh`. (`test-minimal (macos)` was
+    added on 2026-09-11 under the owner's authorisation in the v0.4.1 brief.)
+  - **Dated check, 2026-10-12:** the first scheduled run. GitHub fires a schedule only from
+    the default branch, so no pull request could exercise the timer; the call from
+    `weekly.yml` into `test.yml` was run once on #65 through a temporary `pull_request`
+    trigger, removed before the merge. Confirm a scheduled run exists:
+    `gh run list --workflow weekly.yml --event schedule`.
   - **Owner's step:** restrict the `github-pages` environment to deployments from `main`
     (Settings → Environments → github-pages → Deployment branches), and teach
     `scripts/github-harden.sh` to set and verify it as it does for `pypi`. D-027 narrowed
@@ -64,11 +75,15 @@
 
 ## Done
 
-- 2026-10-09: `tests` also runs on `main` every Monday at 06:17 UTC (#65, D-028), so `main`
-  no longer shows only its last merge's result. `tests/test_workflows.py` holds the schedule
-  to one weekly run and keeps every other workflow off a timer. The rule that a test never
-  depends on the day it runs is in `CLAUDE.md`'s Testing section as well as
-  `docs/CONTRIBUTING.md`. The first scheduled run is 2026-10-12 (Also pending).
+- 2026-10-09: `main` is tested every Monday at 06:17 UTC as well as on push (#65, D-028), so
+  it no longer shows only its last merge's result. The schedule is in a workflow of its own,
+  `weekly.yml` (`tests (weekly)`), which calls `test.yml`: GitHub can disable a scheduled
+  workflow in a quiet repository, and `test.yml` reports the required checks.
+  `tests/test_workflows.py` lists every workflow's triggers exactly, so none gains a timer
+  directly or by being chained to this one. The rule that no test depends on the day it runs
+  is in `CLAUDE.md`'s Testing section as well as `docs/CONTRIBUTING.md`, and the one test
+  that still dated a file by an unpinned mtime (`rename`'s plan-and-apply test) is pinned.
+  The first scheduled run is 2026-10-12 (Also pending).
 - 2026-10-09: #57 (`setup-uv` 10.1.0 to 10.2.0, all seven steps in `test.yml`, `docs.yml` and
   `publish.yml`) merged. `/code-review 57 high` found no defect in the bump. The pin is
   upstream's signed `v10.2.0` tag commit; the built bundle differs from 10.1.0's in a
@@ -655,9 +670,11 @@
   → `claude plugin install <plugin>@carrel`.
 - `HANDOFF.md` at the repo root is session-local (regenerated by the handoff skill) and
   git-ignored.
-- `tests` also runs on `main` every Monday at 06:17 UTC (D-028). In a public repository GitHub
-  disables a schedule after 60 days without repository activity: if
-  `gh run list --workflow tests --event schedule` goes quiet, `gh workflow enable test.yml`.
+- `weekly.yml` (`tests (weekly)`) runs `test.yml` on `main` every Monday at 06:17 UTC (D-028).
+  In a public repository GitHub disables a scheduled workflow after 60 days without
+  repository activity: if `gh run list --workflow weekly.yml --event schedule` goes quiet,
+  `gh workflow enable weekly.yml`. The schedule is kept out of `test.yml` so that rule can
+  never reach the required checks.
 - `uv.lock`'s `revision` line may flip between 3 and 5: the uv this lock pins (0.12.22) writes
   5 on any relock, Dependabot's updater wrote 3. uv documents a revision as a
   backwards-compatible addition that older versions read without error; only `version` is a

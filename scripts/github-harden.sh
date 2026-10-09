@@ -34,7 +34,7 @@ read_() { api "$@" 2>/dev/null || echo "{}"; }
 apply(){ [ "$VERIFY_ONLY" -eq 1 ] && return 0; api "$@" >/dev/null; }
 
 # test-minimal (windows) stays advisory (continue-on-error) until it has been green
-# on main for two consecutive weeks — that clock ends 2026-09-24.
+# on main for two consecutive weeks; D-028 (docs/DECISIONS.md) has the rule and its dates.
 REQUIRED_CHECKS='["lint","test (py3.12)","test (py3.13)","test (py3.14)","test-minimal","test-minimal (macos)"]'
 MAIN_BYPASS='[{"actor_id":5,"actor_type":"RepositoryRole","bypass_mode":"pull_request"}]'
 TAG_BYPASS='[]'

@@ -291,6 +291,9 @@ def test_rename_cli_plan_apply_and_desk_follow(fixtures: Path, tmp_path: Path):
     inv.write_bytes((fixtures / "invoice.txt").read_bytes())
     note = tmp_path / "note.md"
     note.write_text("# a note\n\nno references here\n", encoding="utf-8")
+    # no date of its own, so rename dates it by mtime: noon local time on a fixed past day
+    pinned = datetime(2020, 9, 13, 12, 0).timestamp()
+    os.utime(note, (pinned, pinned))
     run("--root", str(tmp_path), "tag", "add", str(inv), "keepme")
     plan = run_json("--root", str(tmp_path), "rename", str(tmp_path))
     by_src = {Path(e["src"]).name: e for e in plan}
@@ -300,12 +303,11 @@ def test_rename_cli_plan_apply_and_desk_follow(fixtures: Path, tmp_path: Path):
     assert inv.exists()  # dry-run moved nothing
     human = run("--root", str(tmp_path), "rename", str(tmp_path)).output
     assert "dry-run: 1 rename(s) planned" in human
-    note_day = datetime.fromtimestamp(note.stat().st_mtime).date().isoformat()
     plan = run_json(
         "--root", str(tmp_path), "rename", str(tmp_path), "--apply", "--fallback", "misc", "--lower"
     )
     names = {p.name for p in tmp_path.iterdir() if p.is_file()}
-    assert names == {"2026-09-10_acme_corp_inv-2026-0042.txt", f"{note_day}_a_note_misc.md"}
+    assert names == {"2026-09-10_acme_corp_inv-2026-0042.txt", "2020-09-13_a_note_misc.md"}
     assert all(e["action"] == "renamed" for e in plan)
     assert run_json("--root", str(tmp_path), "tag", "find", "keepme") == [
         "2026-09-10_acme_corp_inv-2026-0042.txt"

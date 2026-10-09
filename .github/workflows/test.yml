@@ -5,12 +5,10 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
-  # Mondays 06:17 UTC, on main: a push-only main showed its last green run for
-  # eight days in 2026-10 while a test tied to the calendar failed on every
-  # branch. GitHub runs a schedule from the default branch only, and stops it
-  # after 60 days without repository activity in a public repository.
-  schedule:
-    - cron: "17 6 * * 1"
+  # weekly.yml calls this file every Monday. The schedule is not here on purpose:
+  # GitHub disables a scheduled workflow in a quiet public repository, and this
+  # one reports the required checks (D-028).
+  workflow_call:
 
 permissions:
   contents: read
@@ -167,7 +165,7 @@ jobs:
         run: uv run carrel doctor
 
   test-minimal-windows:
-    # advisory until green for one release (BUILD_PLAN scope guard)
+    # advisory until promoted; the rule and its date are in D-028 (docs/DECISIONS.md)
     name: test-minimal (windows)
     runs-on: windows-latest
     timeout-minutes: 30
@@ -204,5 +202,5 @@ jobs:
         # D-f: the whole suite runs here so every push records the current
         # Windows failure list; the per-module table is in docs/BUILD_PLAN.md.
         # continue-on-error above keeps the job advisory until it has been
-        # green on main for two consecutive weeks (docs/REPO_SETTINGS.md).
+        # green on main for two consecutive weeks (D-028, docs/DECISIONS.md).
         run: uv run pytest

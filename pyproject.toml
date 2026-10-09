@@ -9,7 +9,7 @@ authors = [{ name = "Colton Bearden" }]
 # Not written by scripts/sync_product.py — it rewrites only `version`,
 # `description` and `[project.urls]`, so these stay hand-maintained.
 # `Operating System :: Microsoft :: Windows` is deliberately absent until
-# `test-minimal (windows)` is a required check (STATE.md, dated 2026-09-24):
+# `test-minimal (windows)` is a required check (STATE.md, Also pending; D-028):
 # a trove classifier is a support claim, and that one is not backed yet.
 keywords = [
     "pdf",
