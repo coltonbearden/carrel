@@ -60,17 +60,18 @@
 
 - 2026-10-09: #58 (Dependabot's `python-deps` group) merged as `ff9debc`, and the pypdf floor
   followed it in #64. `uv.lock` moved to pypdf 6.19.0, ruff 0.16.10, mypy 2.4.0 and uv
-  0.12.22, and with mypy to the two compiled packages it now depends on, ast-serialize 0.12.1
-  and librt 0.16.0. The merge closed Dependabot alerts 9 to 12: three high ones on pypdf below
-  6.19.0 and a medium one on uv 0.12.7 to 0.12.17 (GHSA-2cv4-cqwr-gwf7, path traversal on
-  Windows when a wheel is extracted; uv is CI's own tool here, installed by every `setup-uv`
-  step at the version `uv.lock` pins). `/code-review 58 high` found no defect in the lock:
+  0.12.22, and two compiled packages mypy already depended on moved with it: ast-serialize
+  from 0.9.0 to 0.12.1 and librt from 0.15.0 to 0.16.0. The merge closed Dependabot alerts 9
+  to 12: three high ones on pypdf below 6.19.0 and a medium one on uv 0.12.7 to 0.12.17
+  (GHSA-2cv4-cqwr-gwf7, path traversal on Windows when a wheel is extracted; uv is CI's own
+  tool here, installed by every `setup-uv` step at the version `uv.lock` pins). `/code-review 58 high` found no defect in the lock:
   every changed entry matches PyPI's hashes, and `form fill` writes the same appearance
   streams for the form fixture on both pypdf versions. One finding was fixed in the PR: the
   `uv-pin` group's floor sat inside the uv advisory's range and is `>=0.12.18` now, so a
   relock cannot take CI's uv back into it. #64 then raised the runtime floor to
   `pypdf>=6.19.0` (D-026; unreleased, see Open issues). Two findings are deferred under Open
-  issues: pypdf 6.20.0 and Dependabot's missing cooldown.
+  issues: pypdf 6.20.0 and Dependabot's missing cooldown. `main`'s `tests` run on #58's merge
+  commit was green in all seven jobs.
 - 2026-10-08: #59 (urllib3 from 2.7.0 to 2.8.0, `uv.lock` only) merged as `1a15026`. Its
   `/code-review 59 high` completed with no findings: the lock entry matches PyPI's record for
   2.8.0, nothing in carrel imports urllib3 directly (it arrives through `requests`, for
@@ -414,7 +415,7 @@
   hoisting it is a whole-suite edit, deliberately not bundled into a behaviour PR.
 
 - **No released carrel carries a pypdf security floor.** carrel 0.5.0 on PyPI still declares
-  `pypdf>=5.0`: the raise to `>=6.19.0` (D-026; #52 to 6.18.1, #64 to 6.19.0) is under
+  `pypdf>=5.0`: the raise to a security floor (D-026; #52 to 6.18.1, #64 to 6.19.0) is under
   Unreleased in `CHANGELOG.md`, so until the next release `pip install carrel` keeps whatever
   pypdf an environment already holds. 6.19.0 fixes three high advisories published on
   2026-10-01: GHSA-v247-6f48-mgcj (long runtimes reading embedded files), GHSA-php9-fj8v-98fj
@@ -443,7 +444,12 @@
   closes four open alerts as it stands, it carries hand-made merge commits so Dependabot no
   longer refreshes it, and 6.20.0 also flattens the page tree differently and drops a null
   `/Kids` entry instead of raising, which wants a review of its own. Dependabot's weekly run
-  (Mondays) should propose it; the floor follows the lock again when it lands (D-026).
+  (Mondays) should propose it; the floor follows the lock again when it lands (D-026). A
+  raise touches `pyproject.toml`, the specifier in `uv.lock` (relock), the Unreleased
+  `CHANGELOG.md` bullet that names the floor and `SECURITY_FLOORS` in
+  `tests/test_dependency_floors.py`, which fails if the first is lowered or the changelog
+  disagrees with it. Nothing checks any other document, so refer to the floor there rather
+  than restate it: #64's review found two stale copies.
 
 - **Dependabot proposes a release as soon as it is published.** `.github/dependabot.yml` sets
   no `cooldown`, and #58 locked ast-serialize 0.12.1 two days after its upload to PyPI
@@ -453,10 +459,12 @@
   ecosystems, which delays version updates only, never security updates. Deferred from #58's
   review because how long to wait is the owner's call.
 
-- **No CI job installs the declared floors.** CI tests `uv.lock`, which is level with the
-  pypdf floor again since #64 but only until the next Dependabot bump (6.20.0 is already out,
-  above). Between a bump and the raise that follows it, code that uses a newer API passes CI
-  and fails for a user at the floor. Fix: a job running the suite after
+- **No CI job installs the declared floors.** CI tests `uv.lock`, and every declared floor
+  but one sits well below it: pillow 10.0 against 12.3.0, click 8.1 against 8.5.0, rich 13.0
+  against 15.0.0, reportlab 4.0 against 5.0.1, watchdog 4.0 against 6.0.0, markdown-it-py 3.0
+  against 4.2.0, textual 1.0 against 8.2.8. Code that uses a newer API of any of them passes
+  CI and fails for a user at the floor. pypdf is level with its floor since #64, until the
+  next Dependabot bump (6.20.0 is already out, above). Fix: a job running the suite after
   `uv pip install --resolution lowest-direct`. Deferred because other floors will need raises
   before it can be green — `pillow>=10.0` publishes no wheels past CPython 3.12, the oldest in
   carrel's matrix — which makes it a PR of its own.
@@ -518,7 +526,7 @@
   background their form declared, and a value that exactly fit before can now be clipped at
   the right edge. `NeedAppearances` stays true, so viewers that regenerate appearances are
   unaffected. Deferred rather than pinned because the change is upstream, honours the form's
-  own `/MK`, and reaches every install through the `pypdf>=6.18.1` floor once that ships (D-026) — a
+  own `/MK`, and reaches every install through the raised pypdf floor once that ships (D-026) — a
   documented, upstream behaviour change; a byte-level assertion on pypdf's stream would break on its next
   cosmetic change. Fix: a test that fills a field to its width and asserts the value's glyphs
   are inside the clip box, not the stream's bytes.

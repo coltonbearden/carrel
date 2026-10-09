@@ -4,9 +4,10 @@
 
 - **Changed (behaviour, dependencies):** carrel now requires `pypdf>=6.19.0` (was `>=5.0`). carrel reads
   PDFs it did not write through pypdf — `edit`, `form`, `note`, `sign`, `audiobook`, and the
-  page counts in `inspect` and `diff` — and two pypdf releases harden it against hostile files. 6.18.1
-  tightens FlateDecode recovery and caps `/Widths` entry counts and `parse_bfchar` token lengths.
-  6.19.0 fixes three advisories, one of which `form fill` reached (GHSA-php9-fj8v-98fj): pypdf
+  page counts in `inspect` and `diff` — and pypdf 6 hardens its parser against hostile files release by
+  release. The two newest: 6.18.1 tightens FlateDecode recovery and caps `/Widths` entry counts
+  and `parse_bfchar` token lengths, and 6.19.0 fixes three advisories, one of which `form fill`
+  reached (GHSA-php9-fj8v-98fj): pypdf
   builds an appearance for every text and choice field it fills, and on 6.18.1 a list box
   offering 160,000 options, a 1.5 MB PDF, held `form fill` for over two minutes against about
   a second now. The other two are in code carrel does not call (embedded files,
