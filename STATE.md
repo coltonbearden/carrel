@@ -64,9 +64,10 @@
   from 0.9.0 to 0.12.1 and librt from 0.15.0 to 0.16.0. The merge closed Dependabot alerts 9
   to 12: three high ones on pypdf below 6.19.0 and a medium one on uv 0.12.7 to 0.12.17
   (GHSA-2cv4-cqwr-gwf7, path traversal on Windows when a wheel is extracted; uv is CI's own
-  tool here, installed by every `setup-uv` step at the version `uv.lock` pins). `/code-review 58 high` found no defect in the lock:
-  every changed entry matches PyPI's hashes, and `form fill` writes the same appearance
-  streams for the form fixture on both pypdf versions. One finding was fixed in the PR: the
+  tool here, installed by every `setup-uv` step at the version `uv.lock` pins).
+  `/code-review 58 high` found no defect in the lock: every changed entry matches PyPI's
+  hashes, and `form fill` writes the same appearance streams for the form fixture on both
+  pypdf versions. One finding was fixed in the PR: the
   `uv-pin` group's floor sat inside the uv advisory's range and is `>=0.12.18` now, so a
   relock cannot take CI's uv back into it. #64 then raised the runtime floor to
   `pypdf>=6.19.0` (D-026; unreleased, see Open issues). Two findings are deferred under Open
