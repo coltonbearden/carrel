@@ -224,7 +224,7 @@ Dropping the default `excludeFolders` is the deliberate half. Its `*archive*` pa
 
 carrel reads files it did not write, so the dependencies that parse them are its attack surface. `pypdf>=5.0` let `pip install carrel` keep whatever pypdf an environment already held, which meant the 6.18.1 hardening release that Dependabot moved into `uv.lock` (#50) reached CI and not users: carrel 0.5.0 installed into an environment holding pypdf 6.16.2 left it there.
 
-**The floor is raised to the newest security release**, not held at the oldest API that works — `pypdf>=6.18.1` now. The alternative the owner was offered, a tested minimum with a CI job that installs the floors, answers a different question (does the floor still work?) and leaves the security one open; it is still worth having and is tracked in `STATE.md`.
+**The floor is raised to the newest security release**, not held at the oldest API that works — `pypdf>=6.18.1` when this was decided; `pyproject.toml` holds the current floor, and `tests/test_dependency_floors.py` keeps it from being lowered. The alternative the owner was offered, a tested minimum with a CI job that installs the floors, answers a different question (does the floor still work?) and leaves the security one open; it is still worth having and is tracked in `STATE.md`.
 
 **The rule has three limits**, in `docs/RELEASING.md` step 1: the release must support carrel's `requires-python` and classified platforms; the floor may not exceed what `uv.lock` pins, because CI tests the lock; and the raise is classified under D-023 by its effect. Hardening adds limits that refuse files older versions read, so crossing a hardening release is a minor bump.
 
