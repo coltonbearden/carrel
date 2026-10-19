@@ -511,11 +511,12 @@
   fails. Deferred from #57, a pin bump: the fix is Windows-only process code that can be
   tested only in CI.
 
-- **A `watch` test with a four-second budget failed once on macOS, in a required job.**
+- **A `watch` test with a four-second budget failed twice on macOS, in a required job.**
   `tests/test_fields_rename_batch.py::test_watch_existing_stable_done_error_dirs_and_log`
   runs `watch --existing --timeout 4 --stable 0.2` and expects both files handled before the
   timeout. In #57's `test-minimal (macos)` job on 2026-10-09 the watcher printed its
-  `watching` line and nothing else; the re-run of the same commit passed. With the Windows
+  `watching` line and nothing else; the re-run of the same commit passed. It failed again on
+  `main` after #66's merge (run 38001695799, attempt 1; attempt 2 passed). With the Windows
   failure above that is two `watch` tests in one day that depend on how fast a runner is.
   `test-minimal (macos)` is required, so each such failure costs a manual re-run before a
   merge. Fix: give the test a budget that a slow runner meets, or wait on the event instead
@@ -538,7 +539,7 @@
   `{"libraryName": "/<owner>/<repo>"}`), and its docs give 400 as "invalid parameters". The
   workflow prints the status code only, by design, because the log is public, so the reason
   is not visible from here. Nothing depends on it: the check is not required and Context7
-  re-indexes on its own schedule. It repeated on #65's merge, so three 400s on 2026-10-09,
+  re-indexes on its own schedule. It repeated on #65's and #66's merges, so four 400s on 2026-10-09,
   all within a day of the 200 at 01:10Z, which would fit a once-a-day refresh limit
   (unverified); Context7 still serves `/coltonbearden/carrel`. Next: see whether a run more
   than a day after the last 200 succeeds, and if not, read the response body in a session
@@ -725,5 +726,4 @@ HANDOFF.md was retired on 2026-10-19. These rows existed only there and are copi
 
 | Task | Current state | Blocked on |
 |------|---------------|------------|
-| STATE.md corrections | the flake's count above; `context7-refresh` failed four times, not three | rides with the flake fix's PR |
 | Copilot automation runbook — PR 1 | carried, not started | nothing |
