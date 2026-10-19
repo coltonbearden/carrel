@@ -14,7 +14,6 @@ site/
 .claude/worktrees/
 # your own Claude Code permissions; .claude/settings.json is the committed floor
 .claude/settings.local.json
-HANDOFF.md
 
 # JetBrains IDEs
 .idea/

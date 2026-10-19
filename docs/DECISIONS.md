@@ -271,3 +271,14 @@ D-027 closed with two things open: a deployment-branch policy on the `github-pag
 **What the policy covers.** A branch cannot deploy through the `github-pages` environment, which is the one `docs.yml` names, whatever the prompt's answer. A workflow that names another environment is not covered: `actions/deploy-pages` accepts one, so a pushed branch carrying its own workflow file could still publish. Push access is the boundary there, not this policy.
 
 **Still text matching.** An ask rule matches the command text like any Bash rule. `gh api` can dispatch a workflow or edit the repository, `gh workflow -R <repo> run` is the same command with a flag in the middle, and a runner or a git option in front (`uv run gh ...`, `git rebase --exec`) hides it from the pattern under this file's own allows. `scripts/github-harden.sh` itself stays allowed, and its apply mode writes settings. `tests/test_settings_permissions.py` lists the spellings known to get past, so the gap is recorded where a rule that closes it will fail a test; a hook that closes it has to retire that list. D-027's PreToolUse hook remains the fix (`STATE.md`).
+
+## Moved from HANDOFF.md (2026-10-19)
+
+HANDOFF.md was retired on 2026-10-19. These rows existed only there and are copied verbatim.
+
+| ID | Decision | Rationale | Rejected | Date |
+|----|----------|-----------|----------|------|
+| S-13 | #58 merged at pypdf 6.19.0 although 6.20.0 was published mid-review | It was the reviewed head and closed three high alerts and one medium | `@dependabot recreate` to take 6.20.0: reopens the review and leaves the alerts open for the same end state | 2026-10-09 |
+| S-14 | A second `/code-review` round only where a fix changed the design (#65, #66); small fix commits merged gated with no further round | Same call as S-8 and S-12, now with its criterion | A round after every fix commit: out of proportion; no second round at all: both second rounds found real defects | 2026-10-09 |
+| S-15 | The `ci` label was created in the repository | `.github/dependabot.yml` names it and Dependabot posted an error on each Actions PR | Dropping `ci` from the config: loses the filter the config intends | 2026-10-09 |
+| S-17 | The macOS `watch` flake was re-run, not fixed, at the end of the session | It needs the watcher's timing understood, not a bigger number guessed | A late fix without that understanding | 2026-10-09 |
