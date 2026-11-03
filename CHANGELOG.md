@@ -3,8 +3,9 @@
 ## Unreleased
 
 - **Changed (behaviour, dependencies):** carrel now requires `pillow>=13.0.0` (was `>=10.0`).
-  carrel opens images it did not write through Pillow — `inspect`, `thumb`, `color`, `proof`,
-  `edit image`, `extract-images` and OCR's page images — and Pillow 13.0.0 fixes 41 advisories
+  carrel opens images it did not write through Pillow — `inspect`, `thumb`, `convert`, `diff`,
+  `dedupe`, `organize`, `color`, `proof`, `redact`, `sign`, `edit image`, `extract-images` and
+  the desk TUI's previews — and Pillow 13.0.0 fixes 41 advisories
   published since 2026-10-21, five of them critical: heap overflows in JPEG and FlashPix
   decoding and in saving TIFF to memory, stale image storage reused across frames, and
   argument injection into the Ghostscript call that opens EPS files. Most of the rest are
@@ -12,12 +13,16 @@
   TIFF, GIF, PNG, BMP, MSP and PDF readers. The floor was 10.0 since the start, so `pip install
   carrel` kept any Pillow an environment already held (D-026). The test fixtures Pillow writes
   regenerate with different bytes and identical content.
-- **Changed (behaviour, dependencies):** carrel now requires `pypdf>=6.21.4` (was `>=5.0`;
-  6.21.4 fixes 18 more advisories published since 2026-10-24, ten of them high). carrel reads
+- **Changed (behaviour, dependencies):** carrel now requires `pypdf>=6.21.4` (was `>=5.0`). carrel reads
   PDFs it did not write through pypdf — `edit`, `form`, `note`, `sign`, `audiobook`, and the
   page counts in `inspect` and `diff` — and pypdf 6 hardens its parser against hostile files release by
-  release. The two newest: 6.18.1 tightens FlateDecode recovery and caps `/Widths` entry counts
-  and `parse_bfchar` token lengths, and 6.19.0 fixes three advisories, one of which `form fill`
+  release. 6.20.0 to 6.21.4 fix 18 advisories published from 2026-10-24, ten of them high, by
+  limiting the work one stream, one form field or one cross-reference table may cost, and by
+  catching cycles in page trees and cloned dictionaries; so a hostile or merely enormous PDF
+  that 6.19.0 read can now be refused (exit 4). Two repairs go the other way: an `%%EOF` marker
+  not at the start of a line, and a page-tree `/Kids` entry that resolves to null, used to be
+  refused and now open. Before those, 6.18.1 tightened FlateDecode recovery and capped `/Widths`
+  entry counts and `parse_bfchar` token lengths, and 6.19.0 fixed three advisories, one of which `form fill`
   reached (GHSA-php9-fj8v-98fj): pypdf
   builds an appearance for every text and choice field it fills, and on 6.18.1 a list box
   offering 160,000 options, a 1.5 MB PDF, held `form fill` for over two minutes against about

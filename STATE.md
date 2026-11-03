@@ -9,18 +9,13 @@
   verification record is the v0.5.0 entry under Done. 33 commands, 14 MCP tools, 19 adapters,
   9 marketplace plugins, desk schema v2. Repo `coltonbearden/carrel`, docs at
   https://coltonbearden.github.io/carrel/, PyPI package `carrel`.
-- **In flight:** no Dependabot PR is open. #57 (`setup-uv` 10.2.0) merged on 2026-10-09
-  (Done), and Dependabot closed #61 and #62 itself once #58 had fixed their alerts. Its Monday
-  run should propose pypdf 6.20.0 and `setup-uv` 10.3.0, both under Open issues. The ruleset's
-  up-to-date rule makes every PR take `main`'s head before it merges, which reruns its checks.
-  Two ways to update a Dependabot branch: `@dependabot rebase` keeps the PR Dependabot's own;
-  `gh pr update-branch` adds a merge commit that is not Dependabot's, after which it stops
-  rebasing that PR by itself (`@dependabot recreate` restores it).
-  #48 (Context7) was the v0.5.0 wave's last PR. The two Dependabot PRs
-  after it merged: #49 (`setup-uv` 10.1.0) as `d4619cf` and #50 (pypdf 6.18.1, ruff 0.16.7,
-  pre-commit hooks run from `uv.lock`) as `fe0695a`. The owner items their reviews raised are
-  decided and landed — CI's uv cache and uv pin, the pypdf floor (D-026) and the
-  `.claude/settings.json` items (D-027); what is still open is below.
+- **In flight:** (2026-11-03) the dependency PR #81 takes the six Dependabot PRs open then
+  (#70, #72, #74, #76, #77, #78) as one change and raises the Pillow and pypdf floors (D-026);
+  the Claude Desktop extension (#79, D-030) follows it, then v0.6.0. Two ways to update a
+  Dependabot branch: `@dependabot rebase` keeps the PR Dependabot's own; `gh pr update-branch`
+  adds a merge commit that is not Dependabot's, after which it stops rebasing that PR by itself
+  (`@dependabot recreate` restores it). The ruleset's up-to-date rule makes every PR take
+  `main`'s head before it merges, which reruns its checks.
 - **Next:** MCP v3 (`specs/30-mcp-v3.md`) as **v0.6.0**: 11 new tools, 14 → 25, with `rename`,
   `intake`, `organize` and `ocr` first. That ordering is this wave's brief, not spec 30, which
   states none: `rename`/`intake`/`organize` are what stop the accounting-inbox pipeline being
@@ -61,6 +56,19 @@
 
 ## Done
 
+- 2026-11-03: #81 took the six open Dependabot PRs as one change: Pillow 13.0.0 (41
+  advisories, five critical), pypdf 6.21.4 (18), certifi 2026.10.23 and uv 0.13.5 (each fixing
+  one critical advisory; uv held inside setup-uv 10.3.2's checksum table), the actions group
+  (#74's SHAs), reportlab, pytest, ruff 0.17.3, mypy and mkdocs-material. The Pillow and pypdf
+  floors follow (D-026, dated note); openpyxl and markdown-it-py had no open advisory. The
+  `uv-pin` floor moved to 0.13.4 with the new uv advisory. `tests/fixtures/scanned.pdf` was
+  regenerated (Pillow 13 writes other bytes). pypdf 6.20 to 6.21.4 were reviewed for behaviour:
+  new work limits can refuse a hostile or enormous PDF 6.19.0 read (exit 4), and two repairs
+  open files it refused; the suite passed unchanged. Reviewed by `/code-review 81 high`.
+- 2026-11-03: #80 — `ubuntu-latest` moved to Ubuntu 26.04 (qpdf 12.3.2), whose enforced AppArmor
+  profile for qpdf refused `edit pdf --linearize` and `--decrypt` on paths it does not cover;
+  every PR's `test (py3.x)` jobs failed on it. qpdf now works only on copies in carrel's temp
+  folder, and outputs are placed only after it succeeds. Three review rounds.
 - 2026-10-09: the two things D-027 left open were taken up (#66, D-029). The `github-pages`
   environment deploys only from `main`: the policy was already set on GitHub, and
   `scripts/github-harden.sh` now converges both environments to one pattern each, naming
@@ -451,12 +459,12 @@
   `test_redact_sign_form.py` and others). `tests/conftest.py` is the shared-plumbing home;
   hoisting it is a whole-suite edit, deliberately not bundled into a behaviour PR.
 
-- **No released carrel carries the security floors yet.** `main` requires `pypdf>=6.21.4` and
-  `pillow>=13.0.0` (D-026; #64 raised pypdf to 6.19.0, the 2026-11-03 dependency PR to 6.21.4 and
-  Pillow from 10.0 to 13.0.0, which fixes 41 advisories, five critical). carrel 0.5.0 on PyPI
-  still declares `pypdf>=5.0` and `pillow>=10.0`, so until v0.6.0 ships, `pip install carrel`
-  keeps whatever an environment already holds. The owner chose on 2026-11-03 to take the
-  updates first and then release v0.6.0.
+- **No released carrel carries the security floors yet.** `main`'s floors for pypdf and Pillow
+  (`pyproject.toml`, held by `SECURITY_FLOORS`) were raised by #64 and #81 (D-026). carrel 0.5.0
+  on PyPI still declares `pypdf>=5.0` and `pillow>=10.0`, so until v0.6.0 ships, `pip install
+  carrel` keeps whatever an environment already holds. The owner chose on 2026-11-03 to take the
+  updates first and then release v0.6.0. A raise touches four places, listed in
+  `docs/RELEASING.md` step 1; refer to the floor elsewhere rather than restate it.
 
 - **Dependabot proposes a release as soon as it is published.** `.github/dependabot.yml` sets
   no `cooldown`, and #58 locked ast-serialize 0.12.1 two days after its upload to PyPI
@@ -538,7 +546,10 @@
   dependency PR locked uv at **0.13.5** (past the 0.13.4 security fix) to stay inside it. The gap
   reopens whenever a uv bump outruns the action: take a uv bump only to a version the pinned
   setup-uv lists (`src/download/checksum/known-checksums.json` at the pinned SHA), or bump both
-  together.
+  together. Nothing enforces this yet: Dependabot will propose uv 0.13.7 and CI will pass. #81's
+  review suggested a test against a vendored copy of that list; deferred, because every
+  setup-uv bump would then need its copy refreshed by hand, and whether that friction is worth
+  it is the owner's call.
 
 - **No CI job installs the declared floors.** CI tests `uv.lock`, and every declared floor
   but two sits well below it: click 8.1 against 8.5.0, rich 13.0
@@ -697,7 +708,7 @@
   repository activity: if `gh run list --workflow weekly.yml --event schedule` goes quiet,
   `gh workflow enable weekly.yml`. The schedule is kept out of `test.yml` so that rule can
   never reach the required checks.
-- `uv.lock`'s `revision` line may flip between 3 and 5: the uv this lock pins (0.12.22) writes
+- `uv.lock`'s `revision` line may flip between 3 and 5: the uv this lock pins (0.13.5) writes
   5 on any relock, Dependabot's updater wrote 3. uv documents a revision as a
   backwards-compatible addition that older versions read without error; only `version` is a
   breaking change.
