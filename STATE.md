@@ -682,11 +682,19 @@
 - **qpdf works only in carrel's temporary folder (`edit pdf --decrypt/--linearize`).** Ubuntu's
   AppArmor profile for qpdf confines it to `.pdf` files under `/tmp`, `/var/tmp`, `/mnt`,
   `/media` and non-hidden home folders (#80), so carrel hands it copies in its temp folder.
-  Two costs, accepted there: `TMPDIR` needs room for a copy of SRC and each output while it is
-  linearized (on a tmpfs `/tmp` a very large PDF can run out of space, and that reads as an
-  unexpected error, exit 1, rather than a named one); and a `TMPDIR` the profile does not cover
-  (a hidden folder, `/run/user/…`) is still refused. Fix if it bites: name ENOSPC, and fall back
-  to a temp folder beside the output when `TMPDIR` is refused.
+  Two costs, accepted there: `TMPDIR` holds the decrypted SRC for the whole run and every
+  linearized output until all are placed (for `--split`, the whole document), so on a tmpfs
+  `/tmp` a very large PDF can run out of space, which reads as an unexpected error (exit 1)
+  rather than a named one; and a `TMPDIR` the profile does not cover (a hidden folder,
+  `/run/user/…`) is still refused. Fix if it bites: name ENOSPC, and fall back to a temp folder
+  beside the output when `TMPDIR` is refused.
+
+- **`edit pdf --decrypt` passes the password on qpdf's command line**, where another local user
+  can read it in `ps` while qpdf runs. Found by #80's second review; its fix there,
+  `--password-file=-`, was reverted in the third, because that option needs qpdf 10.2 or later
+  (Debian 11 ships 10.1, Ubuntu 20.04 9.1) and reads only the first line of a password. Fix:
+  use `--password-file=-` when `adapters` reports qpdf ≥ 10.2 and the password has no newline,
+  and keep argv otherwise, with a test on each branch.
 
 ## Key facts for a fresh session
 

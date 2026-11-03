@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import contextlib
 import json as jsonlib
+import os
 import re
 import secrets
 import shutil
@@ -73,8 +74,8 @@ def cmd() -> None:
 # ------------------------------------------------------------------- edit pdf
 
 
-def _qpdf(*args: str, action: str, stdin: str | None = None) -> None:
-    proc = adapters.run("qpdf", *args, input=stdin)
+def _qpdf(*args: str, action: str) -> None:
+    proc = adapters.run("qpdf", *args)
     if proc.returncode not in (0, 3):  # 3 = qpdf succeeded with warnings
         detail = (proc.stderr or proc.stdout or "").strip()
         raise CarrelError(f"qpdf {action} failed (rc={proc.returncode}): {detail}")
@@ -85,34 +86,56 @@ def _qpdf(*args: str, action: str, stdin: str | None = None) -> None:
 # open only files ending .pdf/.json/.qdf, and only under /tmp, /var/tmp, /mnt, /media and the
 # non-hidden folders of $HOME: the user's own paths and a `.x.pdf.lin.tmp` beside the output were
 # refused with "Permission denied". Python moves files in and out; the profile does not bind it.
-# The cost is space in TMPDIR (a tmpfs on many systems): a copy of SRC for --decrypt, and every
-# output twice over for --linearize until it is placed.
+# The cost is space in TMPDIR (a tmpfs on many systems): with --decrypt, the decrypted SRC for the
+# whole run (the encrypted copy only until qpdf has read it); with --linearize, every linearized
+# output until all are placed, which for --split is the whole document, plus one page in flight.
 
 
-def _place(produced: Path, dest: Path) -> None:
-    """Put `produced` at `dest` with one rename, through a hidden temp beside `dest`.
+def _staging_file(dest: Path) -> tuple[Path, Any]:
+    """An exclusive, hidden, short-named file beside `dest`, and its open handle.
 
-    Hidden, so carrel's walkers and a `*.pdf` watch never see it; beside `dest`, so the rename
-    stays on one filesystem and a killed run leaves the old file or the new one, never part of
-    one; short, so a long output name cannot push it past the filesystem's name limit. A
-    symlinked `dest` keeps its link: the file it points at is what changes.
+    Hidden, so carrel's walkers and a `*.pdf` watch never see it; beside `dest`, so the final
+    rename stays on one filesystem; short, so a long output name cannot overflow the name limit.
     """
-    dest = dest.resolve()
     for _ in range(8):
         staged = dest.with_name(f".carrel-{secrets.token_hex(6)}.tmp")
         try:
-            fh = staged.open("xb")  # exclusive: never truncate a file that happens to be there
+            return staged, staged.open("xb")  # exclusive: never truncate what happens to be there
         except FileExistsError:
             continue
-        break
-    else:
-        raise CarrelError(f"could not create a temporary file beside {dest}")
+    raise CarrelError(f"could not create a temporary file beside {dest}")
+
+
+def _place(produced: Path, dest: Path, force: bool) -> None:
+    """Put `produced` at `dest` in one step, so a killed run leaves the old file or the new one.
+
+    Without `force`, a `dest` that appeared since the run checked it is refused, not replaced:
+    `os.link` creates the name only if it is free. A symlinked `dest` keeps its link (the file it
+    points at is what changes), and an overwritten file keeps its mode, as writing over it would.
+    """
+    dest = dest.resolve()
+    staged, fh = _staging_file(dest)
     try:
-        with fh, produced.open("rb") as src:
-            shutil.copyfileobj(src, fh)
-        if dest.exists():  # --force: keep the mode the old file had, as writing over it would
+        with fh:
+            try:  # same filesystem: a rename, no second copy of the bytes
+                os.replace(produced, staged)
+            except OSError:
+                with produced.open("rb") as src:
+                    shutil.copyfileobj(src, fh)
+        if dest.exists():
+            if not force:
+                raise CarrelError(f"refusing to overwrite existing file: {dest} (pass --force)")
             shutil.copymode(dest, staged)
-        staged.replace(dest)
+            staged.replace(dest)
+            return
+        try:
+            os.link(staged, dest)  # fails if `dest` was created in the meantime
+        except FileExistsError:
+            raise CarrelError(
+                f"refusing to overwrite existing file: {dest} (pass --force)"
+            ) from None
+        except OSError:  # a filesystem without hard links (FAT, some network shares)
+            staged.replace(dest)
     finally:
         with contextlib.suppress(OSError):  # never hide the real error behind the cleanup's
             staged.unlink(missing_ok=True)
@@ -185,15 +208,14 @@ def pdf(
             encrypted = Path(tmpdir) / "encrypted.pdf"
             shutil.copyfile(src, encrypted)
             src_eff = Path(tmpdir) / "decrypted.pdf"
-            # on stdin, not argv, where any local user could read it in `ps` while qpdf runs
             _qpdf(
-                "--password-file=-",
+                f"--password={password}",
                 "--decrypt",
                 str(encrypted),
                 str(src_eff),
                 action="--decrypt",
-                stdin=password,
             )
+            encrypted.unlink()  # qpdf is done with it; TMPDIR may be a small tmpfs
             operations.append("decrypt")
 
         reader = PdfReader(src_eff)
@@ -263,8 +285,17 @@ def pdf(
 
         if linearize:
             operations.append("linearize")
-            for linearized, target in placements:
-                _place(linearized, target)
+            placed: list[Path] = []
+            try:
+                for linearized, target in placements:
+                    _place(linearized, target, force)
+                    placed.append(target)
+            except BaseException:
+                if not force:  # all or nothing: take back the outputs this run created
+                    for target in placed:
+                        with contextlib.suppress(OSError):
+                            target.unlink()
+                raise
 
     record = {
         "action": "edit-pdf",

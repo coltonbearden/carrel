@@ -172,7 +172,13 @@ def _fake_qpdf(monkeypatch, *, rc: int = 0) -> list[dict]:
     def fake_run(name, *args, input=None, **kwargs):
         assert name == "qpdf"
         src, dst = Path(args[-2]), Path(args[-1])
-        calls.append({"args": args, "stdin": input, "paths": [src, dst]})
+        calls.append(
+            {
+                "args": args,
+                "paths": [src, dst],
+                "folder": sorted(q.name for q in src.parent.iterdir()),
+            }
+        )
         if rc:
             dst.write_bytes(b"%PDF-partial")
             return subprocess.CompletedProcess(args, rc, "", "qpdf: simulated failure")
@@ -206,15 +212,48 @@ def test_qpdf_only_ever_opens_pdfs_in_carrels_temp_folder(tmp_path: Path, monkey
     ]
     assert not elsewhere, f"qpdf was handed paths outside carrel's temp folder: {elsewhere}"
     assert sorted(p.name for p in docs.iterdir()) == ["locked.pdf", "out.pdf"], "no temp is left"
+    assert "encrypted.pdf" not in calls[1]["folder"], "the encrypted copy is gone once decrypted"
 
 
-def test_the_password_reaches_qpdf_on_stdin_never_argv(tmp_path: Path, monkeypatch):
-    calls = _fake_qpdf(monkeypatch)
-    src = make_pdf(tmp_path / "locked.pdf", 1, password="hunter2")
-    run_json("edit", "pdf", str(src), "--decrypt", "hunter2", "-o", str(tmp_path / "out.pdf"))
-    (decrypt,) = calls
-    assert not [a for a in decrypt["args"] if "hunter2" in a], "visible to every local user in ps"
-    assert "--password-file=-" in decrypt["args"] and decrypt["stdin"] == "hunter2"
+def test_a_file_that_appears_meanwhile_is_not_overwritten(tmp_path: Path, monkeypatch):
+    """The overwrite check runs when pypdf writes; placement comes after every qpdf run. A file
+    created at the destination in between is refused without --force, never replaced."""
+    import subprocess
+
+    from carrel.commands import edit
+
+    out = tmp_path / "out.pdf"
+
+    def slow_qpdf(name, *args, **kwargs):
+        Path(args[-1]).write_bytes(Path(args[-2]).read_bytes())
+        out.write_text("someone else's file", encoding="utf-8")  # appears while qpdf runs
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(edit.adapters, "run", slow_qpdf)
+    src = make_pdf(tmp_path / "lin.pdf", 1)
+    run("edit", "pdf", str(src), "--linearize", "-o", str(out), expect=1)
+    assert out.read_text(encoding="utf-8") == "someone else's file"
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["lin.pdf", "out.pdf"], "no temp is left"
+
+
+def test_a_split_that_fails_while_placing_takes_back_what_it_placed(tmp_path: Path, monkeypatch):
+    from carrel.commands import edit
+
+    _fake_qpdf(monkeypatch)
+    real_place, calls = edit._place, []
+
+    def failing_place(produced, dest, force):
+        calls.append(dest)
+        if len(calls) == 3:
+            raise OSError(28, "No space left on device")
+        real_place(produced, dest, force)
+
+    monkeypatch.setattr(edit, "_place", failing_place)
+    src = make_pdf(tmp_path / "lin.pdf", 4)
+    pages = tmp_path / "pages"
+    run("edit", "pdf", str(src), "--split", "--linearize", "-o", str(pages), expect=1)
+    assert len(calls) == 3
+    assert list(pages.iterdir()) == [], "the two pages placed before the failure are taken back"
 
 
 def test_a_failed_linearize_leaves_the_destination_untouched(tmp_path: Path, monkeypatch):
@@ -270,7 +309,7 @@ def test_a_long_output_name_is_placed(tmp_path: Path, monkeypatch):
         pytest.skip("Windows caps the whole path near 260 characters")
     _fake_qpdf(monkeypatch)
     src = make_pdf(tmp_path / "lin.pdf", 1)
-    out = tmp_path / ("x" * 240 + ".pdf")  # the temp beside it must not embed this name
+    out = tmp_path / ("x" * 250 + ".pdf")  # 254 of 255: a temp embedding this name cannot fit
     run_json("edit", "pdf", str(src), "--linearize", "-o", str(out))
     assert out.exists()
 

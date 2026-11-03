@@ -38,12 +38,12 @@
   for `--decrypt`, each output while it is linearized), and a `TMPDIR` the profile does not
   cover is still refused.
 - **Changed (behaviour):** with `--linearize`, nothing reaches the destination until qpdf has
-  succeeded for every output; each is then placed with one rename, keeping a symlinked
-  output's link and an overwritten file's mode. A failed linearize used to leave an
-  unlinearized file and exit 1, so the same command run again refused without `--force`; a
-  killed run now leaves the old file or the new one, never part of one.
-- **Fixed:** `--decrypt` passes the password to qpdf on stdin (`--password-file=-`), not on its
-  command line, where any local user could read it in `ps` while qpdf ran.
+  succeeded for every output. Each is then placed in one step, keeping a symlinked output's
+  link and an overwritten file's mode; a file that appeared at the destination in the meantime
+  is refused without `--force`, and a `--split` run that fails while placing takes back the
+  pages it had placed. A failed linearize used to leave an unlinearized file and exit 1, so the
+  same command run again refused without `--force`; a killed run now leaves the old file or the
+  new one, never part of one.
 - **Added:** `context7.json` states what Context7 indexes and how agents should use carrel.
   It was serving carrel's docs to other people's coding agents with no configuration at all.
   Scope is `docs/` and `plugins/`; five `rules` give an agent something checkable (`--json`
