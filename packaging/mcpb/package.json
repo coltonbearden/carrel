@@ -1,0 +1,9 @@
+{
+  "name": "mcpb-build",
+  "private": true,
+  "description": "The MCP Bundle CLI that scripts/build_mcpb.py packs and validates the Claude Desktop extension with. Locked here so CI and Dependabot move it by pull request (D-030).",
+  "license": "MIT",
+  "devDependencies": {
+    "@anthropic-ai/mcpb": "^2.1.2"
+  }
+}

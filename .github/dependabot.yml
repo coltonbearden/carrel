@@ -27,3 +27,18 @@ updates:
     labels: [dependencies, ci]
     commit-message:
       prefix: "ci(deps)"
+  # The MCPB CLI that packs the Claude Desktop extension (D-030), locked in
+  # packaging/mcpb/package-lock.json; CI's `bundle` job runs each bump.
+  - package-ecosystem: npm
+    directory: /packaging/mcpb
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/Chicago
+    groups:
+      mcpb:
+        patterns: ["*"]
+    labels: [dependencies, ci]
+    commit-message:
+      prefix: "ci(deps)"

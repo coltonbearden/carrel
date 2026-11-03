@@ -145,6 +145,7 @@ ignore = [
 "src/carrel/desk/app.py" = ["PLC0415"]
 "src/carrel/commands/*.py" = ["PLC0415"]   # lazy imports keep `--help` fast (see cli.py)
 "src/carrel/core/*.py" = ["PLC0415"]
+"packaging/mcpb/server.py" = ["PLC0415"]   # imports carrel only once the folder is known good
 
 [tool.ruff.lint.isort]
 known-first-party = ["carrel"]

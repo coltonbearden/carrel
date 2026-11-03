@@ -272,6 +272,37 @@ D-027 closed with two things open: a deployment-branch policy on the `github-pag
 
 **Still text matching.** An ask rule matches the command text like any Bash rule. `gh api` can dispatch a workflow or edit the repository, `gh workflow -R <repo> run` is the same command with a flag in the middle, and a runner or a git option in front (`uv run gh ...`, `git rebase --exec`) hides it from the pattern under this file's own allows. `scripts/github-harden.sh` itself stays allowed, and its apply mode writes settings. `tests/test_settings_permissions.py` lists the spellings known to get past, so the gap is recorded where a rule that closes it will fail a test; a hook that closes it has to retire that list. D-027's PreToolUse hook remains the fix (`STATE.md`).
 
+## D-030 (2026-11-03) — carrel ships as a Claude Desktop extension that Desktop's own uv installs, built and attached by every release
+
+The owner's choice (2026-11-03): anyone with Claude Desktop installs carrel from the release page in one click, and every release builds and attaches that file itself. The format is an MCP Bundle (`.mcpb`, <https://github.com/modelcontextprotocol/mcpb>), a zip with a `manifest.json` that Desktop reads to install and configure a local MCP server.
+
+**The runtime is manifest 0.4's `server.type: "uv"`.** The bundle ships a `pyproject.toml` that names `carrel[office]==<version>` and nothing else of carrel's: Desktop's managed uv installs Python and the dependencies on the user's machine the first time the extension starts, so the file is about 36 kB and never freezes a copy of carrel's dependencies. The alternatives each freeze one: `server.type: "python"` needs every package in `server/lib/` and cannot carry compiled wheels across platforms (Pillow, reportlab), and a PyInstaller binary is a frozen copy per platform. No third-party file is inside the bundle, so it carries only carrel's own `LICENSE`; the dependencies arrive from PyPI with theirs. There is no `uv.lock` in it, by design: a lock is exactly the frozen copy. The strict 0.4 schema still requires `mcp_config` for uv servers although the spec calls it optional (mcpb#263), so the manifest carries the format's own example shape, `uv run --directory ${__dirname} src/server.py <folder>`.
+
+**The interpreter is the newest Python carrel classifies**, written to the bundle's `.python-version` from `pyproject.toml`'s `Programming Language :: Python :: 3.N` classifiers (3.14 today). Without it, uv picks the newest stable Python, 3.15 when this was written, which carrel's CI has never run. A new classifier moves the bundle with it; nothing is typed by hand.
+
+**One folder, chosen at install, is carrel's `--root`.** `user_config.documents_folder` is a required `directory` with no default, passed as the launcher's only argument; the launcher (`packaging/mcpb/server.py`, shipped as `src/server.py`) runs `carrel --root <folder> mcp` in-process. D-021's confinement does the rest: every path a client names, walks, derives or reads back from the index stays inside the folder, and `--allow-outside-root` is never passed. The launcher **fails closed**: no argument, two, an empty one, a relative path, a missing directory, a file, or the `${user_config…}` placeholder arriving unsubstituted each exit 2 with the reason on stderr and nothing on stdout. Without that, a missing root would make carrel confine itself to whatever directory Desktop happened to start it in.
+
+**Everything that identifies the product is generated, at build time, and never committed**: `scripts/build_mcpb.py` writes the manifest from `product.json` (name, display name, version, tagline, description, author, license, repository), `pyproject.toml` (URLs, keywords, `requires-python`, classifiers) and `carrel.commands.mcp.TOOLS` (each tool's name and description, so the listing is the server's own). Nothing can drift because nothing is stored.
+
+**Left out, and why:**
+- External programs (pandoc, tesseract, ocrmypdf, poppler and the rest). D-004 holds: a missing one is an `isError` result with exit code 3 and its install hint, and `carrel_doctor` lists them all.
+- The `tui` extra: a terminal UI has no use inside Desktop.
+- The `tokens` extra: tiktoken fetches its table from a third-party host on first use, and `pack` counts by estimate without it.
+- A signature: `mcpb sign` needs a CA-issued certificate for anything but development. Desktop installs an unsigned bundle and says so.
+- `compatibility.claude_desktop`: no Desktop version is documented as the first to run uv bundles, and a wrong floor blocks installs outright.
+- Anthropic's extension directory. Submitting means accepting its terms, which is the owner's decision, not a build step.
+
+**How it is built and proved.**
+- The MCPB CLI is `@anthropic-ai/mcpb`, locked by `packaging/mcpb/package-lock.json` and moved by Dependabot's `npm` entry, rather than an unpinned `npx` or a version typed in a workflow. It is installed on no machine.
+- CI's `bundle` job, a required check, packs and validates the bundle and starts the packed file against the commit, comparing its live `tools/list` with the manifest and with `TOOLS`.
+- On release, `publish.yml` packs from the tag. Then, only after PyPI has the version, `attach` starts the bundle exactly as Desktop does (uv installing the pinned version from PyPI) before uploading `carrel-<version>.mcpb` to the release. It is the only job with `contents: write`.
+- The smoke drops the caller's `UV_LOCKED`: CI sets it, and `uv run` in a directory with no lock refuses under it.
+- `tests/test_mcpb.py` holds the manifest, the staged files and every refusal of the launcher, with no Node needed.
+
+**The icon** is `assets/icon-512.png`, `assets/logo.svg` rendered once by `scripts/render_icon.py` (cairosvg) and committed: the format wants a PNG, and ImageMagick's built-in SVG renderer drops the logo's stroked C.
+
+Consequence: the extension and the `carrel-agent` plugin run the same server, one inside Desktop on a folder the user picks, the other inside Claude Code in the project directory. A Desktop that also reaches another carrel server (a desk served over HTTP, say) sees the same tool names twice; which folder a call reaches is then the client's choice of server, not carrel's.
+
 ## Moved from HANDOFF.md (2026-10-19)
 
 HANDOFF.md was retired on 2026-10-19. These rows existed only there and are copied verbatim.

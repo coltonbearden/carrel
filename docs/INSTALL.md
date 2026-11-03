@@ -49,6 +49,27 @@ Upgrade after pulling changes with `uv tool install . --force` (or
 `uv tool upgrade carrel` when installed from an index); remove with
 `uv tool uninstall carrel`.
 
+## Claude Desktop extension (no terminal)
+
+Each [GitHub release](https://github.com/coltonbearden/carrel/releases/latest)
+carries `carrel-<version>.mcpb`, a Claude Desktop extension (an
+[MCP Bundle](https://github.com/modelcontextprotocol/mcpb)). Download it, open it
+with Claude Desktop, and choose the one folder carrel may use. It needs neither
+the CLI above nor a Python of your own:
+
+- Desktop's own uv installs Python and this version of carrel from PyPI, with the
+  `office` extra, the first time the extension starts. That takes a minute and
+  needs the network; later starts are quick.
+- The server is `carrel mcp` with `--root` set to the folder you chose. Every
+  path Claude names is confined to it, and the search index lives in a
+  `.carrel` folder inside it. Change the folder in the extension's settings.
+- External programs are not bundled. Ask Claude to run carrel's doctor: it lists
+  what is found and the install hint for the rest (on Windows, mostly `winget`;
+  see [the table below](#optional-binaries-by-capability)). Restart Desktop after
+  installing one so the server sees the new `PATH`.
+- The file is not signed. What it contains, and why it is built this way, is
+  D-030 in [Decisions](DECISIONS.md).
+
 ## Optional extras
 
 A plain install pulls only what the file toolkit needs (click, rich, pypdf,

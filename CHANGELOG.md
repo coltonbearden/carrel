@@ -29,6 +29,14 @@
   156-byte PDF with no `/Root` wrote 50,000 before the error. An error that reaches `main`
   itself is JSON under `--json` too. Still exit 1: malformed structures that make pypdf raise a
   plain `ValueError` or `TypeError` (STATE.md).
+- **Added:** a one-click **Claude Desktop extension**. Every GitHub release now carries
+  `carrel-<version>.mcpb`: open it with Claude Desktop, choose one folder, and Claude gets the
+  same tools as `carrel mcp`, confined to that folder. Desktop's own uv installs Python and
+  this version of carrel from PyPI, so the file is about 36 kB and holds no copy of carrel's
+  dependencies; the external converters stay optional, and `carrel_doctor` names what is
+  missing. The release workflow builds it from the tag, starts it the way Desktop will, and
+  only then attaches it; a new required check, `bundle`, packs, validates and starts it on
+  every pull request. Not signed, and not in Anthropic's extension directory (D-030).
 - **Added:** `context7.json` states what Context7 indexes and how agents should use carrel.
   It was serving carrel's docs to other people's coding agents with no configuration at all.
   Scope is `docs/` and `plugins/`; five `rules` give an agent something checkable (`--json`

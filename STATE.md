@@ -9,7 +9,13 @@
   verification record is the v0.5.0 entry under Done. 33 commands, 14 MCP tools, 19 adapters,
   9 marketplace plugins, desk schema v2. Repo `coltonbearden/carrel`, docs at
   https://coltonbearden.github.io/carrel/, PyPI package `carrel`.
-- **In flight:** no Dependabot PR is open. #57 (`setup-uv` 10.2.0) merged on 2026-10-09
+- **In flight:** (2026-11-03) the Claude Desktop extension (D-030), on `feat/desktop-extension`.
+  Every release attaches `carrel-<version>.mcpb`; `bundle` becomes a required check once the PR
+  merges (`scripts/github-harden.sh`, owner-approved 2026-11-03). The owner chose to release it
+  as **v0.6.0** with the unreleased pypdf floor, which moves MCP v3 to v0.7.0.
+- **Dependabot:** in that session's fetch, Dependabot had branches open for pillow 13.0.0,
+  pypdf 6.21.4, uv 0.13.4, certifi and an actions group; none was taken up there. Before them,
+  no Dependabot PR was open. #57 (`setup-uv` 10.2.0) merged on 2026-10-09
   (Done), and Dependabot closed #61 and #62 itself once #58 had fixed their alerts. Its Monday
   run should propose pypdf 6.20.0 and `setup-uv` 10.3.0, both under Open issues. The ruleset's
   up-to-date rule makes every PR take `main`'s head before it merges, which reruns its checks.
@@ -680,6 +686,13 @@
   clock decided.
 
 ## Key facts for a fresh session
+
+- Claude Desktop extension (D-030): `uv run python scripts/build_mcpb.py stage|pack|smoke`.
+  `pack` needs `npm ci --prefix packaging/mcpb` first (the MCPB CLI, locked there, moved by
+  Dependabot's npm entry). The bundle is manifest 0.4 `server.type: "uv"`: Desktop's uv installs
+  `carrel[office]==<version>` from PyPI on the Python of the newest classifier. Nothing generated
+  is committed; `tests/test_mcpb.py` needs no Node. The icon is `assets/icon-512.png`
+  (`uv run scripts/render_icon.py`).
 
 - Stack: Python ≥3.12 + uv; click CLI; Textual TUI (`carrel desk`); hatchling build.
 - Product identity: `product.json` is the SoT. Bump there, run `scripts/sync_product.py`,

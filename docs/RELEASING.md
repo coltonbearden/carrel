@@ -78,7 +78,8 @@ worth having because they are real.
 
 `main` is protected: push a branch, open a PR, and wait for every required check
 to go green — `lint`, `test (py3.12)`, `test (py3.13)`, `test (py3.14)`,
-`test-minimal` and `test-minimal (macos)`; the list is `REQUIRED_CHECKS` in
+`test-minimal`, `test-minimal (macos)` and `bundle` (the Desktop extension packs,
+validates and starts); the list is `REQUIRED_CHECKS` in
 `scripts/github-harden.sh`. `test-minimal (windows)` is advisory until it is
 promoted, so a red one does not block — read it anyway. Per CLAUDE.md the PR's
 `/code-review` must also have completed, with every confirmed finding fixed in
@@ -110,15 +111,27 @@ force-move).
 
 ## 4. Watch the publish workflow
 
-`.github/workflows/publish.yml` runs two jobs:
+`.github/workflows/publish.yml` runs four jobs:
 
 | job | what it does |
 |---|---|
 | `build` | verifies tag ↔ `product.json` ↔ CHANGELOG, regenerates and diffs the generated copies, `uv build`, installs the wheel in a clean venv and checks `carrel --version`, uploads `dist/` |
 | `publish` | the only job with `id-token: write`; downloads `dist/`, publishes with `pypa/gh-action-pypi-publish` in the `pypi` environment with PEP 740 attestations |
+| `bundle (Desktop extension)` | packs the Claude Desktop extension from the tag with the MCPB CLI locked in `packaging/mcpb/`, validates it, starts it against the tagged commit, uploads it (D-030) |
+| `attach (Desktop extension)` | runs after `publish` and `bundle`, and is the only job with `contents: write`: starts the bundle the way Desktop does (its uv installs this version from PyPI, retrying while the index catches up), then uploads `carrel-<version>.mcpb` to the release |
 
 ```sh
 gh run watch --exit-status
+```
+
+Then check the release page lists `carrel-<version>.mcpb`, and that the file you
+download from it starts (`npm ci --prefix packaging/mcpb` once, then):
+
+```sh
+version="$(python3 -c 'import json; print(json.load(open("product.json"))["version"])')"
+gh release download "v$version" --pattern '*.mcpb' --dir /tmp/rel
+packaging/mcpb/node_modules/.bin/mcpb info /tmp/rel/carrel-$version.mcpb
+uv run python scripts/build_mcpb.py smoke /tmp/rel/carrel-$version.mcpb --runtime pypi
 ```
 
 ## PyPI side (one-time, after any repo move)
@@ -142,4 +155,12 @@ this entry is updated — that is the only manual step in the whole flow.
   `product.json`, land it, re-release.
 - `publish` red with an OIDC error → the PyPI trusted-publisher entry above
   does not match; fix it and re-run the job (`gh run rerun <id> --failed`).
+- `bundle` red → the extension does not pack, validate or start at the tag;
+  `publish` still runs (PyPI has the version), `attach` does not. Fix it on
+  `main` and attach by hand from that fix only if the tagged code is unchanged;
+  otherwise release a patch.
+- `attach` red after `publish` succeeded → PyPI has the version and the release
+  has no `.mcpb`. If PyPI was slow, re-run the job (`gh run rerun <id> --failed`);
+  it replaces its own earlier upload (`--clobber`). If the smoke itself fails, the
+  published version does not start from the bundle: fix it and release a patch.
 - Never re-upload an existing version: PyPI is immutable. Bump a patch version.

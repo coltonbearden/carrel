@@ -41,6 +41,18 @@ carrel doctor                   # what can your desk do today? (+ install hints 
 
 (Contributing or hacking on it? `uv tool install .` from a checkout does the same thing.)
 
+### Install in Claude Desktop
+
+No terminal needed. Every [release](https://github.com/coltonbearden/carrel/releases/latest)
+carries a one-click Claude Desktop extension, `carrel-<version>.mcpb`: download it, open it
+with Claude Desktop, and choose the one folder carrel may use. Desktop sets up Python and
+installs carrel on its own.
+
+The extension gives Claude the same tools as `carrel mcp`, inside that folder only: it reads and
+writes nowhere else, and keeps its search index in a `.carrel` folder there. Converters such as
+pandoc and tesseract are not bundled; ask Claude to run carrel's doctor to see what works and
+how to add the rest. The file is not signed, so Desktop may note that when you install it.
+
 ## Three things to try
 
 ### Give Claude the right context
