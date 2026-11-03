@@ -29,6 +29,21 @@
   156-byte PDF with no `/Root` wrote 50,000 before the error. An error that reaches `main`
   itself is JSON under `--json` too. Still exit 1: malformed structures that make pypdf raise a
   plain `ValueError` or `TypeError` (STATE.md).
+- **Fixed:** `edit pdf --linearize` and `--decrypt` failed with "Permission denied" wherever
+  Ubuntu's AppArmor profile for qpdf is enforced (Ubuntu 26.04, and GitHub's `ubuntu-latest`
+  runners since they moved to it). The profile lets qpdf open only files ending `.pdf`, `.json`
+  or `.qdf`, and only under `/tmp`, `/var/tmp`, `/mnt`, `/media` and the non-hidden folders of
+  your home; carrel handed it your own paths and a `.<name>.lin.tmp` beside the output. qpdf now
+  sees only copies in carrel's temporary folder, so `TMPDIR` needs room for them (a copy of SRC
+  for `--decrypt`, each output while it is linearized), and a `TMPDIR` the profile does not
+  cover is still refused.
+- **Changed (behaviour):** with `--linearize`, nothing reaches the destination until qpdf has
+  succeeded for every output. Each is then placed in one step, keeping a symlinked output's
+  link and an overwritten file's mode; a file that appeared at the destination in the meantime
+  is refused without `--force`, and a `--split` run that fails while placing takes back the
+  pages it had placed. A failed linearize used to leave an unlinearized file and exit 1, so the
+  same command run again refused without `--force`; a killed run now leaves the old file or the
+  new one, never part of one.
 - **Added:** `context7.json` states what Context7 indexes and how agents should use carrel.
   It was serving carrel's docs to other people's coding agents with no configuration at all.
   Scope is `docs/` and `plugins/`; five `rules` give an agent something checkable (`--json`

@@ -11,8 +11,12 @@ an explicit -i/--in-place.
 
 from __future__ import annotations
 
+import contextlib
 import json as jsonlib
+import os
 import re
+import secrets
+import shutil
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -75,6 +79,66 @@ def _qpdf(*args: str, action: str) -> None:
     if proc.returncode not in (0, 3):  # 3 = qpdf succeeded with warnings
         detail = (proc.stderr or proc.stdout or "").strip()
         raise CarrelError(f"qpdf {action} failed (rc={proc.returncode}): {detail}")
+
+
+# qpdf reads and writes only `.pdf` files inside carrel's own temporary folder (TMPDIR, /tmp by
+# default). Ubuntu's AppArmor profile for qpdf (/etc/apparmor.d/qpdf, enforced from 26.04) lets it
+# open only files ending .pdf/.json/.qdf, and only under /tmp, /var/tmp, /mnt, /media and the
+# non-hidden folders of $HOME: the user's own paths and a `.x.pdf.lin.tmp` beside the output were
+# refused with "Permission denied". Python moves files in and out; the profile does not bind it.
+# The cost is space in TMPDIR (a tmpfs on many systems): with --decrypt, the decrypted SRC for the
+# whole run (the encrypted copy only until qpdf has read it); with --linearize, every linearized
+# output until all are placed, which for --split is the whole document, plus one page in flight.
+
+
+def _staging_file(dest: Path) -> tuple[Path, Any]:
+    """An exclusive, hidden, short-named file beside `dest`, and its open handle.
+
+    Hidden, so carrel's walkers and a `*.pdf` watch never see it; beside `dest`, so the final
+    rename stays on one filesystem; short, so a long output name cannot overflow the name limit.
+    """
+    for _ in range(8):
+        staged = dest.with_name(f".carrel-{secrets.token_hex(6)}.tmp")
+        try:
+            return staged, staged.open("xb")  # exclusive: never truncate what happens to be there
+        except FileExistsError:
+            continue
+    raise CarrelError(f"could not create a temporary file beside {dest}")
+
+
+def _place(produced: Path, dest: Path, force: bool) -> None:
+    """Put `produced` at `dest` in one step, so a killed run leaves the old file or the new one.
+
+    Without `force`, a `dest` that appeared since the run checked it is refused, not replaced:
+    `os.link` creates the name only if it is free. A symlinked `dest` keeps its link (the file it
+    points at is what changes), and an overwritten file keeps its mode, as writing over it would.
+    """
+    dest = dest.resolve()
+    staged, fh = _staging_file(dest)
+    try:
+        with fh:
+            try:  # same filesystem: a rename, no second copy of the bytes
+                os.replace(produced, staged)
+            except OSError:
+                with produced.open("rb") as src:
+                    shutil.copyfileobj(src, fh)
+        if dest.exists():
+            if not force:
+                raise CarrelError(f"refusing to overwrite existing file: {dest} (pass --force)")
+            shutil.copymode(dest, staged)
+            staged.replace(dest)
+            return
+        try:
+            os.link(staged, dest)  # fails if `dest` was created in the meantime
+        except FileExistsError:
+            raise CarrelError(
+                f"refusing to overwrite existing file: {dest} (pass --force)"
+            ) from None
+        except OSError:  # a filesystem without hard links (FAT, some network shares)
+            staged.replace(dest)
+    finally:
+        with contextlib.suppress(OSError):  # never hide the real error behind the cleanup's
+            staged.unlink(missing_ok=True)
 
 
 @cmd.command("pdf")
@@ -141,8 +205,17 @@ def pdf(
     with tempfile.TemporaryDirectory(prefix="carrel-edit-") as tmpdir:
         src_eff = src
         if password:
+            encrypted = Path(tmpdir) / "encrypted.pdf"
+            shutil.copyfile(src, encrypted)
             src_eff = Path(tmpdir) / "decrypted.pdf"
-            _qpdf(f"--password={password}", "--decrypt", str(src), str(src_eff), action="--decrypt")
+            _qpdf(
+                f"--password={password}",
+                "--decrypt",
+                str(encrypted),
+                str(src_eff),
+                action="--decrypt",
+            )
+            encrypted.unlink()  # qpdf is done with it; TMPDIR may be a small tmpfs
             operations.append("decrypt")
 
         reader = PdfReader(src_eff)
@@ -165,6 +238,24 @@ def pdf(
             operations.append(f"pages({pages_spec})")
 
         outputs: list[Path] = []
+        # With --linearize nothing reaches a destination until qpdf has succeeded for every
+        # output: pypdf writes into the temp folder, qpdf linearizes there, and each result is
+        # placed with one rename at the end. Without it, pypdf writes the destination directly.
+        placements: list[tuple[Path, Path]] = []
+
+        def write(writer: Any, target: Path) -> None:
+            if not linearize:
+                with target.open("wb") as fh:
+                    writer.write(fh)
+                return
+            raw = Path(tmpdir) / f"written-{len(placements)}.pdf"
+            linearized = Path(tmpdir) / f"linearized-{len(placements)}.pdf"
+            with raw.open("wb") as fh:
+                writer.write(fh)
+            _qpdf("--linearize", str(raw), str(linearized), action="--linearize")
+            raw.unlink()
+            placements.append((linearized, target))
+
         if split:
             operations.append("split")
             out_dir = out or src.with_name(f"{src.stem}-pages")
@@ -177,8 +268,7 @@ def pdf(
                 if rotate_deg:
                     writer.pages[0].rotate(rotate_deg % 360)
                 target = _check_target(out_dir / f"{src.stem}-p{i:03d}.pdf", force)
-                with target.open("wb") as fh:
-                    writer.write(fh)
+                write(writer, target)
                 outputs.append(target)
         else:
             writer = PdfWriter()
@@ -188,19 +278,24 @@ def pdf(
                 for page in writer.pages:
                     page.rotate(rotate_deg % 360)
             target = _check_target(out or src.with_name(f"{src.stem}.edited.pdf"), force)
-            with target.open("wb") as fh:
-                writer.write(fh)
+            write(writer, target)
             outputs.append(target)
         if rotate_deg:
             operations.append(f"rotate({rotate_deg})")
 
         if linearize:
             operations.append("linearize")
-            for produced in outputs:
-                # temp lives next to the output so the final rename never crosses filesystems
-                lin_tmp = produced.with_name(f".{produced.name}.lin.tmp")
-                _qpdf("--linearize", str(produced), str(lin_tmp), action="--linearize")
-                lin_tmp.replace(produced)
+            placed: list[Path] = []
+            try:
+                for linearized, target in placements:
+                    _place(linearized, target, force)
+                    placed.append(target)
+            except BaseException:
+                if not force:  # all or nothing: take back the outputs this run created
+                    for target in placed:
+                        with contextlib.suppress(OSError):
+                            target.unlink()
+                raise
 
     record = {
         "action": "edit-pdf",
