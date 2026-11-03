@@ -12,6 +12,7 @@ here when the tool set changes; the release path is where it holds.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import struct
 import subprocess
@@ -40,10 +41,10 @@ TIMEOUT = 60
 
 @pytest.fixture(scope="module")
 def build_mcpb():
-    sys.path.insert(0, str(REPO_ROOT / "scripts"))
-    import build_mcpb
-
-    return build_mcpb
+    spec = importlib.util.spec_from_file_location("build_mcpb", BUILD)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 @pytest.fixture
@@ -152,13 +153,108 @@ def test_newest_classified_python_compares_as_numbers(build_mcpb):
         build_mcpb.newest_classified_python(["Programming Language :: Python :: 3"])
 
 
-def test_the_smoke_drops_the_callers_lock_flags(build_mcpb, monkeypatch):
-    """CI sets UV_LOCKED=1; `uv run` in the bundle, which has no lock, refuses under it."""
-    for name in build_mcpb.CALLER_UV_ENV:
+def test_the_smoke_starts_the_bundle_without_the_callers_uv_settings(build_mcpb, monkeypatch):
+    """A host starts the bundle with none of them. CI sets UV_LOCKED=1 (refused in a folder
+    with no lock) and setup-uv sets UV_PYTHON (which would override .python-version)."""
+    for name in ("UV_LOCKED", "UV_PYTHON", "UV_FROZEN", "UV_SOMETHING_LATER", "VIRTUAL_ENV"):
         monkeypatch.setenv(name, "1")
+    monkeypatch.setenv("CARREL_TEST_UNRELATED", "kept")
     env = build_mcpb._child_env()
-    assert not set(build_mcpb.CALLER_UV_ENV) & set(env)
-    assert {"UV_LOCKED", "VIRTUAL_ENV"} <= set(build_mcpb.CALLER_UV_ENV)
+    assert not [k for k in env if k.startswith("UV_") or k == "VIRTUAL_ENV"]
+    assert env["CARREL_TEST_UNRELATED"] == "kept"
+
+
+def test_the_pypi_runtime_is_the_manifests_command_refreshing_the_pin(build_mcpb, staged, tmp_path):
+    cmd = build_mcpb.command(staged, tmp_path, "pypi")
+    assert cmd == [
+        "uv",
+        "run",
+        "--refresh-package",
+        PRODUCT["package"],
+        "--directory",
+        str(staged),
+        "src/server.py",
+        str(tmp_path),
+    ]
+
+
+def test_the_pypi_runtime_must_run_on_the_bundles_python(build_mcpb, staged):
+    data = _manifest(staged)
+    responses = [
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {"serverInfo": {"name": data["name"], "version": data["version"]}},
+        },
+        {"jsonrpc": "2.0", "id": 2, "result": {"tools": data["tools"]}},
+        {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "result": {
+                "content": [
+                    {"type": "text", "text": json.dumps({"python": "3.12.16", "adapters": []})}
+                ]
+            },
+        },
+    ]
+    assert build_mcpb.check(responses, data, "pypi", "3.12")["python"] == "3.12.16"
+    with pytest.raises(AssertionError, match=r"not the bundle's 3\.14"):
+        build_mcpb.check(responses, data, "pypi", "3.14")
+
+
+def test_only_a_version_missing_from_the_index_is_retried(
+    build_mcpb, staged, tmp_path, monkeypatch
+):
+    bundle = _zip(staged, tmp_path / "b.mcpb")
+    calls = []
+
+    def fails_with(message):
+        def fake(*args, **kwargs):
+            calls.append(message)
+            if len(calls) == 1:
+                raise RuntimeError(message)
+            return []
+
+        return fake
+
+    monkeypatch.setattr(build_mcpb.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(build_mcpb, "check", lambda *a: {"ok": True})
+    monkeypatch.setattr(
+        build_mcpb, "run_bundle", fails_with("No solution found when resolving dependencies")
+    )
+    assert build_mcpb.smoke(bundle, "pypi", None, 600) == {"ok": True}
+    assert len(calls) == 2, "a version not on the index yet is retried"
+    calls.clear()
+    monkeypatch.setattr(
+        build_mcpb, "run_bundle", fails_with("the server exited 2: desktop extension: refused")
+    )
+    with pytest.raises(RuntimeError, match="exited 2"):
+        build_mcpb.smoke(bundle, "pypi", None, 600)
+    assert len(calls) == 1, "a refusal or a crash fails at once"
+
+
+def test_stage_will_not_delete_a_folder_it_did_not_write(build_mcpb, tmp_path):
+    out = tmp_path / "out"
+    (out / "stage").mkdir(parents=True)
+    (out / "stage" / "precious.txt").write_text("keep me", encoding="utf-8")
+    with pytest.raises(SystemExit, match="did not write"):
+        build_mcpb.stage(out)
+    assert (out / "stage" / "precious.txt").read_text(encoding="utf-8") == "keep me"
+    (out / "stage" / "precious.txt").unlink()
+    build_mcpb.stage(out)
+    build_mcpb.stage(out)  # its own earlier output it replaces
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the stand-in CLI is a shell script")
+def test_pack_leaves_one_bundle_in_its_folder(build_mcpb, tmp_path):
+    fake = tmp_path / "mcpb"
+    fake.write_text('#!/bin/sh\n[ "$1" = pack ] && : > "$3"\nexit 0\n', encoding="utf-8")
+    fake.chmod(0o755)
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / f"{PRODUCT['package']}-0.0.1.mcpb").write_text("an older bundle", encoding="utf-8")
+    target = build_mcpb.pack(out, fake)
+    assert sorted(p.name for p in out.glob("*.mcpb")) == [target.name]
 
 
 def test_pack_without_the_cli_exits_3(build_mcpb, tmp_path, capsys):
@@ -230,6 +326,16 @@ def test_launcher_serves_the_folder_it_is_given(tmp_path):
     assert "not for the extension" not in proc.stdout
 
 
+def test_a_folder_whose_name_holds_a_dollar_brace_is_served(tmp_path):
+    docs = tmp_path / "notes ${draft}"
+    docs.mkdir()
+    proc = _launch(
+        [str(docs)], cwd=tmp_path, messages=[{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}]
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert len(_responses(proc.stdout)[1]["result"]["tools"]) == len(TOOLS)
+
+
 @pytest.mark.parametrize(
     ("make_args", "reason"),
     [
@@ -260,13 +366,17 @@ def test_launcher_refuses_anything_but_one_existing_folder(tmp_path, make_args, 
 # --- the smoke, end to end without Node ---------------------------------------------------------
 
 
+def _zip(folder: Path, target: Path) -> Path:
+    with zipfile.ZipFile(target, "w") as zf:
+        for path in sorted(folder.rglob("*")):
+            if path.is_file() and path.name != ".mcpbignore":
+                zf.write(path, path.relative_to(folder).as_posix())
+    return target
+
+
 def test_smoke_checkout_passes_on_a_bundle_zipped_from_the_stage(build_mcpb, staged, tmp_path):
     """`pack` adds only the MCPB CLI's validation; the zip layout is the staged folder's."""
-    bundle = tmp_path / "test.mcpb"
-    with zipfile.ZipFile(bundle, "w") as zf:
-        for path in sorted(staged.rglob("*")):
-            if path.is_file() and path.name != ".mcpbignore":
-                zf.write(path, path.relative_to(staged).as_posix())
+    bundle = _zip(staged, tmp_path / "test.mcpb")
     result = build_mcpb.smoke(bundle, "checkout", None, 0)
     assert result["tools"] == len(TOOLS)
     assert result["server"] == f"{PRODUCT['name']} {PRODUCT['version']}"
@@ -276,10 +386,6 @@ def test_smoke_rejects_a_manifest_whose_tools_differ(build_mcpb, staged, tmp_pat
     data = _manifest(staged)
     data["tools"] = data["tools"][1:]
     (staged / "manifest.json").write_text(json.dumps(data), encoding="utf-8")
-    bundle = tmp_path / "drifted.mcpb"
-    with zipfile.ZipFile(bundle, "w") as zf:
-        for path in staged.rglob("*"):
-            if path.is_file():
-                zf.write(path, path.relative_to(staged).as_posix())
+    bundle = _zip(staged, tmp_path / "drifted.mcpb")
     with pytest.raises(AssertionError, match="differs from the manifest"):
         build_mcpb.smoke(bundle, "checkout", None, 0)

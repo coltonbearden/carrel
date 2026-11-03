@@ -56,9 +56,19 @@ FOLDER_KEY = "documents_folder"
 #: UI with no use in Desktop, and `tokens`, whose tiktoken fetches its table from a third-party
 #: host on first use while `pack` counts by estimate without it.
 EXTRAS = ("office",)
-#: Variables from the caller that would change how the bundle's uv runs. A host starts the server
-#: with none of them; CI sets UV_LOCKED=1, which `uv run` in a directory with no lock refuses.
-CALLER_UV_ENV = ("UV_LOCKED", "UV_FROZEN", "UV_NO_SYNC", "UV_PROJECT_ENVIRONMENT", "VIRTUAL_ENV")
+#: The bundle is started with none of the caller's uv settings, as a host starts it. CI sets
+#: UV_LOCKED=1, which `uv run` in a directory with no lock refuses, and setup-uv's `python-version`
+#: sets UV_PYTHON, which would override the bundle's .python-version. Every UV_* variable goes,
+#: so a setting added to a workflow later cannot leak in either.
+CALLER_ENV_PREFIXES = ("UV_",)
+CALLER_ENV_NAMES = ("VIRTUAL_ENV",)
+#: What a uv resolution says when the pinned version is not on the index (yet).
+NOT_ON_INDEX = ("No solution found when resolving", "not found in the package registry")
+#: What `stage` may find in its own folder from a previous run; anything else, it will not delete.
+STAGE_NAMES = frozenset(
+    {".mcpbignore", ".python-version", "LICENSE", "icon.png", "manifest.json", "pyproject.toml"}
+    | {"src", ".venv", "uv.lock"}
+)
 PROTOCOL_VERSION = "2025-06-18"
 
 
@@ -84,7 +94,9 @@ def newest_classified_python(classifiers: list[str]) -> str:
 
 
 def _tools() -> list[dict[str, str]]:
-    sys.path.insert(0, str(ROOT / "src"))
+    src = str(ROOT / "src")
+    if src not in sys.path:  # run with a Python that has no carrel installed
+        sys.path.append(src)
     from carrel.commands.mcp import TOOLS
 
     return [{"name": t["name"], "description": t["description"]} for t in TOOLS]
@@ -170,6 +182,11 @@ def stage(out: Path) -> Path:
     product, project = _product(), _pyproject()
     folder = out / "stage"
     if folder.exists():
+        foreign = sorted(p.name for p in folder.iterdir() if p.name not in STAGE_NAMES)
+        if not folder.is_dir() or foreign:
+            raise SystemExit(
+                f"{folder} holds files this script did not write ({foreign}); not deleting it"
+            )
         shutil.rmtree(folder)
     (folder / "src").mkdir(parents=True)
     data = manifest(product, project)
@@ -206,7 +223,8 @@ def pack(out: Path, binary: Path) -> Path:
     folder = stage(out)
     product = _product()
     target = out / f"{product['package']}-{product['version']}.mcpb"
-    target.unlink(missing_ok=True)
+    for old in out.glob("*.mcpb"):  # one bundle per folder, so `smoke OUT/*.mcpb` names one file
+        old.unlink()
     _mcpb(binary, "validate", str(folder / "manifest.json"))
     _mcpb(binary, "pack", str(folder), str(target))
     _mcpb(binary, "info", str(target))
@@ -245,14 +263,25 @@ def command(bundle: Path, docs: Path, runtime: str) -> list[str]:
     subst = {"${__dirname}": str(bundle), f"${{user_config.{FOLDER_KEY}}}": str(docs)}
     args = [subst.get(a, a) for a in config["args"]]
     if runtime == "pypi":
-        return [config["command"], *args]
+        # Re-check the index for the pinned package on every attempt: uv caches PyPI's page for
+        # up to ten minutes, which would hold a retry to the copy fetched before the upload.
+        return [config["command"], args[0], "--refresh-package", _pinned_package(bundle), *args[1:]]
     # checkout: the bundle's launcher and arguments, run by the Python that has this checkout
     after = args[args.index(data["server"]["entry_point"]) + 1 :]
     return [sys.executable, str(bundle / data["server"]["entry_point"]), *after]
 
 
+def _pinned_package(bundle: Path) -> str:
+    project = tomllib.loads((bundle / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    return re.split(r"[\[=<>!~ ]", project["dependencies"][0], maxsplit=1)[0]
+
+
 def _child_env() -> dict[str, str]:
-    env = {k: v for k, v in os.environ.items() if k not in CALLER_UV_ENV}
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if not k.startswith(CALLER_ENV_PREFIXES) and k not in CALLER_ENV_NAMES
+    }
     env["PYTHONUTF8"] = "1"
     return env
 
@@ -280,8 +309,16 @@ def run_bundle(bundle: Path, docs: Path, runtime: str, timeout: float) -> list[d
     return responses
 
 
-def check(responses: list[dict[str, Any]], data: dict[str, Any], runtime: str) -> dict[str, Any]:
-    """Assert the live server is the one the manifest describes; return counts for the log."""
+def check(
+    responses: list[dict[str, Any]],
+    data: dict[str, Any],
+    runtime: str,
+    python: str | None = None,
+) -> dict[str, Any]:
+    """Assert the live server is the one the manifest describes; return counts for the log.
+
+    `python` is the bundle's .python-version: on the pypi runtime the server must run on it.
+    """
     by_id = {r.get("id"): r for r in responses}
     for mid in (1, 2, 3):
         if mid not in by_id or "result" not in by_id[mid]:
@@ -303,6 +340,9 @@ def check(responses: list[dict[str, Any]], data: dict[str, Any], runtime: str) -
         )
     report = json.loads(doctor["content"][0]["text"])
     adapters = report.get("adapters", [])
+    ran_on = str(report.get("python", ""))
+    if python and runtime == "pypi" and ran_on.split(".")[:2] != python.split("."):
+        raise AssertionError(f"the server ran on Python {ran_on}, not the bundle's {python}")
     return {
         "server": f"{info['name']} {info['version']}",
         "tools": len(live),
@@ -321,21 +361,23 @@ def smoke(file: Path, runtime: str, docs: Path | None, retry_for: float) -> dict
             docs = Path(tmp) / "docs"
             docs.mkdir()
             (docs / "note.txt").write_text("a smoke-test document\n", encoding="utf-8")
+        python = (bundle / ".python-version").read_text(encoding="utf-8").strip()
         deadline = time.monotonic() + retry_for
         while True:
             try:
                 responses = run_bundle(bundle, docs.resolve(), runtime, timeout=900)
                 break
             except RuntimeError as e:
-                # A just-published release can take a minute to reach PyPI's index.
-                if runtime != "pypi" or time.monotonic() >= deadline:
+                # A just-published release can take a minute to reach PyPI's index. Only that
+                # is retried: a refusal or a crash fails at once, with its whole stderr.
+                waiting = runtime == "pypi" and any(m in str(e) for m in NOT_ON_INDEX)
+                if not waiting or time.monotonic() >= deadline:
                     raise
                 print(
-                    f"not ready yet, retrying in 30 s: {str(e).splitlines()[-1][:200]}",
-                    file=sys.stderr,
+                    "the pinned version is not on the index yet; retrying in 30 s", file=sys.stderr
                 )
                 time.sleep(30)
-        return check(responses, data, runtime)
+        return check(responses, data, runtime, python)
 
 
 def main(argv: list[str] | None = None) -> int:

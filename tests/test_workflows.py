@@ -397,20 +397,68 @@ def test_only_the_attach_job_can_write_the_release():
     assert set(data["jobs"]["attach"]["needs"]) == {"publish", "bundle"}
 
 
-def _job_names(workflow: str) -> set[str]:
-    """Each job's displayed name, with a matrix axis expanded the way GitHub expands it."""
+def _check_names(jobs: dict) -> set[str]:
+    """The status-check names GitHub reports for these jobs.
+
+    A job without a matrix reports its `name` (or id). A matrix job reports one check per
+    combination: its name with each `${{ matrix.X }}` filled in, or, when the name refers to
+    no matrix value, the name followed by the combination's values in parentheses. `include`
+    entries that match no combination add one of their own; `exclude` removes combinations.
+    """
+    import itertools
+
     names = set()
-    for job_id, job in _load(workflow)["jobs"].items():
+    for job_id, job in jobs.items():
         name = str(job.get("name", job_id))
         matrix = (job.get("strategy") or {}).get("matrix") or {}
-        expanded = {name}
-        for axis, values in matrix.items():
-            if axis in ("include", "exclude"):
-                continue
-            ref = f"${{{{ matrix.{axis} }}}}"
-            expanded = {n.replace(ref, str(v)) for n in expanded for v in values}
-        names |= expanded
+        axes = {k: v for k, v in matrix.items() if k not in ("include", "exclude")}
+        if not matrix:
+            names.add(name)
+            continue
+        combos = (
+            [dict(zip(axes, vals, strict=True)) for vals in itertools.product(*axes.values())]
+            if axes
+            else []  # a matrix of `include` entries alone is just those entries
+        )
+        for gone in matrix.get("exclude") or []:
+            combos = [c for c in combos if not all(c.get(k) == v for k, v in gone.items())]
+        for extra in matrix.get("include") or []:
+            matched = [
+                c for c in combos if all(c.get(k, v) == v for k, v in extra.items() if k in axes)
+            ]
+            if matched and any(k in axes for k in extra):
+                for c in matched:
+                    c.update(extra)
+            else:
+                combos.append(dict(extra))
+        for combo in combos:
+            if "${{ matrix." in name:
+                filled = name
+                for axis, value in combo.items():
+                    filled = filled.replace(f"${{{{ matrix.{axis} }}}}", str(value))
+                names.add(filled)
+            else:
+                names.add(f"{name} ({', '.join(str(v) for v in combo.values())})")
     return names
+
+
+def test_check_names_follow_github_matrix_naming():
+    jobs = {
+        "plain": {"name": "lint"},
+        "named": {
+            "name": "test (py${{ matrix.python }})",
+            "strategy": {"matrix": {"python": ["3.12", "3.13"]}},
+        },
+        "suffixed": {"name": "test", "strategy": {"matrix": {"python": ["3.12"], "os": ["linux"]}}},
+        "included": {"name": "extra", "strategy": {"matrix": {"include": [{"python": "3.14"}]}}},
+    }
+    assert _check_names(jobs) == {
+        "lint",
+        "test (py3.12)",
+        "test (py3.13)",
+        "test (3.12, linux)",
+        "extra (3.14)",
+    }
 
 
 def test_every_required_check_is_a_job_that_runs_on_pull_requests():
@@ -422,6 +470,6 @@ def test_every_required_check_is_a_job_that_runs_on_pull_requests():
     assert match, "REQUIRED_CHECKS is no longer a single-line JSON array"
     required = set(json.loads(match.group(1)))
     assert "pull_request" in _triggers("test.yml")
-    missing = required - _job_names("test.yml")
+    missing = required - _check_names(_load("test.yml")["jobs"])
     assert not missing, f"required checks no test.yml job reports: {sorted(missing)}"
     assert "bundle" in required, "the Desktop extension's check is required (D-030)"

@@ -35,7 +35,7 @@ def _folder(argv: list[str]) -> Path | str:
     raw = argv[0]
     if not raw.strip():
         return "the documents folder is empty; choose one in the extension's settings"
-    if "${" in raw:
+    if "${user_config." in raw:
         return "the documents folder was not filled in by the host; choose one in the extension's settings"
     folder = Path(raw)
     if not folder.is_absolute():
