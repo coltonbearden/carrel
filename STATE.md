@@ -679,13 +679,14 @@
   pre-flight. Deferred from #60: that PR repaired a red `main` and changed only what the
   clock decided.
 
-- **`edit pdf --linearize` exits 1 after writing an unlinearized output.** When qpdf fails, the
-  output pypdf already wrote stays in place, so the command reports failure while a file exists,
-  and the same command run again refuses without `--force`. Pre-existing; found by #80's review
-  and deferred from it, because fixing it changes what a failed run leaves behind (D-023): write
-  to carrel's temp folder first and place the output only once every step has succeeded.
-  Related, and recorded with #80's fix: qpdf is still refused where Ubuntu's AppArmor profile
-  does not cover `TMPDIR` (a hidden folder, `/run/user/…`).
+- **qpdf works only in carrel's temporary folder (`edit pdf --decrypt/--linearize`).** Ubuntu's
+  AppArmor profile for qpdf confines it to `.pdf` files under `/tmp`, `/var/tmp`, `/mnt`,
+  `/media` and non-hidden home folders (#80), so carrel hands it copies in its temp folder.
+  Two costs, accepted there: `TMPDIR` needs room for a copy of SRC and each output while it is
+  linearized (on a tmpfs `/tmp` a very large PDF can run out of space, and that reads as an
+  unexpected error, exit 1, rather than a named one); and a `TMPDIR` the profile does not cover
+  (a hidden folder, `/run/user/…`) is still refused. Fix if it bites: name ENOSPC, and fall back
+  to a temp folder beside the output when `TMPDIR` is refused.
 
 ## Key facts for a fresh session
 

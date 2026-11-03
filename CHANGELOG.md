@@ -33,11 +33,17 @@
   Ubuntu's AppArmor profile for qpdf is enforced (Ubuntu 26.04, and GitHub's `ubuntu-latest`
   runners since they moved to it). The profile lets qpdf open only files ending `.pdf`, `.json`
   or `.qdf`, and only under `/tmp`, `/var/tmp`, `/mnt`, `/media` and the non-hidden folders of
-  your home; carrel handed it the input where it was and a `.<name>.lin.tmp` beside the output.
-  qpdf now works only on copies inside carrel's own temporary folder, and the result is moved
-  into place through a hidden temp and one rename, so a killed run leaves the old file or the
-  new one, never a partial PDF a `*.pdf` glob would pick up. Still refused: a `TMPDIR` the
-  profile does not cover (a hidden folder, `/run/user/…`).
+  your home; carrel handed it your own paths and a `.<name>.lin.tmp` beside the output. qpdf now
+  sees only copies in carrel's temporary folder, so `TMPDIR` needs room for them (a copy of SRC
+  for `--decrypt`, each output while it is linearized), and a `TMPDIR` the profile does not
+  cover is still refused.
+- **Changed (behaviour):** with `--linearize`, nothing reaches the destination until qpdf has
+  succeeded for every output; each is then placed with one rename, keeping a symlinked
+  output's link and an overwritten file's mode. A failed linearize used to leave an
+  unlinearized file and exit 1, so the same command run again refused without `--force`; a
+  killed run now leaves the old file or the new one, never part of one.
+- **Fixed:** `--decrypt` passes the password to qpdf on stdin (`--password-file=-`), not on its
+  command line, where any local user could read it in `ps` while qpdf ran.
 - **Added:** `context7.json` states what Context7 indexes and how agents should use carrel.
   It was serving carrel's docs to other people's coding agents with no configuration at all.
   Scope is `docs/` and `plugins/`; five `rules` give an agent something checkable (`--json`

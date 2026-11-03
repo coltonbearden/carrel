@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from click.testing import CliRunner
 from conftest import needs
 from PIL import Image
@@ -156,8 +157,8 @@ def test_pdf_linearize_with_qpdf(tmp_path: Path):
     assert proc.returncode == 0, proc.stderr
 
 
-def _fake_qpdf(monkeypatch, *, rc: int = 0) -> list[Path]:
-    """Stand in for qpdf, recording every file it is handed.
+def _fake_qpdf(monkeypatch, *, rc: int = 0) -> list[dict]:
+    """Stand in for qpdf, recording every call: its arguments and what it read on stdin.
 
     It writes its output (a blank one-page PDF for --decrypt, a copy for --linearize), or a
     partial file and exit `rc`.
@@ -166,12 +167,12 @@ def _fake_qpdf(monkeypatch, *, rc: int = 0) -> list[Path]:
 
     from carrel.commands import edit
 
-    touched: list[Path] = []
+    calls: list[dict] = []
 
-    def fake_run(name, *args, **kwargs):
+    def fake_run(name, *args, input=None, **kwargs):
         assert name == "qpdf"
         src, dst = Path(args[-2]), Path(args[-1])
-        touched.extend([src, dst])
+        calls.append({"args": args, "stdin": input, "paths": [src, dst]})
         if rc:
             dst.write_bytes(b"%PDF-partial")
             return subprocess.CompletedProcess(args, rc, "", "qpdf: simulated failure")
@@ -182,56 +183,96 @@ def _fake_qpdf(monkeypatch, *, rc: int = 0) -> list[Path]:
         return subprocess.CompletedProcess(args, 0, "", "")
 
     monkeypatch.setattr(edit.adapters, "run", fake_run)
-    return touched
+    return calls
 
 
-def _apparmor_allows(path: Path) -> bool:
-    """What Ubuntu's AppArmor profile for qpdf lets it open, for carrel's temporary folder."""
-    import tempfile
-
-    return path.suffix == ".pdf" and path.is_relative_to(Path(tempfile.gettempdir()))
-
-
-def test_qpdf_touches_only_pdfs_in_carrels_temp_folder(tmp_path: Path, monkeypatch):
+def test_qpdf_only_ever_opens_pdfs_in_carrels_temp_folder(tmp_path: Path, monkeypatch):
     """Ubuntu's AppArmor profile for qpdf (/etc/apparmor.d/qpdf, enforced on 26.04) lets it open
-    only files ending .pdf/.json/.qdf under /tmp, /var/tmp, /mnt, /media and non-hidden folders
-    of $HOME. carrel handed it the user's own paths and a `.<name>.lin.tmp`, refused on GitHub's
-    ubuntu-26.04 runners with "Permission denied"; now qpdf sees only carrel's own temp files."""
-    touched = _fake_qpdf(monkeypatch)
-    hidden = tmp_path / ".private"  # a folder the profile would refuse qpdf
-    hidden.mkdir()
-    src = make_pdf(hidden / "locked.pdf", 2, password="pw")
-    out = hidden / "out.pdf"
+    only files ending .pdf/.json/.qdf in a few places (/tmp, /var/tmp, /mnt, /media, non-hidden
+    folders of $HOME). carrel handed it the user's own paths and a `.<name>.lin.tmp` beside the
+    output, refused on GitHub's ubuntu-26.04 runners with "Permission denied". Where the user's
+    files live is outside carrel's control, so the rule is that qpdf sees only `.pdf` files in
+    carrel's own temp folder, which TMPDIR places (/tmp by default)."""
+    calls = _fake_qpdf(monkeypatch)
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    src = make_pdf(docs / "locked.pdf", 2, password="pw")
+    out = docs / "out.pdf"
     run_json("edit", "pdf", str(src), "--decrypt", "pw", "--linearize", "-o", str(out))
-    assert len(touched) == 4, touched  # decrypt in/out, linearize in/out
-    refused = [p for p in touched if not _apparmor_allows(p) or p.parent == hidden]
-    assert not refused, f"qpdf was handed paths outside carrel's temp folder: {refused}"
-    assert sorted(p.name for p in hidden.iterdir()) == ["locked.pdf", "out.pdf"], "no temp is left"
+    paths = [p for call in calls for p in call["paths"]]
+    assert len(calls) == 2 and len(paths) == 4, calls  # decrypt in/out, linearize in/out
+    elsewhere = [
+        p for p in paths if p.suffix != ".pdf" or not p.parent.name.startswith("carrel-edit-")
+    ]
+    assert not elsewhere, f"qpdf was handed paths outside carrel's temp folder: {elsewhere}"
+    assert sorted(p.name for p in docs.iterdir()) == ["locked.pdf", "out.pdf"], "no temp is left"
 
 
-def test_linearized_output_keeps_its_mode(tmp_path: Path, monkeypatch):
+def test_the_password_reaches_qpdf_on_stdin_never_argv(tmp_path: Path, monkeypatch):
+    calls = _fake_qpdf(monkeypatch)
+    src = make_pdf(tmp_path / "locked.pdf", 1, password="hunter2")
+    run_json("edit", "pdf", str(src), "--decrypt", "hunter2", "-o", str(tmp_path / "out.pdf"))
+    (decrypt,) = calls
+    assert not [a for a in decrypt["args"] if "hunter2" in a], "visible to every local user in ps"
+    assert "--password-file=-" in decrypt["args"] and decrypt["stdin"] == "hunter2"
+
+
+def test_a_failed_linearize_leaves_the_destination_untouched(tmp_path: Path, monkeypatch):
+    """Nothing is placed until qpdf has succeeded for every output (it used to leave an
+    unlinearized file behind and exit 1, so the same command run again refused)."""
+    _fake_qpdf(monkeypatch, rc=2)
+    src = make_pdf(tmp_path / "lin.pdf", 3)
+    run("edit", "pdf", str(src), "--linearize", "-o", str(tmp_path / "lin-out.pdf"), expect=1)
+    run("edit", "pdf", str(src), "--split", "--linearize", "-o", str(tmp_path / "pages"), expect=1)
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["lin.pdf", "pages"]
+    assert list((tmp_path / "pages").iterdir()) == [], "no page of a --split run is placed either"
+
+
+def test_linearized_output_has_the_mode_a_plain_write_would(tmp_path: Path, monkeypatch):
     import os
     import stat
 
+    if os.name != "posix":
+        pytest.skip("POSIX modes")
     _fake_qpdf(monkeypatch)
     src = make_pdf(tmp_path / "lin.pdf", 1)
-    out = tmp_path / "lin-out.pdf"
     old = os.umask(0o022)
     try:
-        run_json("edit", "pdf", str(src), "--linearize", "-o", str(out))
+        run_json("edit", "pdf", str(src), "--linearize", "-o", str(tmp_path / "new.pdf"))
+        kept = make_pdf(tmp_path / "kept.pdf", 1)
+        kept.chmod(0o640)
+        run_json("edit", "pdf", str(src), "--linearize", "-o", str(kept), "--force")
     finally:
         os.umask(old)
-    if os.name == "posix":
-        assert stat.S_IMODE(out.stat().st_mode) == 0o644, oct(out.stat().st_mode)
+    assert stat.S_IMODE((tmp_path / "new.pdf").stat().st_mode) == 0o644
+    assert stat.S_IMODE(kept.stat().st_mode) == 0o640, "--force keeps the old file's mode"
 
 
-def test_pdf_linearize_failure_leaves_no_temp(tmp_path: Path, monkeypatch):
-    _fake_qpdf(monkeypatch, rc=2)
+def test_a_symlinked_output_keeps_its_link(tmp_path: Path, monkeypatch):
+    import os
+
+    if os.name != "posix":
+        pytest.skip("symlinks need privileges on Windows")
+    _fake_qpdf(monkeypatch)
+    src = make_pdf(tmp_path / "lin.pdf", 2)
+    real = make_pdf(tmp_path / "real.pdf", 1)
+    link = tmp_path / "link.pdf"
+    link.symlink_to(real)
+    run_json("edit", "pdf", str(src), "--linearize", "-o", str(link), "--force")
+    assert link.is_symlink(), "the link was replaced by a plain file"
+    assert len(PdfReader(real).pages) == 2, "the file the link points at was written"
+
+
+def test_a_long_output_name_is_placed(tmp_path: Path, monkeypatch):
+    import os
+
+    if os.name != "posix":
+        pytest.skip("Windows caps the whole path near 260 characters")
+    _fake_qpdf(monkeypatch)
     src = make_pdf(tmp_path / "lin.pdf", 1)
-    out = tmp_path / "lin-out.pdf"
-    run("edit", "pdf", str(src), "--linearize", "-o", str(out), expect=1)
-    assert sorted(p.name for p in tmp_path.iterdir()) == ["lin-out.pdf", "lin.pdf"]
-    assert PdfReader(out).pages, "the unlinearized output is left as it was written"
+    out = tmp_path / ("x" * 240 + ".pdf")  # the temp beside it must not embed this name
+    run_json("edit", "pdf", str(src), "--linearize", "-o", str(out))
+    assert out.exists()
 
 
 def test_pdf_encrypted_without_decrypt_exits_4(tmp_path: Path):
