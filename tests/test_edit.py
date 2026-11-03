@@ -156,6 +156,53 @@ def test_pdf_linearize_with_qpdf(tmp_path: Path):
     assert proc.returncode == 0, proc.stderr
 
 
+def _fake_qpdf(monkeypatch, *, rc: int = 0) -> list[Path]:
+    """Stand in for qpdf: copy input to output (or write a partial file and fail with `rc`)."""
+    import shutil
+    import subprocess
+
+    from carrel.commands import edit
+
+    written: list[Path] = []
+
+    def fake_run(name, *args, **kwargs):
+        assert name == "qpdf"
+        src, dst = Path(args[-2]), Path(args[-1])
+        written.append(dst)
+        if rc:
+            dst.write_bytes(b"%PDF-partial")
+            return subprocess.CompletedProcess(args, rc, "", "qpdf: simulated failure")
+        shutil.copyfile(src, dst)
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(edit.adapters, "run", fake_run)
+    return written
+
+
+def test_pdf_linearize_temp_is_a_visible_pdf(tmp_path: Path, monkeypatch):
+    """Ubuntu's AppArmor profile for qpdf (/etc/apparmor.d/qpdf, enforced on 26.04) lets it
+    write only files ending .pdf/.json/.qdf, and nothing hidden directly in $HOME. The temp was
+    `.<name>.lin.tmp`, which GitHub's ubuntu-26.04 runners refused with "Permission denied"."""
+    written = _fake_qpdf(monkeypatch)
+    src = make_pdf(tmp_path / "lin.pdf", 2)
+    out = tmp_path / "lin-out.pdf"
+    run_json("edit", "pdf", str(src), "--linearize", "-o", str(out))
+    assert len(written) == 1
+    (temp,) = written
+    assert temp.parent == out.parent, "next to the output, so the rename stays on one filesystem"
+    assert temp.suffix == ".pdf" and not temp.name.startswith(".")
+    assert not temp.exists(), "renamed onto the output"
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["lin-out.pdf", "lin.pdf"]
+
+
+def test_pdf_linearize_failure_leaves_no_temp(tmp_path: Path, monkeypatch):
+    written = _fake_qpdf(monkeypatch, rc=2)
+    src = make_pdf(tmp_path / "lin.pdf", 1)
+    out = tmp_path / "lin-out.pdf"
+    run("edit", "pdf", str(src), "--linearize", "-o", str(out), expect=1)
+    assert written and not written[0].exists(), "a failed qpdf run leaves nothing beside the output"
+
+
 def test_pdf_encrypted_without_decrypt_exits_4(tmp_path: Path):
     src = make_pdf(tmp_path / "locked.pdf", 1, password="pw")
     run("edit", "pdf", str(src), "--rotate", "90", "-o", str(tmp_path / "x.pdf"), expect=4)

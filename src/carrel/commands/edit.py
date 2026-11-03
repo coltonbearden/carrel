@@ -14,6 +14,7 @@ from __future__ import annotations
 import json as jsonlib
 import re
 import tempfile
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -197,10 +198,17 @@ def pdf(
         if linearize:
             operations.append("linearize")
             for produced in outputs:
-                # temp lives next to the output so the final rename never crosses filesystems
-                lin_tmp = produced.with_name(f".{produced.name}.lin.tmp")
-                _qpdf("--linearize", str(produced), str(lin_tmp), action="--linearize")
-                lin_tmp.replace(produced)
+                # The temp lives next to the output, so the final rename never crosses
+                # filesystems, and it is a visible `.pdf`: Ubuntu's AppArmor profile for
+                # qpdf (/etc/apparmor.d/qpdf, enforced from 26.04) lets it write only files
+                # ending .pdf/.json/.qdf, and nothing under a hidden name directly in $HOME.
+                # `.<name>.lin.tmp` was refused there with "Permission denied".
+                lin_tmp = produced.with_name(f"{produced.stem}.lin-{uuid.uuid4().hex[:8]}.pdf")
+                try:
+                    _qpdf("--linearize", str(produced), str(lin_tmp), action="--linearize")
+                    lin_tmp.replace(produced)
+                finally:
+                    lin_tmp.unlink(missing_ok=True)  # a failed run leaves nothing beside the output
 
     record = {
         "action": "edit-pdf",
