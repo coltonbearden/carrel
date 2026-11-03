@@ -2,7 +2,18 @@
 
 ## Unreleased
 
-- **Changed (behaviour, dependencies):** carrel now requires `pypdf>=6.19.0` (was `>=5.0`). carrel reads
+- **Changed (behaviour, dependencies):** carrel now requires `pillow>=13.0.0` (was `>=10.0`).
+  carrel opens images it did not write through Pillow — `inspect`, `thumb`, `color`, `proof`,
+  `edit image`, `extract-images` and OCR's page images — and Pillow 13.0.0 fixes 41 advisories
+  published since 2026-10-21, five of them critical: heap overflows in JPEG and FlashPix
+  decoding and in saving TIFF to memory, stale image storage reused across frames, and
+  argument injection into the Ghostscript call that opens EPS files. Most of the rest are
+  decompression-bomb bypasses, unbounded loops or recursion, and out-of-bounds reads in the
+  TIFF, GIF, PNG, BMP, MSP and PDF readers. The floor was 10.0 since the start, so `pip install
+  carrel` kept any Pillow an environment already held (D-026). The test fixtures Pillow writes
+  regenerate with different bytes and identical content.
+- **Changed (behaviour, dependencies):** carrel now requires `pypdf>=6.21.4` (was `>=5.0`;
+  6.21.4 fixes 18 more advisories published since 2026-10-24, ten of them high). carrel reads
   PDFs it did not write through pypdf — `edit`, `form`, `note`, `sign`, `audiobook`, and the
   page counts in `inspect` and `diff` — and pypdf 6 hardens its parser against hostile files release by
   release. The two newest: 6.18.1 tightens FlateDecode recovery and caps `/Widths` entry counts
