@@ -157,50 +157,81 @@ def test_pdf_linearize_with_qpdf(tmp_path: Path):
 
 
 def _fake_qpdf(monkeypatch, *, rc: int = 0) -> list[Path]:
-    """Stand in for qpdf: copy input to output (or write a partial file and fail with `rc`)."""
-    import shutil
+    """Stand in for qpdf, recording every file it is handed.
+
+    It writes its output (a blank one-page PDF for --decrypt, a copy for --linearize), or a
+    partial file and exit `rc`.
+    """
     import subprocess
 
     from carrel.commands import edit
 
-    written: list[Path] = []
+    touched: list[Path] = []
 
     def fake_run(name, *args, **kwargs):
         assert name == "qpdf"
         src, dst = Path(args[-2]), Path(args[-1])
-        written.append(dst)
+        touched.extend([src, dst])
         if rc:
             dst.write_bytes(b"%PDF-partial")
             return subprocess.CompletedProcess(args, rc, "", "qpdf: simulated failure")
-        shutil.copyfile(src, dst)
+        if "--decrypt" in args:
+            make_pdf(dst, 1)
+        else:
+            dst.write_bytes(src.read_bytes())
         return subprocess.CompletedProcess(args, 0, "", "")
 
     monkeypatch.setattr(edit.adapters, "run", fake_run)
-    return written
+    return touched
 
 
-def test_pdf_linearize_temp_is_a_visible_pdf(tmp_path: Path, monkeypatch):
-    """Ubuntu's AppArmor profile for qpdf (/etc/apparmor.d/qpdf, enforced on 26.04) lets it
-    write only files ending .pdf/.json/.qdf, and nothing hidden directly in $HOME. The temp was
-    `.<name>.lin.tmp`, which GitHub's ubuntu-26.04 runners refused with "Permission denied"."""
-    written = _fake_qpdf(monkeypatch)
-    src = make_pdf(tmp_path / "lin.pdf", 2)
+def _apparmor_allows(path: Path) -> bool:
+    """What Ubuntu's AppArmor profile for qpdf lets it open, for carrel's temporary folder."""
+    import tempfile
+
+    return path.suffix == ".pdf" and path.is_relative_to(Path(tempfile.gettempdir()))
+
+
+def test_qpdf_touches_only_pdfs_in_carrels_temp_folder(tmp_path: Path, monkeypatch):
+    """Ubuntu's AppArmor profile for qpdf (/etc/apparmor.d/qpdf, enforced on 26.04) lets it open
+    only files ending .pdf/.json/.qdf under /tmp, /var/tmp, /mnt, /media and non-hidden folders
+    of $HOME. carrel handed it the user's own paths and a `.<name>.lin.tmp`, refused on GitHub's
+    ubuntu-26.04 runners with "Permission denied"; now qpdf sees only carrel's own temp files."""
+    touched = _fake_qpdf(monkeypatch)
+    hidden = tmp_path / ".private"  # a folder the profile would refuse qpdf
+    hidden.mkdir()
+    src = make_pdf(hidden / "locked.pdf", 2, password="pw")
+    out = hidden / "out.pdf"
+    run_json("edit", "pdf", str(src), "--decrypt", "pw", "--linearize", "-o", str(out))
+    assert len(touched) == 4, touched  # decrypt in/out, linearize in/out
+    refused = [p for p in touched if not _apparmor_allows(p) or p.parent == hidden]
+    assert not refused, f"qpdf was handed paths outside carrel's temp folder: {refused}"
+    assert sorted(p.name for p in hidden.iterdir()) == ["locked.pdf", "out.pdf"], "no temp is left"
+
+
+def test_linearized_output_keeps_its_mode(tmp_path: Path, monkeypatch):
+    import os
+    import stat
+
+    _fake_qpdf(monkeypatch)
+    src = make_pdf(tmp_path / "lin.pdf", 1)
     out = tmp_path / "lin-out.pdf"
-    run_json("edit", "pdf", str(src), "--linearize", "-o", str(out))
-    assert len(written) == 1
-    (temp,) = written
-    assert temp.parent == out.parent, "next to the output, so the rename stays on one filesystem"
-    assert temp.suffix == ".pdf" and not temp.name.startswith(".")
-    assert not temp.exists(), "renamed onto the output"
-    assert sorted(p.name for p in tmp_path.iterdir()) == ["lin-out.pdf", "lin.pdf"]
+    old = os.umask(0o022)
+    try:
+        run_json("edit", "pdf", str(src), "--linearize", "-o", str(out))
+    finally:
+        os.umask(old)
+    if os.name == "posix":
+        assert stat.S_IMODE(out.stat().st_mode) == 0o644, oct(out.stat().st_mode)
 
 
 def test_pdf_linearize_failure_leaves_no_temp(tmp_path: Path, monkeypatch):
-    written = _fake_qpdf(monkeypatch, rc=2)
+    _fake_qpdf(monkeypatch, rc=2)
     src = make_pdf(tmp_path / "lin.pdf", 1)
     out = tmp_path / "lin-out.pdf"
     run("edit", "pdf", str(src), "--linearize", "-o", str(out), expect=1)
-    assert written and not written[0].exists(), "a failed qpdf run leaves nothing beside the output"
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["lin-out.pdf", "lin.pdf"]
+    assert PdfReader(out).pages, "the unlinearized output is left as it was written"
 
 
 def test_pdf_encrypted_without_decrypt_exits_4(tmp_path: Path):

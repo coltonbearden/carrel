@@ -11,10 +11,12 @@ an explicit -i/--in-place.
 
 from __future__ import annotations
 
+import contextlib
 import json as jsonlib
+import os
 import re
+import shutil
 import tempfile
-import uuid
 from pathlib import Path
 from typing import Any
 
@@ -76,6 +78,32 @@ def _qpdf(*args: str, action: str) -> None:
     if proc.returncode not in (0, 3):  # 3 = qpdf succeeded with warnings
         detail = (proc.stderr or proc.stdout or "").strip()
         raise CarrelError(f"qpdf {action} failed (rc={proc.returncode}): {detail}")
+
+
+# qpdf reads and writes only `.pdf` files inside carrel's own temporary folder. Ubuntu's AppArmor
+# profile for qpdf (/etc/apparmor.d/qpdf, enforced from 26.04) lets it open only files ending
+# .pdf/.json/.qdf, and only under /tmp, /var/tmp, /mnt, /media and the non-hidden folders of
+# $HOME: an input or output anywhere else, or a temp named `.x.pdf.lin.tmp`, was refused with
+# "Permission denied". Python moves the files in and out, and the profile does not apply to it.
+
+
+def _place(produced: Path, dest: Path) -> None:
+    """Copy `produced` onto `dest` atomically, through a hidden temp beside `dest`.
+
+    Hidden, so carrel's walkers and a `*.pdf` watch never see it; beside `dest`, so the final
+    rename stays on one filesystem and a killed run leaves either the old file or the new one.
+    """
+    fd, name = tempfile.mkstemp(dir=dest.parent, prefix=f".{dest.name}.", suffix=".tmp")
+    os.close(fd)
+    staged = Path(name)
+    try:
+        shutil.copyfile(produced, staged)
+        # mkstemp makes the file 0600; keep the mode `dest` was written with
+        shutil.copymode(dest, staged)
+        staged.replace(dest)
+    finally:
+        with contextlib.suppress(OSError):  # never hide the real error behind the cleanup's
+            staged.unlink(missing_ok=True)
 
 
 @cmd.command("pdf")
@@ -142,8 +170,16 @@ def pdf(
     with tempfile.TemporaryDirectory(prefix="carrel-edit-") as tmpdir:
         src_eff = src
         if password:
+            encrypted = Path(tmpdir) / "encrypted.pdf"
+            shutil.copyfile(src, encrypted)
             src_eff = Path(tmpdir) / "decrypted.pdf"
-            _qpdf(f"--password={password}", "--decrypt", str(src), str(src_eff), action="--decrypt")
+            _qpdf(
+                f"--password={password}",
+                "--decrypt",
+                str(encrypted),
+                str(src_eff),
+                action="--decrypt",
+            )
             operations.append("decrypt")
 
         reader = PdfReader(src_eff)
@@ -197,18 +233,11 @@ def pdf(
 
         if linearize:
             operations.append("linearize")
+            lin_in, lin_out = Path(tmpdir) / "linearize-in.pdf", Path(tmpdir) / "linearize-out.pdf"
             for produced in outputs:
-                # The temp lives next to the output, so the final rename never crosses
-                # filesystems, and it is a visible `.pdf`: Ubuntu's AppArmor profile for
-                # qpdf (/etc/apparmor.d/qpdf, enforced from 26.04) lets it write only files
-                # ending .pdf/.json/.qdf, and nothing under a hidden name directly in $HOME.
-                # `.<name>.lin.tmp` was refused there with "Permission denied".
-                lin_tmp = produced.with_name(f"{produced.stem}.lin-{uuid.uuid4().hex[:8]}.pdf")
-                try:
-                    _qpdf("--linearize", str(produced), str(lin_tmp), action="--linearize")
-                    lin_tmp.replace(produced)
-                finally:
-                    lin_tmp.unlink(missing_ok=True)  # a failed run leaves nothing beside the output
+                shutil.copyfile(produced, lin_in)
+                _qpdf("--linearize", str(lin_in), str(lin_out), action="--linearize")
+                _place(lin_out, produced)
 
     record = {
         "action": "edit-pdf",

@@ -29,11 +29,15 @@
   156-byte PDF with no `/Root` wrote 50,000 before the error. An error that reaches `main`
   itself is JSON under `--json` too. Still exit 1: malformed structures that make pypdf raise a
   plain `ValueError` or `TypeError` (STATE.md).
-- **Fixed:** `edit pdf --linearize` failed with "Permission denied" wherever Ubuntu's AppArmor
-  profile for qpdf is enforced (Ubuntu 26.04, and GitHub's `ubuntu-latest` runners since they
-  moved to it). The profile lets qpdf write only files ending `.pdf`, `.json` or `.qdf`, and
-  carrel's temporary file was `.<name>.lin.tmp`; it is now `<stem>.lin-<random>.pdf` beside the
-  output, and a failed qpdf run no longer leaves it behind.
+- **Fixed:** `edit pdf --linearize` and `--decrypt` failed with "Permission denied" wherever
+  Ubuntu's AppArmor profile for qpdf is enforced (Ubuntu 26.04, and GitHub's `ubuntu-latest`
+  runners since they moved to it). The profile lets qpdf open only files ending `.pdf`, `.json`
+  or `.qdf`, and only under `/tmp`, `/var/tmp`, `/mnt`, `/media` and the non-hidden folders of
+  your home; carrel handed it the input where it was and a `.<name>.lin.tmp` beside the output.
+  qpdf now works only on copies inside carrel's own temporary folder, and the result is moved
+  into place through a hidden temp and one rename, so a killed run leaves the old file or the
+  new one, never a partial PDF a `*.pdf` glob would pick up. Still refused: a `TMPDIR` the
+  profile does not cover (a hidden folder, `/run/user/…`).
 - **Added:** `context7.json` states what Context7 indexes and how agents should use carrel.
   It was serving carrel's docs to other people's coding agents with no configuration at all.
   Scope is `docs/` and `plugins/`; five `rules` give an agent something checkable (`--json`

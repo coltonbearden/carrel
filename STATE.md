@@ -679,6 +679,14 @@
   pre-flight. Deferred from #60: that PR repaired a red `main` and changed only what the
   clock decided.
 
+- **`edit pdf --linearize` exits 1 after writing an unlinearized output.** When qpdf fails, the
+  output pypdf already wrote stays in place, so the command reports failure while a file exists,
+  and the same command run again refuses without `--force`. Pre-existing; found by #80's review
+  and deferred from it, because fixing it changes what a failed run leaves behind (D-023): write
+  to carrel's temp folder first and place the output only once every step has succeeded.
+  Related, and recorded with #80's fix: qpdf is still refused where Ubuntu's AppArmor profile
+  does not cover `TMPDIR` (a hidden folder, `/run/user/…`).
+
 ## Key facts for a fresh session
 
 - Stack: Python ≥3.12 + uv; click CLI; Textual TUI (`carrel desk`); hatchling build.
