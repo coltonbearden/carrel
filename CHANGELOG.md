@@ -70,7 +70,6 @@
   missing. The release workflow builds it from the tag, starts it the way Desktop will, and
   only then attaches it; a new required check, `bundle`, packs, validates and starts it on
   every pull request. Not signed, and not in Anthropic's extension directory (D-030).
-||||||| 18e6aad
 - **Added:** `context7.json` states what Context7 indexes and how agents should use carrel.
   It was serving carrel's docs to other people's coding agents with no configuration at all.
   Scope is `docs/` and `plugins/`; five `rules` give an agent something checkable (`--json`

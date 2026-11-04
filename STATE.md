@@ -10,8 +10,11 @@
   9 marketplace plugins, desk schema v2. Every release attaches `carrel-<version>.mcpb`, the
   Claude Desktop extension (D-030). Repo `coltonbearden/carrel`, docs at
   https://coltonbearden.github.io/carrel/, PyPI package `carrel`.
-- **In flight:** nothing. Dependabot closes the six PRs #81 superseded (#70, #72, #74, #76, #77,
-  #78) once it sees `main` holds their versions. Two ways to update a Dependabot branch:
+- **In flight:** the v0.6.0 release itself until its verification record is written: the tag,
+  `publish.yml` (PyPI, then the bundle's `attach`), and the file on the release page checked.
+  Dependabot closed the six PRs #81 superseded (#70, #72, #74, #76, #77, #78) on its own, and
+  then opened #82 (setup-uv 10.3.3, whose checksum table reaches uv 0.13.6) and #83 (uv 0.13.6),
+  both after the release. Two ways to update a Dependabot branch:
   `@dependabot rebase` keeps the PR Dependabot's own; `gh pr update-branch` adds a merge commit
   that is not Dependabot's, after which it stops rebasing that PR by itself (`@dependabot
   recreate` restores it). The ruleset's up-to-date rule makes every PR take `main`'s head before
@@ -528,7 +531,8 @@
   cancelled and re-run by hand and the third was cancelled by the next push to `main`, which
   is why `main`'s `tests` run on #64's merge commit reads cancelled with six of seven jobs
   green. Left alone such a job ends at its 30-minute timeout as a red run that says nothing
-  about carrel; the weekly scheduled run's would page through Kuma 99 (D-248) for a cause that is the runner's. Fix: a short timeout on
+  about carrel; on the weekly scheduled run, that failure would page through Kuma 99
+  (D-248) for a cause that is the runner's. Fix: a short timeout on
   the install step with one retry, or a cached package set. Deferred from #65: it needs its
   own look at what the allowed-actions list permits.
 
@@ -678,6 +682,13 @@
   files (`dest` itself is created before the pre-flight), revert-checked against the
   pre-flight. Deferred from #60: that PR repaired a red `main` and changed only what the
   clock decided.
+
+- **No released carrel carries the security floors yet.** `main`'s floors for pypdf and Pillow
+  (`pyproject.toml`, held by `SECURITY_FLOORS`) were raised by #64 and #81 (D-026). carrel 0.5.0
+  on PyPI still declares `pypdf>=5.0` and `pillow>=10.0`, so until v0.6.0 is on PyPI, `pip
+  install carrel` keeps whatever an environment already holds. Close this with v0.6.0's
+  verification record. A raise touches four places, listed in `docs/RELEASING.md` step 1; refer
+  to the floor elsewhere rather than restate it.
 
 - **qpdf works only in carrel's temporary folder (`edit pdf --decrypt/--linearize`).** Ubuntu's
   AppArmor profile for qpdf confines it to `.pdf` files under `/tmp`, `/var/tmp`, `/mnt`,
