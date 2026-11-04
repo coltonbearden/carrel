@@ -222,7 +222,7 @@ Dropping the default `excludeFolders` is the deliberate half. Its `*archive*` pa
 
 ## D-026 (2026-09-15) — Runtime floors for parsers of untrusted input track security releases
 
-carrel reads files it did not write, so the dependencies that parse them are its attack surface. `pypdf>=5.0` let `pip install carrel` keep whatever pypdf an environment already held, which meant the 6.18.1 hardening release that Dependabot moved into `uv.lock` (#50) reached CI and not users: carrel 0.5.0 installed into an environment holding pypdf 6.16.2 left it there.
+carrel reads files it did not write, so the dependencies that parse them are its attack surface. `pypdf>=5.0` let `pip install carrel` keep whatever pypdf an environment already held, which meant the 6.18.1 hardening release that Dependabot moved into `uv.lock` (#50) reached CI and not users: the 0.5.0 release of carrel, installed into an environment holding pypdf 6.16.2, left it there.
 
 **The floor is raised to the newest security release**, not held at the oldest API that works — `pypdf>=6.18.1` when this was decided; `pyproject.toml` holds the current floor, and `tests/test_dependency_floors.py` keeps it from being lowered. The alternative the owner was offered, a tested minimum with a CI job that installs the floors, answers a different question (does the floor still work?) and leaves the security one open; it is still worth having and is tracked in `STATE.md`.
 

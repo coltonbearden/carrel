@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.6.0 — 2026-11-03
+
 - **Changed (behaviour, dependencies):** carrel now requires `pillow>=13.0.0` (was `>=10.0`).
   carrel opens images it did not write through Pillow — `inspect`, `thumb`, `convert`, `diff`,
   `dedupe`, `organize`, `color`, `proof`, `redact`, `sign`, `edit image`, `extract-images` and
@@ -33,6 +35,13 @@
   pypdf, not carrel: `form fill` now paints each field's own `/MK` background and border in the
   appearance it generates, and the text clip box shrinks by the border width. It is a behaviour
   change under D-023 because pypdf 6's limits refuse some files 5.x read (D-026).
+- **Changed (behaviour):** with `--linearize`, nothing reaches the destination until qpdf has
+  succeeded for every output. Each is then placed in one step, keeping a symlinked output's
+  link and an overwritten file's mode; a file that appeared at the destination in the meantime
+  is refused without `--force`, and a `--split` run that fails while placing takes back the
+  pages it had placed. A failed linearize used to leave an unlinearized file and exit 1, so the
+  same command run again refused without `--force`; a killed run now leaves the old file or the
+  new one, never part of one.
 - **Fixed:** a PDF pypdf's parser refuses — its own `PyPdfError`s, `LimitReachedError`
   included — exits **4** in `edit`, `form`, `note` and `sign` with `error: unreadable PDF: …`
   (`note` names the file), or the `--json` error object, instead of exit 1 and
@@ -53,13 +62,6 @@
   sees only copies in carrel's temporary folder, so `TMPDIR` needs room for them (a copy of SRC
   for `--decrypt`, each output while it is linearized), and a `TMPDIR` the profile does not
   cover is still refused.
-- **Changed (behaviour):** with `--linearize`, nothing reaches the destination until qpdf has
-  succeeded for every output. Each is then placed in one step, keeping a symlinked output's
-  link and an overwritten file's mode; a file that appeared at the destination in the meantime
-  is refused without `--force`, and a `--split` run that fails while placing takes back the
-  pages it had placed. A failed linearize used to leave an unlinearized file and exit 1, so the
-  same command run again refused without `--force`; a killed run now leaves the old file or the
-  new one, never part of one.
 - **Added:** a one-click **Claude Desktop extension**. Every GitHub release now carries
   `carrel-<version>.mcpb`: open it with Claude Desktop, choose one folder, and Claude gets the
   same tools as `carrel mcp`, confined to that folder. Desktop's own uv installs Python and
