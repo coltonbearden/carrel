@@ -44,9 +44,10 @@ carrel doctor                   # what can your desk do today? (+ install hints 
 ### Install in Claude Desktop
 
 No terminal needed. Every [release](https://github.com/coltonbearden/carrel/releases/latest)
-carries a one-click Claude Desktop extension, `carrel-<version>.mcpb`: download it, open it
-with Claude Desktop, and choose the one folder carrel may use. Desktop sets up Python and
-installs carrel on its own.
+carries a one-click Claude Desktop extension, `carrel-<version>.mcpb`. Download it, then in
+Claude Desktop open the app's own Settings (on Windows the ☰ menu → File → Settings, not the
+account settings under your name), go to **Extensions**, add the file, and choose the one
+folder carrel may use. Desktop sets up Python and installs carrel on its own.
 
 The extension gives Claude the same tools as `carrel mcp`, inside that folder only: it reads and
 writes nowhere else, and keeps its search index in a `.carrel` folder there. Converters such as

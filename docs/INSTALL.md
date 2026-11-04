@@ -53,9 +53,12 @@ Upgrade after pulling changes with `uv tool install . --force` (or
 
 Each [GitHub release](https://github.com/coltonbearden/carrel/releases/latest)
 carries `carrel-<version>.mcpb`, a Claude Desktop extension (an
-[MCP Bundle](https://github.com/modelcontextprotocol/mcpb)). Download it, open it
-with Claude Desktop, and choose the one folder carrel may use. It needs neither
-the CLI above nor a Python of your own:
+[MCP Bundle](https://github.com/modelcontextprotocol/mcpb)). Download it, then in
+Claude Desktop open the app's own Settings (on Windows the ☰ menu → File →
+Settings; the account settings under your name have no Extensions page), go to
+**Extensions**, add the file, and choose the one folder carrel may use. A
+Windows install of Desktop may not open `.mcpb` files on a double-click. It
+needs neither the CLI above nor a Python of your own:
 
 - Desktop's own uv installs Python and this version of carrel from PyPI, with the
   `office` extra, the first time the extension starts. That takes a minute and
