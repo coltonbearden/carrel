@@ -465,8 +465,21 @@ def test_no_merge_conflict_markers():
     for path in REPO_ROOT.rglob("*"):
         if not path.is_file() or skip & set(path.relative_to(REPO_ROOT).parts):
             continue
-        if path.suffix not in {".md", ".py", ".toml", ".yml", ".yaml", ".json", ".cff", ".sh", ".txt"}:
+        if path.suffix not in {
+            ".md",
+            ".py",
+            ".toml",
+            ".yml",
+            ".yaml",
+            ".json",
+            ".cff",
+            ".sh",
+            ".txt",
+        }:
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
-        found += [f"{path.relative_to(REPO_ROOT)}:{text[: m.start()].count(chr(10)) + 1}" for m in markers.finditer(text)]
+        found += [
+            f"{path.relative_to(REPO_ROOT)}:{text[: m.start()].count(chr(10)) + 1}"
+            for m in markers.finditer(text)
+        ]
     assert not found, f"merge-conflict markers left in: {found}"
