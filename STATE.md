@@ -10,14 +10,12 @@
   9 marketplace plugins, desk schema v2. Every release attaches `carrel-<version>.mcpb`, the
   Claude Desktop extension (D-030). Repo `coltonbearden/carrel`, docs at
   https://coltonbearden.github.io/carrel/, PyPI package `carrel`.
-- **In flight:** nothing of the v0.6.0 session's. Dependabot opened #82 (setup-uv 10.3.3, whose
-  checksum table reaches uv 0.13.6) and #83 (uv 0.13.6) on 2026-11-04 at 00:05Z, before the
-  release, which was cut without them. **Merge #82 first, or fold both into one PR**: #83 alone
-  runs uv 0.13.6 under setup-uv 10.3.2, whose table ends at 0.13.5 (Open issues). Two ways to update a Dependabot branch: `@dependabot rebase`
-  keeps the PR Dependabot's own; `gh pr update-branch` adds a merge commit that is not
-  Dependabot's, after which it stops rebasing that PR by itself (`@dependabot recreate` restores
-  it). The ruleset's up-to-date rule makes every PR take `main`'s head before it merges, which
-  reruns its checks.
+- **In flight:** nothing. Dependabot's #82 (setup-uv 10.3.3) and #83 (uv 0.13.6) merged in that order
+  on 2026-11-03, so the uv the lock pins stays inside the pinned action's checksum table (Open
+  issues). Two ways to update a Dependabot branch: `@dependabot rebase` keeps the PR Dependabot's
+  own; `gh pr update-branch` adds a merge commit that is not Dependabot's, after which it stops
+  rebasing that PR by itself (`@dependabot recreate` restores it). The ruleset's up-to-date rule
+  makes every PR take `main`'s head before it merges, which reruns its checks.
 - **How a failure reaches the owner:** a failed `publish.yml` run (PyPI, or the bundle's
   `attach`) or a failed scheduled `weekly.yml` run turns Kuma 98 `carrel release` or 99
   `carrel weekly` down, and home-setup's kuma-tasks files it as a Home task on the `carrel` hub
@@ -772,7 +770,7 @@
   repository activity: if `gh run list --workflow weekly.yml --event schedule` goes quiet,
   `gh workflow enable weekly.yml`. The schedule is kept out of `test.yml` so that rule can
   never reach the required checks.
-- `uv.lock`'s `revision` line may flip between 3 and 5: the uv this lock pins (0.13.5) writes
+- `uv.lock`'s `revision` line may flip between 3 and 5: the uv this lock pins (0.13.6) writes
   5 on any relock, Dependabot's updater wrote 3. uv documents a revision as a
   backwards-compatible addition that older versions read without error; only `version` is a
   breaking change.
