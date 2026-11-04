@@ -10,15 +10,13 @@
   9 marketplace plugins, desk schema v2. Every release attaches `carrel-<version>.mcpb`, the
   Claude Desktop extension (D-030). Repo `coltonbearden/carrel`, docs at
   https://coltonbearden.github.io/carrel/, PyPI package `carrel`.
-- **In flight:** the v0.6.0 release itself until its verification record is written: the tag,
-  `publish.yml` (PyPI, then the bundle's `attach`), and the file on the release page checked.
-  Dependabot closed the six PRs #81 superseded (#70, #72, #74, #76, #77, #78) on its own, and
-  then opened #82 (setup-uv 10.3.3, whose checksum table reaches uv 0.13.6) and #83 (uv 0.13.6),
-  both after the release. Two ways to update a Dependabot branch:
-  `@dependabot rebase` keeps the PR Dependabot's own; `gh pr update-branch` adds a merge commit
-  that is not Dependabot's, after which it stops rebasing that PR by itself (`@dependabot
-  recreate` restores it). The ruleset's up-to-date rule makes every PR take `main`'s head before
-  it merges, which reruns its checks.
+- **In flight:** nothing of this session's. Dependabot opened #82 (setup-uv 10.3.3, whose checksum
+  table reaches uv 0.13.6) and #83 (uv 0.13.6) after the release; take them together, so uv stays
+  inside the table (Open issues). Two ways to update a Dependabot branch: `@dependabot rebase`
+  keeps the PR Dependabot's own; `gh pr update-branch` adds a merge commit that is not
+  Dependabot's, after which it stops rebasing that PR by itself (`@dependabot recreate` restores
+  it). The ruleset's up-to-date rule makes every PR take `main`'s head before it merges, which
+  reruns its checks.
 - **How a failure reaches the owner:** a failed `publish.yml` run (PyPI, or the bundle's
   `attach`) or a failed scheduled `weekly.yml` run turns Kuma 98 `carrel release` or 99
   `carrel weekly` down, and home-setup's kuma-tasks files it as a Home task on the `carrel` hub
@@ -71,8 +69,22 @@
   extension (#79, D-030), the qpdf AppArmor fix (#80) and the security updates with their floors
   (#81, D-026). The owner chose on 2026-11-03 to release now as v0.6.0, to take the dependency
   updates first, and to make `bundle` a required check (applied with
-  `scripts/github-harden.sh`, then `--verify-only` green). The PyPI and release-page
-  verification is added once `publish.yml` has run.
+  `scripts/github-harden.sh`, then `--verify-only` green). **Released** from the release PR's
+  merge commit `e90f9ae` at 2026-11-04T01:11Z (UTC); `publish.yml` run 41752285663 green in all
+  four jobs. **`build`** installed uv 0.13.5 from `uv.lock` with `enable-cache: false` (the open
+  item left by the uncached-build PR, now closed). **`attach`** started the bundle from PyPI on
+  its first try (carrel 0.6.0, 14 tools, Python 3.14.4) and uploaded it. **The release page's
+  `carrel-0.6.0.mcpb`** (37,110 bytes, sha256 `b0fdc5f6…7258c2c`), downloaded again: `mcpb
+  validate` passes on its manifest (0.6.0, 14 tools, `uv`, one required `documents_folder`),
+  unsigned as D-030 says, pins `carrel[office]==0.6.0` on Python 3.14, and `smoke --runtime pypi`
+  on that exact file answered carrel 0.6.0 with 14 tools. **From PyPI in a clean 3.12 venv:**
+  `carrel 0.6.0`; `doctor --json` 33 commands (31 ok, `mail` degraded without readpst, `desk`
+  unavailable without the `tui` extra, both by design) and 19 adapters; it requires
+  `pillow>=13.0.0` and `pypdf>=6.21.4` and resolved Pillow 13.0.0 and pypdf 6.21.4. The wheel
+  **and** the sdist each carry a PEP 740 attestation naming `coltonbearden/carrel`,
+  `publish.yml`, environment `pypi`. The WSL `carrel[all]` uv tool moves to 0.6.0 with the
+  daily dotfiles upkeep job (its owner); dev-e's MCP stack pins `carrel[all]==0.5.0` in
+  homelab-stacks and moves only through that repository.
 - 2026-11-03: #79, the Claude Desktop extension (D-030). Proved on the T14's Claude Desktop
   4.16336.0 (Windows): installed from the packed bundle (`Installing unsigned extension`,
   `missing required configuration, not enabling automatically` until the folder was chosen),
@@ -610,12 +622,6 @@
   pypdf's log left on. `--debug` already worked this way; `--json` joined it with the
   pypdf-floor PR. Fix: invoke through `cli.make_context` so `main` can read `ctx.obj`.
 
-- **At the next release, confirm `publish.yml`'s build ran uncached on the locked uv.** The
-  `ci:` PR that took the release build off the shared uv cache and pinned uv through `uv.lock`
-  could not exercise `publish.yml` — it only runs on a published release. In that run's `build`
-  job, the setup-uv step should report the uv version `uv.lock` pins and restore no cache.
-  `tests/test_workflows.py` holds the configuration; only a release proves the behaviour.
-
 - **The setup-uv step is copied seven times across three workflows.** Folding it into a local
   composite action was the last item of the #49 review's cache finding and was not done: the
   parametrized `tests/test_workflows.py` now fails on any copy that drifts from the pin or
@@ -682,13 +688,6 @@
   files (`dest` itself is created before the pre-flight), revert-checked against the
   pre-flight. Deferred from #60: that PR repaired a red `main` and changed only what the
   clock decided.
-
-- **No released carrel carries the security floors yet.** `main`'s floors for pypdf and Pillow
-  (`pyproject.toml`, held by `SECURITY_FLOORS`) were raised by #64 and #81 (D-026). carrel 0.5.0
-  on PyPI still declares `pypdf>=5.0` and `pillow>=10.0`, so until v0.6.0 is on PyPI, `pip
-  install carrel` keeps whatever an environment already holds. Close this with v0.6.0's
-  verification record. A raise touches four places, listed in `docs/RELEASING.md` step 1; refer
-  to the floor elsewhere rather than restate it.
 
 - **qpdf works only in carrel's temporary folder (`edit pdf --decrypt/--linearize`).** Ubuntu's
   AppArmor profile for qpdf confines it to `.pdf` files under `/tmp`, `/var/tmp`, `/mnt`,
