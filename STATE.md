@@ -10,15 +10,14 @@
   9 marketplace plugins, desk schema v2. Every release attaches `carrel-<version>.mcpb`, the
   Claude Desktop extension (D-030). Repo `coltonbearden/carrel`, docs at
   https://coltonbearden.github.io/carrel/, PyPI package `carrel`.
-- **In flight:** the v0.6.0 release itself until its verification record is written: the tag,
-  `publish.yml` (PyPI, then the bundle's `attach`), and the file on the release page checked.
-  Dependabot closed the six PRs #81 superseded (#70, #72, #74, #76, #77, #78) on its own, and
-  then opened #82 (setup-uv 10.3.3, whose checksum table reaches uv 0.13.6) and #83 (uv 0.13.6),
-  both after the release. Two ways to update a Dependabot branch:
-  `@dependabot rebase` keeps the PR Dependabot's own; `gh pr update-branch` adds a merge commit
-  that is not Dependabot's, after which it stops rebasing that PR by itself (`@dependabot
-  recreate` restores it). The ruleset's up-to-date rule makes every PR take `main`'s head before
-  it merges, which reruns its checks.
+- **In flight:** nothing of the v0.6.0 session's. Dependabot opened #82 (setup-uv 10.3.3, whose
+  checksum table reaches uv 0.13.6) and #83 (uv 0.13.6) on 2026-11-04 at 00:05Z, before the
+  release, which was cut without them. **Merge #82 first, or fold both into one PR**: #83 alone
+  runs uv 0.13.6 under setup-uv 10.3.2, whose table ends at 0.13.5 (Open issues). Two ways to update a Dependabot branch: `@dependabot rebase`
+  keeps the PR Dependabot's own; `gh pr update-branch` adds a merge commit that is not
+  Dependabot's, after which it stops rebasing that PR by itself (`@dependabot recreate` restores
+  it). The ruleset's up-to-date rule makes every PR take `main`'s head before it merges, which
+  reruns its checks.
 - **How a failure reaches the owner:** a failed `publish.yml` run (PyPI, or the bundle's
   `attach`) or a failed scheduled `weekly.yml` run turns Kuma 98 `carrel release` or 99
   `carrel weekly` down, and home-setup's kuma-tasks files it as a Home task on the `carrel` hub
@@ -40,6 +39,12 @@
   Five review rounds on v0.5.0 each found one more caller that had been missed; the flag is
   the reason, and MCP v3 adds callers to the same surface.
 - **Also pending:**
+  - **Anthropic's extension directory — look into it later** (the owner's choice, 2026-11-03):
+    check what a listing needs (signing, a privacy policy, review, its terms) and bring him the
+    decision. Nothing is submitted and no terms are accepted until he says so (D-030 left it his).
+  - **dev-e's MCP stack still runs carrel 0.5.0**, without v0.6.0's security floors: homelab-stacks
+    `stacks/mcp/` pins `carrel[all]==0.5.0` in its own image (Kuma 28 watches it). It moves only
+    through homelab-stacks and its update job, so the bump is that repository's, not this one's.
   - **Owner's step, not before 2026-10-23:** promote `test-minimal (windows)` to required once
     it has been green on `main` for two consecutive weeks (D-028). The count starts at
     2026-10-09T01:10Z, the first `main` run after a gap with none since 2026-09-24 (#60's
@@ -71,8 +76,26 @@
   extension (#79, D-030), the qpdf AppArmor fix (#80) and the security updates with their floors
   (#81, D-026). The owner chose on 2026-11-03 to release now as v0.6.0, to take the dependency
   updates first, and to make `bundle` a required check (applied with
-  `scripts/github-harden.sh`, then `--verify-only` green). The PyPI and release-page
-  verification is added once `publish.yml` has run.
+  `scripts/github-harden.sh`, then `--verify-only` green). **Released** from the release PR's
+  merge commit `e90f9ae` at 2026-11-04T01:11Z (UTC; 2026-11-03 20:11 EST, the date the CHANGELOG
+  and the Status line give); `publish.yml` run 41752285663 green in all four jobs. **`build`**
+  installed uv 0.13.5 from `uv.lock` with `enable-cache: false`, closing the open item the
+  uncached-build PR left. Its log shows setup-uv fetching the runtime manifest
+  (`astral-sh/versions` `uv.ndjson`) and downloading from `releases.astral.sh` even for 0.13.5,
+  which its built-in table lists; it does not say which source the sha256 came from (setup-uv
+  Open issue). **`attach`** started the bundle from PyPI on
+  its first try (carrel 0.6.0, 14 tools, Python 3.14.4) and uploaded it. **The release page's
+  `carrel-0.6.0.mcpb`** (37,110 bytes, sha256 `b0fdc5f6…7258c2c`), downloaded again: `mcpb
+  validate` passes on its manifest (0.6.0, 14 tools, `uv`, one required `documents_folder`),
+  unsigned as D-030 says, pins `carrel[office]==0.6.0` on Python 3.14, and `smoke --runtime pypi`
+  on that exact file answered carrel 0.6.0 with 14 tools. **From PyPI in a clean 3.12 venv:**
+  `carrel 0.6.0`; `doctor --json` 33 commands (31 ok, `mail` degraded without readpst, `desk`
+  unavailable without the `tui` extra, both by design) and 19 adapters; its metadata carries the
+  floors `pyproject.toml` declares, and it resolved Pillow 13.0.0 and pypdf 6.21.4. The wheel
+  **and** the sdist each carry a PEP 740 attestation naming `coltonbearden/carrel`,
+  `publish.yml`, environment `pypi`. The WSL `carrel[all]` uv tool moves to 0.6.0 with the
+  daily dotfiles upkeep job (its owner); dev-e's MCP stack pins `carrel[all]==0.5.0` in
+  homelab-stacks and moves only through that repository (Also pending).
 - 2026-11-03: #79, the Claude Desktop extension (D-030). Proved on the T14's Claude Desktop
   4.16336.0 (Windows): installed from the packed bundle (`Installing unsigned extension`,
   `missing required configuration, not enabling automatically` until the folder was chosen),
@@ -145,7 +168,7 @@
   pypdf versions. One finding was fixed in the PR: the
   `uv-pin` group's floor sat inside the uv advisory's range and is `>=0.12.18` now, so a
   relock cannot take CI's uv back into it. #64 then raised the runtime floor to
-  `pypdf>=6.19.0` (D-026; unreleased, see Open issues). Two findings are deferred under Open
+  `pypdf>=6.19.0` (D-026; first released in v0.6.0, whose Done entry has the record). Two findings are deferred under Open
   issues: pypdf 6.20.0 and Dependabot's missing cooldown. `main`'s `tests` run on #58's merge
   commit was green in all seven jobs.
 - 2026-10-08: #59 (urllib3 from 2.7.0 to 2.8.0, `uv.lock` only) merged as `1a15026`. Its
@@ -544,9 +567,12 @@
   is not visible from here. Nothing depends on it: the check is not required and Context7
   re-indexes on its own schedule. It repeated on #65's and #66's merges, so four 400s on 2026-10-09,
   all within a day of the 200 at 01:10Z, which would fit a once-a-day refresh limit
-  (unverified); Context7 still serves `/coltonbearden/carrel`. Next: see whether a run more
-  than a day after the last 200 succeeds, and if not, read the response body in a session
-  that holds the key.
+  (unverified); Context7 still serves `/coltonbearden/carrel`. Answered since: runs more than a
+  day after the last 200 succeeded (2026-10-19 17:58Z; 2026-11-04 00:03Z), and the two pushes
+  49 and 67 minutes after the second, #79's and v0.6.0's merge commits, got 400 again. That fits
+  a once-a-day limit, so a red `context7-refresh` on a busy day is expected rather than a fault.
+  Fix, if the red runs bother: skip the request when the last success is under a day old, or
+  treat 400 as "too soon" when the body says so (read in a session that holds the key).
 
 - **A red weekly run does not show on the README.** The `tests` badge reads `test.yml` on
   `main`, which is the last push's result, and `gh run list --workflow test.yml` says the
@@ -567,14 +593,17 @@
 - **`setup-uv`'s built-in checksums can trail the uv that `uv.lock` pins.** The action checks
   the uv it downloads against a table compiled into it; for a version the table lacks it takes the
   URL and sha256 from a manifest fetched at run time, which the action's SHA pin does not cover.
-  On 2026-11-03 setup-uv 10.3.2's table ended at uv 0.13.5 while uv 0.13.7 was out, so the
-  dependency PR locked uv at **0.13.5** (past the 0.13.4 security fix) to stay inside it. The gap
-  reopens whenever a uv bump outruns the action: take a uv bump only to a version the pinned
-  setup-uv lists (`src/download/checksum/known-checksums.json` at the pinned SHA), or bump both
-  together. Nothing enforces this yet: Dependabot will propose uv 0.13.7 and CI will pass. #81's
-  review suggested a test against a vendored copy of that list; deferred, because every
-  setup-uv bump would then need its copy refreshed by hand, and whether that friction is worth
-  it is the owner's call.
+  Since 10.3.3 it also downloads uv from Astral's mirror, `releases.astral.sh`, by default
+  (`download-from-astral-mirror: true`), with the manifest from `astral-sh/versions`. On
+  2026-11-03 setup-uv 10.3.2's table ended at uv 0.13.5 while uv 0.13.7 was out, so #81 locked
+  uv at 0.13.5 (past the 0.13.4 security fix) to stay inside it; #82 moved the action to 10.3.3,
+  whose table ends at **0.13.6**, the version #83 locks. The gap reopens whenever a uv bump
+  outruns the action: take a uv bump only to a version the pinned setup-uv lists
+  (`src/download/checksum/known-checksums.json` at the pinned SHA), or bump both together.
+  Nothing enforces this yet: Dependabot will propose uv 0.13.7 and CI will pass. #81's review
+  suggested a test against a vendored copy of that list; deferred, because every setup-uv bump
+  would then need its copy refreshed by hand, and whether that friction is worth it is the
+  owner's call.
 
 - **No CI job installs the declared floors.** CI tests `uv.lock`, and every declared floor
   but two sits well below it: click 8.1 against 8.5.0, rich 13.0
@@ -609,12 +638,6 @@
   a positional after `--` is mistaken for the flag: JSON formatting of a last-resort error, or
   pypdf's log left on. `--debug` already worked this way; `--json` joined it with the
   pypdf-floor PR. Fix: invoke through `cli.make_context` so `main` can read `ctx.obj`.
-
-- **At the next release, confirm `publish.yml`'s build ran uncached on the locked uv.** The
-  `ci:` PR that took the release build off the shared uv cache and pinned uv through `uv.lock`
-  could not exercise `publish.yml` — it only runs on a published release. In that run's `build`
-  job, the setup-uv step should report the uv version `uv.lock` pins and restore no cache.
-  `tests/test_workflows.py` holds the configuration; only a release proves the behaviour.
 
 - **The setup-uv step is copied seven times across three workflows.** Folding it into a local
   composite action was the last item of the #49 review's cache finding and was not done: the
@@ -682,13 +705,6 @@
   files (`dest` itself is created before the pre-flight), revert-checked against the
   pre-flight. Deferred from #60: that PR repaired a red `main` and changed only what the
   clock decided.
-
-- **No released carrel carries the security floors yet.** `main`'s floors for pypdf and Pillow
-  (`pyproject.toml`, held by `SECURITY_FLOORS`) were raised by #64 and #81 (D-026). carrel 0.5.0
-  on PyPI still declares `pypdf>=5.0` and `pillow>=10.0`, so until v0.6.0 is on PyPI, `pip
-  install carrel` keeps whatever an environment already holds. Close this with v0.6.0's
-  verification record. A raise touches four places, listed in `docs/RELEASING.md` step 1; refer
-  to the floor elsewhere rather than restate it.
 
 - **qpdf works only in carrel's temporary folder (`edit pdf --decrypt/--linearize`).** Ubuntu's
   AppArmor profile for qpdf confines it to `.pdf` files under `/tmp`, `/var/tmp`, `/mnt`,
