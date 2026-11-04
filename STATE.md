@@ -5,20 +5,29 @@
 
 ## Now
 
-- **Status:** v0.5.0 "the first five minutes" is the current release (2026-09-12); its
-  verification record is the v0.5.0 entry under Done. 33 commands, 14 MCP tools, 19 adapters,
-  9 marketplace plugins, desk schema v2. Repo `coltonbearden/carrel`, docs at
+- **Status:** v0.6.0 "one click from Claude Desktop" is the current release (2026-11-03); its
+  verification record is the v0.6.0 entry under Done. 33 commands, 14 MCP tools, 19 adapters,
+  9 marketplace plugins, desk schema v2. Every release attaches `carrel-<version>.mcpb`, the
+  Claude Desktop extension (D-030). Repo `coltonbearden/carrel`, docs at
   https://coltonbearden.github.io/carrel/, PyPI package `carrel`.
-- **In flight:** (2026-11-03) the Claude Desktop extension (#79, D-030), after #81 (the six
-  Dependabot PRs open then as one change, with the Pillow and pypdf floors, D-026). Every release
-  attaches `carrel-<version>.mcpb`; `bundle` becomes a required check once #79 merges
-  (`scripts/github-harden.sh`, owner-approved 2026-11-03). Then **v0.6.0** (the owner's choice
-  of 2026-11-03), which moves MCP v3 to v0.7.0. Two ways to update a Dependabot branch:
+- **In flight:** the v0.6.0 release itself until its verification record is written: the tag,
+  `publish.yml` (PyPI, then the bundle's `attach`), and the file on the release page checked.
+  Dependabot closed the six PRs #81 superseded (#70, #72, #74, #76, #77, #78) on its own, and
+  then opened #82 (setup-uv 10.3.3, whose checksum table reaches uv 0.13.6) and #83 (uv 0.13.6),
+  both after the release. Two ways to update a Dependabot branch:
   `@dependabot rebase` keeps the PR Dependabot's own; `gh pr update-branch` adds a merge commit
   that is not Dependabot's, after which it stops rebasing that PR by itself (`@dependabot
   recreate` restores it). The ruleset's up-to-date rule makes every PR take `main`'s head before
   it merges, which reruns its checks.
-- **Next:** MCP v3 (`specs/30-mcp-v3.md`) as **v0.6.0**: 11 new tools, 14 → 25, with `rename`,
+- **How a failure reaches the owner:** a failed `publish.yml` run (PyPI, or the bundle's
+  `attach`) or a failed scheduled `weekly.yml` run turns Kuma 98 `carrel release` or 99
+  `carrel weekly` down, and home-setup's kuma-tasks files it as a Home task on the `carrel` hub
+  after about an hour without a success (homelab-state D-248; proved by a forced down on
+  2026-11-03). A red PR check blocks its merge (`bundle` is required). Not watched: `test.yml`
+  on `main` after a merge (the merging session reads it), and whether the weekly schedule still
+  runs at all (the Key facts entry on `weekly.yml` has the check).
+- **Next:** MCP v3 (`specs/30-mcp-v3.md`) as **v0.7.0** (renumbered on 2026-11-03, when the owner
+  released the Desktop extension and the security floors as v0.6.0): 11 new tools, 14 → 25, with `rename`,
   `intake`, `organize` and `ocr` first. That ordering is this wave's brief, not spec 30, which
   states none: `rename`/`intake`/`organize` are what stop the accounting-inbox pipeline being
   CLI-only, and `ocr` rides along on their entry points. The Open-issue entry below still names
@@ -58,6 +67,26 @@
 
 ## Done
 
+- 2026-11-03 (v0.6.0): the release PR bumps to 0.6.0 for three merged changes: the Claude Desktop
+  extension (#79, D-030), the qpdf AppArmor fix (#80) and the security updates with their floors
+  (#81, D-026). The owner chose on 2026-11-03 to release now as v0.6.0, to take the dependency
+  updates first, and to make `bundle` a required check (applied with
+  `scripts/github-harden.sh`, then `--verify-only` green). The PyPI and release-page
+  verification is added once `publish.yml` has run.
+- 2026-11-03: #79, the Claude Desktop extension (D-030). Proved on the T14's Claude Desktop
+  4.16336.0 (Windows): installed from the packed bundle (`Installing unsigned extension`,
+  `missing required configuration, not enabling automatically` until the folder was chosen),
+  `Connected to Carrel (14 tools)` through Desktop's uv runtime, and one chat ran carrel's doctor
+  (6 of 19 tools) and an index plus search for "invoice" (2 files, the PDFs reporting the missing
+  `pdftotext` with its hint), with 5 tool calls and no errors in either log. So Desktop does pass
+  `${user_config.documents_folder}` to the launcher, the review's one finding that only Desktop
+  could settle. Removed afterwards, as the owner chose. Found there: this Desktop opens no `.mcpb`
+  on a double-click; the app's own Settings (☰ → File → Settings → Extensions) holds the page, and
+  README/INSTALL say so. Earlier, the Windows side's own uv ran the unpacked bundle on Python
+  3.14.10 (the `.python-version`), and Linux runs used carrel 0.5.0 from PyPI with `UV_LOCKED=1`
+  and `UV_PYTHON=3.12` set by the caller (both dropped, as a host would). Review: `/code-review 79
+  high`, ten findings, eight fixed with revert-checked tests, one settled by the Desktop proof,
+  one a cleanup not taken.
 - 2026-11-03: #81 took the six open Dependabot PRs as one change: Pillow 13.0.0 (41
   advisories, five critical), pypdf 6.21.4 (18), certifi 2026.10.23 and uv 0.13.5 (each fixing
   one critical advisory; uv held inside setup-uv 10.3.2's checksum table), the actions group
@@ -170,9 +199,9 @@
   database out of the desk). All closed, each with a test that fails when the fix is reverted,
   plus two registry-driven tests that drive every (tool, action) pair from `mcp.TOOLS`. Those
   two cover the *read* side; the write-side twin is hand-listed over `carrel_convert` and
-  `carrel_mail attachments`, the only two tools that write today — so v0.6.0's mutating tools
+  `carrel_mail attachments`, the only two tools that write today — so MCP v3's mutating tools
   are not covered by it automatically and must be added. The threading approach is what let
-  each round find one more caller — hence the v0.6.0 item above.
+  each round find one more caller — hence the MCP v3 item above.
 
   Process notes worth keeping: the release PR's first push reddened **every** CI job in seconds
   because `uv.lock` pins carrel's own version and CI syncs under `UV_LOCKED=1`. The lock was
@@ -365,12 +394,12 @@
   last — `<root>/.carrel`, the database's own location — was invisible to the registry-driven
   tests because it is neither a walk nor a path any schema names. The shape to aim at is `Desk`
   owning the primitives (`desk.open`, `desk.db`, `desk.walk`) so a new surface is confined by
-  construction. **First item of v0.6.0**, before its mutating tools land on the same surface.
+  construction. **First item of MCP v3 (v0.7.0)**, before its mutating tools land on the same surface.
 
   The callers that *do not* pass it are the ones to watch, because none is reachable over MCP
   today and that is the only reason they are not holes: `rename.py:195` and `catalog.py:190`
   call the shared `candidate_files`/`_walk` without a boundary, as do `dedupe.py:39`/`:179`,
-  `batch.py:42`, `edit.py:453`/`:474` and `desk/app.py:405`. **`rename` is first on v0.6.0's
+  `batch.py:42`, `edit.py:453`/`:474` and `desk/app.py:405`. **`rename` is first on MCP v3's
   list.** Wiring `confine_to` tool-by-tool from the confined-caller list would miss it — which
   is the sixth round this entry exists to prevent.
 
@@ -461,13 +490,6 @@
   `test_redact_sign_form.py` and others). `tests/conftest.py` is the shared-plumbing home;
   hoisting it is a whole-suite edit, deliberately not bundled into a behaviour PR.
 
-- **No released carrel carries the security floors yet.** `main`'s floors for pypdf and Pillow
-  (`pyproject.toml`, held by `SECURITY_FLOORS`) were raised by #64 and #81 (D-026). carrel 0.5.0
-  on PyPI still declares `pypdf>=5.0` and `pillow>=10.0`, so until v0.6.0 ships, `pip install
-  carrel` keeps whatever an environment already holds. The owner chose on 2026-11-03 to take the
-  updates first and then release v0.6.0. A raise touches four places, listed in
-  `docs/RELEASING.md` step 1; refer to the floor elsewhere rather than restate it.
-
 - **Dependabot proposes a release as soon as it is published.** `.github/dependabot.yml` sets
   no `cooldown`, and #58 locked ast-serialize 0.12.1 two days after its upload to PyPI
   (2026-10-03). #58's review compared every changed lock entry with PyPI's hashes and found
@@ -509,7 +531,8 @@
   cancelled and re-run by hand and the third was cancelled by the next push to `main`, which
   is why `main`'s `tests` run on #64's merge commit reads cancelled with six of seven jobs
   green. Left alone such a job ends at its 30-minute timeout as a red run that says nothing
-  about carrel, and the weekly scheduled run has nobody watching it. Fix: a short timeout on
+  about carrel; on the weekly scheduled run, that failure would page through Kuma 99
+  (D-248) for a cause that is the runner's. Fix: a short timeout on
   the install step with one retry, or a cached package set. Deferred from #65: it needs its
   own look at what the allowed-actions list permits.
 
@@ -579,7 +602,7 @@
   for all three is one helper that opens *user input*, touches `.pages`, and converts pypdf's
   refusals and structural `ValueError`/`TypeError`s into `CarrelInputError(path, …)` where the
   path is known. Deferred because it touches every pypdf call site in seven commands — the same
-  surface v0.6.0's confined accessor rewrites.
+  surface MCP v3's confined accessor rewrites.
 
 - **`main` reads `--json` and `--debug` from raw argv.** Its last-resort error handler and the
   pypdf log switch run where click's context is gone, so a literal `--json` or `--debug` passed as
@@ -660,6 +683,13 @@
   pre-flight. Deferred from #60: that PR repaired a red `main` and changed only what the
   clock decided.
 
+- **No released carrel carries the security floors yet.** `main`'s floors for pypdf and Pillow
+  (`pyproject.toml`, held by `SECURITY_FLOORS`) were raised by #64 and #81 (D-026). carrel 0.5.0
+  on PyPI still declares `pypdf>=5.0` and `pillow>=10.0`, so until v0.6.0 is on PyPI, `pip
+  install carrel` keeps whatever an environment already holds. Close this with v0.6.0's
+  verification record. A raise touches four places, listed in `docs/RELEASING.md` step 1; refer
+  to the floor elsewhere rather than restate it.
+
 - **qpdf works only in carrel's temporary folder (`edit pdf --decrypt/--linearize`).** Ubuntu's
   AppArmor profile for qpdf confines it to `.pdf` files under `/tmp`, `/var/tmp`, `/mnt`,
   `/media` and non-hidden home folders (#80), so carrel hands it copies in its temp folder.
@@ -676,6 +706,15 @@
   (Debian 11 ships 10.1, Ubuntu 20.04 9.1) and reads only the first line of a password. Fix:
   use `--password-file=-` when `adapters` reports qpdf ≥ 10.2 and the password has no newline,
   and keep argv otherwise, with a test on each branch.
+
+- **The MCPB CLI's own dependencies carry two high advisories.** `npm audit` in `packaging/mcpb/`:
+  `tmp` ≤0.2.5 (symlink and path traversal; reached only through `@inquirer/prompts`, which
+  `mcpb init` uses and the build never calls) and `zod` <4.6.6 (memory exhaustion validating an
+  oversized collection; it validates only carrel's own generated manifest). Neither has a fix
+  inside the lock: `external-editor` pins the old `tmp`, and `@anthropic-ai/mcpb` 2.1.2 needs
+  zod 3. Build-time only, in CI, on carrel's own input; Dependabot's npm entry will raise them
+  as alerts on `main`. Fix when `@anthropic-ai/mcpb` moves to zod 4 and a newer prompts library;
+  dismissing the alerts as "vulnerable code not used" is a repository setting, the owner's.
 
 ## Key facts for a fresh session
 

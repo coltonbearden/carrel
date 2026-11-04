@@ -38,7 +38,7 @@ tool update-shell` fixes it if not). Verify:
 
 ```console
 $ carrel --version
-carrel 0.5.0 — A library desk for your files — and your agents.
+carrel 0.6.0 — A library desk for your files — and your agents.
 ```
 
 Having `carrel` on `PATH` matters beyond convenience: the Claude Code plugins
@@ -133,7 +133,7 @@ their versions, and the exact install hint for each missing one. Run it first:
 
 ```console
 $ carrel doctor
-carrel 0.5.0 · python 3.12.13
+carrel 0.6.0 · python 3.12.16
                 external tools
 ┃ adapter     ┃ status  ┃ version / install hint ┃
 │ pandoc      │ found   │ pandoc 3.7.0.2         │

@@ -156,7 +156,7 @@ The desk *database* is the fourth derived path and the one that survived four re
 
 Stored rows are the fifth case and are not a path at all. The desk index is written by whoever ran `carrel index`, and the CLI follows links by design, so a desk indexed from the shell holds rows pointing anywhere; `--prune` keeps them because the target still exists. Confining the walk stops the server *writing* such rows and cannot unwrite them, so `carrel_search`, `carrel_tag find` and `carrel_meta find` filter what they return.
 
-Consequence: `plugins/carrel-agent/.mcp.json` is unchanged — Claude Code starts the server in the project directory, which is the desk. `specs/30-mcp-v3.md`'s re-opened confinement question is answered by this record, so the mutating tools of v0.6.0 inherit the boundary rather than each solving it.
+Consequence: `plugins/carrel-agent/.mcp.json` is unchanged — Claude Code starts the server in the project directory, which is the desk. `specs/30-mcp-v3.md`'s re-opened confinement question is answered by this record, so the mutating tools of MCP v3 (planned as v0.6.0, renumbered v0.7.0 on 2026-11-03) inherit the boundary rather than each solving it.
 
 ## D-022 (2026-09-12) — The tracked-files guard is overridden by `--allow-tracked`; `--force` stays as a deprecated alias
 
@@ -222,7 +222,7 @@ Dropping the default `excludeFolders` is the deliberate half. Its `*archive*` pa
 
 ## D-026 (2026-09-15) — Runtime floors for parsers of untrusted input track security releases
 
-carrel reads files it did not write, so the dependencies that parse them are its attack surface. `pypdf>=5.0` let `pip install carrel` keep whatever pypdf an environment already held, which meant the 6.18.1 hardening release that Dependabot moved into `uv.lock` (#50) reached CI and not users: carrel 0.5.0 installed into an environment holding pypdf 6.16.2 left it there.
+carrel reads files it did not write, so the dependencies that parse them are its attack surface. `pypdf>=5.0` let `pip install carrel` keep whatever pypdf an environment already held, which meant the 6.18.1 hardening release that Dependabot moved into `uv.lock` (#50) reached CI and not users: the 0.5.0 release of carrel, installed into an environment holding pypdf 6.16.2, left it there.
 
 **The floor is raised to the newest security release**, not held at the oldest API that works — `pypdf>=6.18.1` when this was decided; `pyproject.toml` holds the current floor, and `tests/test_dependency_floors.py` keeps it from being lowered. The alternative the owner was offered, a tested minimum with a CI job that installs the floors, answers a different question (does the floor still work?) and leaves the security one open; it is still worth having and is tracked in `STATE.md`.
 

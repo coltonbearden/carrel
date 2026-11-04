@@ -454,3 +454,32 @@ def test_brand_md_states_the_functional_line_it_declares_canonical():
 
     stem = PRODUCT["description"].split(" from the terminal")[0]
     assert stem in _read(DOCS / "BRAND.md")
+
+
+def test_no_merge_conflict_markers():
+    """A diff3 base marker (`||||||| <sha>`) survived #79's merge into the v0.6.0 changelog entry,
+    which goes into the release body and the docs site, and every other check passed it."""
+    markers = re.compile(r"^(<{7}|\|{7}|>{7})( |$)", re.M)
+    skip = {".git", ".venv", "node_modules", "site", "build", "dist"}
+    found = []
+    for path in REPO_ROOT.rglob("*"):
+        if not path.is_file() or skip & set(path.relative_to(REPO_ROOT).parts):
+            continue
+        if path.suffix not in {
+            ".md",
+            ".py",
+            ".toml",
+            ".yml",
+            ".yaml",
+            ".json",
+            ".cff",
+            ".sh",
+            ".txt",
+        }:
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        found += [
+            f"{path.relative_to(REPO_ROOT)}:{text[: m.start()].count(chr(10)) + 1}"
+            for m in markers.finditer(text)
+        ]
+    assert not found, f"merge-conflict markers left in: {found}"

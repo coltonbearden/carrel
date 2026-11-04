@@ -1,7 +1,7 @@
 # spec: MCP v3 — the whole desk over MCP, not just the reading half
 
 **Owns:** `src/carrel/commands/mcp.py` (the `TOOLS` table and its dispatch map), whichever command modules still lack a callable entry point, `docs/AGENTS.md`, `docs/FEATURES.md`, `README.md`, `docs/index.md`, `tests/test_mcp_stdio.py`, `tests/test_docs_drift.py` (the pin already exists).
-**Wave:** v0.6.0.
+**Wave:** v0.7.0 (planned as v0.6.0; renumbered on 2026-11-03, when v0.6.0 shipped the Claude Desktop extension and the security floors instead).
 
 ## Why
 
