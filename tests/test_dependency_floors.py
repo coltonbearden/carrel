@@ -22,7 +22,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 #: Per parser of untrusted input, the oldest release that carries its newest
 #: advisory fix. Raise an entry together with the floor; never lower one (D-026).
-SECURITY_FLOORS = {"pypdf": "6.19.0"}
+SECURITY_FLOORS = {"pypdf": "6.21.4", "pillow": "13.0.0"}
 
 
 def _version(text: str) -> tuple[int, ...]:

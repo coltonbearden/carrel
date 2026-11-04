@@ -50,6 +50,13 @@ classifiers, and is not newer than what `uv.lock` pins (CI tests the lock, so a
 floor above it is untested). A floor is what `pip install carrel` into an existing
 environment actually gets; the lock only decides what CI runs.
 
+A raise touches four places, and tests hold each: the floor in `pyproject.toml`; the
+specifier in `uv.lock` (`uv lock`); the Unreleased `CHANGELOG.md` bullet that says
+"requires `<name>>=<version>`"; and `SECURITY_FLOORS` in
+`tests/test_dependency_floors.py`, which fails if a floor is lowered, set above the lock,
+or stated differently in the changelog. Refer to the floor everywhere else rather than
+restating it: #64's review found two stale copies in other documents.
+
 Classify the raise under D-023 by what it does, not by what it is. Hardening
 releases add limits, and a limit can refuse a file the older version accepted —
 pypdf 6's `LimitReachedError` does exactly that — so a raise that crosses such a
