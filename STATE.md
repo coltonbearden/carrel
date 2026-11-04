@@ -593,14 +593,17 @@
 - **`setup-uv`'s built-in checksums can trail the uv that `uv.lock` pins.** The action checks
   the uv it downloads against a table compiled into it; for a version the table lacks it takes the
   URL and sha256 from a manifest fetched at run time, which the action's SHA pin does not cover.
-  On 2026-11-03 setup-uv 10.3.2's table ended at uv 0.13.5 while uv 0.13.7 was out, so the
-  dependency PR locked uv at **0.13.5** (past the 0.13.4 security fix) to stay inside it. The gap
-  reopens whenever a uv bump outruns the action: take a uv bump only to a version the pinned
-  setup-uv lists (`src/download/checksum/known-checksums.json` at the pinned SHA), or bump both
-  together. Nothing enforces this yet: Dependabot will propose uv 0.13.7 and CI will pass. #81's
-  review suggested a test against a vendored copy of that list; deferred, because every
-  setup-uv bump would then need its copy refreshed by hand, and whether that friction is worth
-  it is the owner's call.
+  Since 10.3.3 it also downloads uv from Astral's mirror, `releases.astral.sh`, by default
+  (`download-from-astral-mirror: true`), with the manifest from `astral-sh/versions`. On
+  2026-11-03 setup-uv 10.3.2's table ended at uv 0.13.5 while uv 0.13.7 was out, so #81 locked
+  uv at 0.13.5 (past the 0.13.4 security fix) to stay inside it; #82 moved the action to 10.3.3,
+  whose table ends at **0.13.6**, the version #83 locks. The gap reopens whenever a uv bump
+  outruns the action: take a uv bump only to a version the pinned setup-uv lists
+  (`src/download/checksum/known-checksums.json` at the pinned SHA), or bump both together.
+  Nothing enforces this yet: Dependabot will propose uv 0.13.7 and CI will pass. #81's review
+  suggested a test against a vendored copy of that list; deferred, because every setup-uv bump
+  would then need its copy refreshed by hand, and whether that friction is worth it is the
+  owner's call.
 
 - **No CI job installs the declared floors.** CI tests `uv.lock`, and every declared floor
   but two sits well below it: click 8.1 against 8.5.0, rich 13.0
