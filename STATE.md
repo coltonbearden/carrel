@@ -39,6 +39,9 @@
   Five review rounds on v0.5.0 each found one more caller that had been missed; the flag is
   the reason, and MCP v3 adds callers to the same surface.
 - **Also pending:**
+  - **Anthropic's extension directory — look into it later** (the owner's choice, 2026-11-03):
+    check what a listing needs (signing, a privacy policy, review, its terms) and bring him the
+    decision. Nothing is submitted and no terms are accepted until he says so (D-030 left it his).
   - **dev-e's MCP stack still runs carrel 0.5.0**, without v0.6.0's security floors: homelab-stacks
     `stacks/mcp/` pins `carrel[all]==0.5.0` in its own image (Kuma 28 watches it). It moves only
     through homelab-stacks and its update job, so the bump is that repository's, not this one's.
