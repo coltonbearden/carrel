@@ -1,4 +1,5 @@
-# Publishes carrel to PyPI via Trusted Publishing (OIDC — no API token).
+# Publishes carrel to PyPI via Trusted Publishing (OIDC — no API token), then
+# attaches the Claude Desktop extension (carrel-<version>.mcpb) to the release.
 # Fires when a GitHub Release is published. Requires the trusted-publisher
 # entry on pypi.org (project: carrel · owner: coltonbearden · repo: carrel ·
 # workflow: publish.yml · environment: pypi). Release steps: docs/RELEASING.md
@@ -89,3 +90,71 @@ jobs:
         with:
           attestations: true
           print-hash: true
+
+  bundle:
+    # The Claude Desktop extension from the tagged commit (D-030), packed and
+    # validated by the locked MCPB CLI and started against that commit.
+    name: bundle (Desktop extension)
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          python-version: "3.12"
+          version-file: uv.lock
+          enable-cache: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: lts/*
+          package-manager-cache: false
+      - name: Install the MCPB CLI from its lock
+        run: npm ci --prefix packaging/mcpb --ignore-scripts --no-audit --no-fund
+      - name: Validate and pack
+        run: uv run python scripts/build_mcpb.py pack
+      - name: Start the packed bundle against the tagged commit
+        run: uv run python scripts/build_mcpb.py smoke build/mcpb/*.mcpb --runtime checkout
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mcpb
+          path: build/mcpb/*.mcpb
+          if-no-files-found: error
+          retention-days: 7
+
+  attach:
+    # Only once PyPI has this version: the bundle names it, and Desktop's uv
+    # installs it from there. The smoke step is that install, so a file that
+    # cannot start is never attached.
+    name: attach (Desktop extension)
+    needs: [publish, bundle]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write   # the only job that can change the release: it uploads one file
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          python-version: "3.12"
+          version-file: uv.lock
+          enable-cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: mcpb
+          path: build/mcpb/
+      # The bundle has no lock, and `uv run` refuses one under UV_LOCKED=1, so the
+      # script starts the bundle without the lock flags this workflow sets. A
+      # just-published version can take a minute to reach PyPI's index: it retries.
+      - name: Start the bundle from PyPI, as Desktop does
+        run: python3 scripts/build_mcpb.py smoke build/mcpb/*.mcpb --runtime pypi --retry-for 600
+      - name: Attach it to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        # --clobber: a re-run of this job replaces its own earlier upload
+        run: gh release upload "$TAG" build/mcpb/*.mcpb --clobber --repo "$GITHUB_REPOSITORY"

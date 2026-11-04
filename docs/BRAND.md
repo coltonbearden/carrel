@@ -61,6 +61,11 @@ Usage:
 
 - **Sizes**: legible from 16 px (C silhouette + bulb survive) to 512 px+. Use
   the SVG; if you must rasterize, export at 2× the display size.
+- **The one committed raster**: `assets/icon-512.png`, the Claude Desktop
+  extension's icon (the format wants a 512×512 PNG; D-030). It is `logo.svg`
+  rendered by `uv run scripts/render_icon.py` (cairosvg); re-run that when the
+  logo changes. ImageMagick's built-in SVG renderer drops the stroked C and
+  paints the glow black, so do not use it here.
 - **Clear space**: keep a margin of at least the stroke width (11% of the mark
   height) free around the tile.
 - **Don't**: recolor the amber, remove the tile on busy backgrounds, add

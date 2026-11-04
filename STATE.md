@@ -9,13 +9,15 @@
   verification record is the v0.5.0 entry under Done. 33 commands, 14 MCP tools, 19 adapters,
   9 marketplace plugins, desk schema v2. Repo `coltonbearden/carrel`, docs at
   https://coltonbearden.github.io/carrel/, PyPI package `carrel`.
-- **In flight:** (2026-11-03) the dependency PR #81 takes the six Dependabot PRs open then
-  (#70, #72, #74, #76, #77, #78) as one change and raises the Pillow and pypdf floors (D-026);
-  the Claude Desktop extension (#79, D-030) follows it, then v0.6.0. Two ways to update a
-  Dependabot branch: `@dependabot rebase` keeps the PR Dependabot's own; `gh pr update-branch`
-  adds a merge commit that is not Dependabot's, after which it stops rebasing that PR by itself
-  (`@dependabot recreate` restores it). The ruleset's up-to-date rule makes every PR take
-  `main`'s head before it merges, which reruns its checks.
+- **In flight:** (2026-11-03) the Claude Desktop extension (#79, D-030), after #81 (the six
+  Dependabot PRs open then as one change, with the Pillow and pypdf floors, D-026). Every release
+  attaches `carrel-<version>.mcpb`; `bundle` becomes a required check once #79 merges
+  (`scripts/github-harden.sh`, owner-approved 2026-11-03). Then **v0.6.0** (the owner's choice
+  of 2026-11-03), which moves MCP v3 to v0.7.0. Two ways to update a Dependabot branch:
+  `@dependabot rebase` keeps the PR Dependabot's own; `gh pr update-branch` adds a merge commit
+  that is not Dependabot's, after which it stops rebasing that PR by itself (`@dependabot
+  recreate` restores it). The ruleset's up-to-date rule makes every PR take `main`'s head before
+  it merges, which reruns its checks.
 - **Next:** MCP v3 (`specs/30-mcp-v3.md`) as **v0.6.0**: 11 new tools, 14 → 25, with `rename`,
   `intake`, `organize` and `ocr` first. That ordering is this wave's brief, not spec 30, which
   states none: `rename`/`intake`/`organize` are what stop the accounting-inbox pipeline being
@@ -676,6 +678,13 @@
   and keep argv otherwise, with a test on each branch.
 
 ## Key facts for a fresh session
+
+- Claude Desktop extension (D-030): `uv run python scripts/build_mcpb.py stage|pack|smoke`.
+  `pack` needs `npm ci --prefix packaging/mcpb` first (the MCPB CLI, locked there, moved by
+  Dependabot's npm entry). The bundle is manifest 0.4 `server.type: "uv"`: Desktop's uv installs
+  `carrel[office]==<version>` from PyPI on the Python of the newest classifier. Nothing generated
+  is committed; `tests/test_mcpb.py` needs no Node. The icon is `assets/icon-512.png`
+  (`uv run scripts/render_icon.py`).
 
 - Stack: Python ≥3.12 + uv; click CLI; Textual TUI (`carrel desk`); hatchling build.
 - Product identity: `product.json` is the SoT. Bump there, run `scripts/sync_product.py`,

@@ -149,6 +149,11 @@ Two resource templates (`resources/templates/list`) let Claude read without call
 Wire details in [ARCHITECTURE.md](ARCHITECTURE.md#mcp-server); plugin setup in
 [MARKETPLACE.md](MARKETPLACE.md#the-mcp-server-carrel-agent).
 
+The same server runs in **Claude Desktop** from the extension each release attaches,
+`carrel-<version>.mcpb` ([Install](INSTALL.md#claude-desktop-extension-no-terminal)): its
+root is the one folder chosen when it was installed, and its launcher refuses to start
+without one rather than fall back to a working directory (D-030).
+
 ## See also
 
 - [PLUGIN_AUTHORING.md](PLUGIN_AUTHORING.md) — ship your own agent/skill in a plugin.

@@ -46,9 +46,9 @@ jobs:
       # the docs group is for the strict site build at the end (doc-drift gate, D-g)
       - run: uv sync --group dev --group docs --all-extras
       - name: ruff check
-        run: uv run ruff check --output-format=github src tests scripts
+        run: uv run ruff check --output-format=github src tests scripts packaging
       - name: ruff format --check
-        run: uv run ruff format --check src tests scripts
+        run: uv run ruff format --check src tests scripts packaging
       - name: mypy (strict)
         run: uv run mypy
       - name: product.json ↔ generated copies
@@ -204,3 +204,39 @@ jobs:
         # continue-on-error above keeps the job advisory until it has been
         # green on main for two consecutive weeks (D-028, docs/DECISIONS.md).
         run: uv run pytest
+
+  bundle:
+    # The Claude Desktop extension (D-030): pack it with the MCPB CLI that
+    # packaging/mcpb/package-lock.json locks, let the CLI validate it, then start
+    # the packed file and compare its live tools with its manifest and with this
+    # commit's TOOLS. Required, so a change that breaks the bundle cannot merge.
+    name: bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          python-version: "3.12"
+          version-file: uv.lock
+          enable-cache: true
+          cache-suffix: ${{ github.workflow }}-${{ github.job }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: lts/*
+          package-manager-cache: false
+      - run: uv sync
+      - name: Install the MCPB CLI from its lock
+        run: npm ci --prefix packaging/mcpb --ignore-scripts --no-audit --no-fund
+      - name: Validate and pack
+        run: uv run python scripts/build_mcpb.py pack
+      - name: Start the packed bundle against this commit
+        run: uv run python scripts/build_mcpb.py smoke build/mcpb/*.mcpb --runtime checkout
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mcpb
+          path: build/mcpb/*.mcpb
+          if-no-files-found: error
+          retention-days: 14

@@ -208,6 +208,12 @@ def test_uncached_workflows_use_no_other_cache_either(workflow):
                 and _switched_on(inputs["cache"])
             ):
                 offenders.append(f"{job_id}: {uses} with cache: {inputs['cache']}")
+            elif uses.startswith("actions/setup-node@") and _switched_on(
+                inputs.get("package-manager-cache", "true")
+            ):
+                # setup-node caches on its own (default true) once package.json names a
+                # package manager; a missing key counts as on, as with setup-uv
+                offenders.append(f"{job_id}: {uses} without `package-manager-cache: false`")
     assert not offenders, f"{workflow} restores a cache another workflow can write: {offenders}"
 
 
@@ -371,3 +377,99 @@ def test_push_and_release_triggers_stay_narrow():
         )
         assert not {"tags", "tags-ignore", "branches-ignore"} & set(push), f"{workflow}: {push}"
     assert _triggers("publish.yml") == {"release": {"types": ["published"]}}
+
+
+def test_only_the_attach_job_can_write_the_release():
+    """The release's one writer uploads the Desktop extension, after PyPI has the version.
+
+    `publish.yml` stays read-only at the top; `publish` mints the OIDC token and nothing
+    else; `attach` alone may change the release, and only once both the PyPI upload and the
+    bundle build succeeded, because the bundle installs that exact version from PyPI (D-030).
+    """
+    data = _load("publish.yml")
+    assert data["permissions"] == {"contents": "read"}
+    writers = {
+        job_id: job["permissions"]
+        for job_id, job in data["jobs"].items()
+        if "write" in (job.get("permissions") or {}).values()
+    }
+    assert writers == {"publish": {"id-token": "write"}, "attach": {"contents": "write"}}, writers
+    assert set(data["jobs"]["attach"]["needs"]) == {"publish", "bundle"}
+
+
+def _check_names(jobs: dict) -> set[str]:
+    """The status-check names GitHub reports for these jobs.
+
+    A job without a matrix reports its `name` (or id). A matrix job reports one check per
+    combination: its name with each `${{ matrix.X }}` filled in, or, when the name refers to
+    no matrix value, the name followed by the combination's values in parentheses. `include`
+    entries that match no combination add one of their own; `exclude` removes combinations.
+    """
+    import itertools
+
+    names = set()
+    for job_id, job in jobs.items():
+        name = str(job.get("name", job_id))
+        matrix = (job.get("strategy") or {}).get("matrix") or {}
+        axes = {k: v for k, v in matrix.items() if k not in ("include", "exclude")}
+        if not matrix:
+            names.add(name)
+            continue
+        combos = (
+            [dict(zip(axes, vals, strict=True)) for vals in itertools.product(*axes.values())]
+            if axes
+            else []  # a matrix of `include` entries alone is just those entries
+        )
+        for gone in matrix.get("exclude") or []:
+            combos = [c for c in combos if not all(c.get(k) == v for k, v in gone.items())]
+        for extra in matrix.get("include") or []:
+            matched = [
+                c for c in combos if all(c.get(k, v) == v for k, v in extra.items() if k in axes)
+            ]
+            if matched and any(k in axes for k in extra):
+                for c in matched:
+                    c.update(extra)
+            else:
+                combos.append(dict(extra))
+        for combo in combos:
+            if "${{ matrix." in name:
+                filled = name
+                for axis, value in combo.items():
+                    filled = filled.replace(f"${{{{ matrix.{axis} }}}}", str(value))
+                names.add(filled)
+            else:
+                names.add(f"{name} ({', '.join(str(v) for v in combo.values())})")
+    return names
+
+
+def test_check_names_follow_github_matrix_naming():
+    jobs = {
+        "plain": {"name": "lint"},
+        "named": {
+            "name": "test (py${{ matrix.python }})",
+            "strategy": {"matrix": {"python": ["3.12", "3.13"]}},
+        },
+        "suffixed": {"name": "test", "strategy": {"matrix": {"python": ["3.12"], "os": ["linux"]}}},
+        "included": {"name": "extra", "strategy": {"matrix": {"include": [{"python": "3.14"}]}}},
+    }
+    assert _check_names(jobs) == {
+        "lint",
+        "test (py3.12)",
+        "test (py3.13)",
+        "test (3.12, linux)",
+        "extra (3.14)",
+    }
+
+
+def test_every_required_check_is_a_job_that_runs_on_pull_requests():
+    """A required check no job reports would block every pull request until someone noticed."""
+    import json
+
+    script = (REPO_ROOT / "scripts" / "github-harden.sh").read_text(encoding="utf-8")
+    match = re.search(r"REQUIRED_CHECKS='(\[.*?\])'", script)
+    assert match, "REQUIRED_CHECKS is no longer a single-line JSON array"
+    required = set(json.loads(match.group(1)))
+    assert "pull_request" in _triggers("test.yml")
+    missing = required - _check_names(_load("test.yml")["jobs"])
+    assert not missing, f"required checks no test.yml job reports: {sorted(missing)}"
+    assert "bundle" in required, "the Desktop extension's check is required (D-030)"
